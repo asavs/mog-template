@@ -25,11 +25,16 @@ jobs:
     name: Build and deploy PR → mog-game-beta
     runs-on: ubuntu-latest
     # Filter: approved reviews on open PRs, or manual dispatch.
+    # SECURITY (#185): this job checks out and BUILDS untrusted PR head code in a
+    # context that holds GCP deploy credentials, so the approval that triggers it
+    # must come from a trusted role. Without the author_association gate, any user
+    # could approve any PR on this public repo and run code with our credentials.
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.review.state == 'approved' &&
        github.event.pull_request.state == 'open' &&
-       github.event.pull_request.draft == false)
+       github.event.pull_request.draft == false &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association))
     timeout-minutes: 20
     permissions:
       id-token: write       # required for Workload Identity Federation
