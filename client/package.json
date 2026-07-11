@@ -1,0 +1,52 @@
+{
+  "name": "client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:beta": "vite --base=/beta/",
+    "build": "tsc -b && vite build",
+    "build:beta": "tsc -b && vite build --base=/beta/",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:combat-action": "vite-node test-combat-action-state.ts",
+    "test:combat-action:local": "STDB_URL=ws://127.0.0.1:3000 vite-node test-combat-action-state.ts",
+    "test:combat-action:vm": "STDB_URL=ws://your-vm-host vite-node test-combat-action-state.ts",
+    "test:reconnect": "vite-node test-reconnect.ts",
+    "test:reconnect:local": "STDB_URL=ws://127.0.0.1:3000 vite-node test-reconnect.ts",
+    "test:reconnect:vm": "STDB_URL=ws://your-vm-host vite-node test-reconnect.ts",
+    "qa:env:up": "vite-node qa-harness/ensure-env.ts",
+    "qa:harness": "vite-node qa-harness/run-harness.ts",
+    "qa:perf": "QA_MODE=perf vite-node qa-harness/run-harness.ts",
+    "qa:baseline:update": "vite-node qa-harness/run-harness.ts -- --update-baseline",
+    "qa:report": "vite-node qa-harness/report-cli.ts --",
+    "qa:typecheck": "tsc -p qa-harness/tsconfig.qa.json"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "spacetimedb": "^2.1.0",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.184.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "playwright": "^1.61.1",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.10",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,6 @@
+[Unit]
+Description=Clean stale MOG runtime artifacts
+
+[Service]
+Type=oneshot
+ExecStart=/srv/mog-template/scripts/cleanup-runtime-artifacts.sh

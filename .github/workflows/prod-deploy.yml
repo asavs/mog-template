@@ -1,0 +1,121 @@
+name: Deploy to prod
+
+# Build artifacts on the runner, ship them to mog-server, publish.
+# The VM doesn't need git, Rust, node, or a repo checkout — it just
+# receives the prebuilt WASM + client bundle.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+# Don't cancel an in-flight prod deploy when a newer commit lands —
+# let each deploy finish so we always settle on a consistent state.
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy master → mog-game-v1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      id-token: write   # required for Workload Identity Federation
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Do not fetch LFS objects here. The apply script preserves already
+          # deployed runtime assets when the built dist contains LFS pointers.
+          lfs: false
+
+      # --- Phase 1: build artifacts on the runner ---
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/spacetimedb/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('server/spacetimedb/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Build server WASM
+        working-directory: server/spacetimedb
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      # --- Phase 2: auth + ship artifacts to VM ---
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Stage artifacts on mog-server
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT }}
+          SHA: ${{ github.sha }}
+        run: |
+          WASM=$(find server/spacetimedb/target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' | head -1)
+          if [ -z "$WASM" ]; then
+            echo "ERROR: no wasm file produced by cargo build" >&2
+            ls -la server/spacetimedb/target/wasm32-unknown-unknown/release/ || true
+            exit 1
+          fi
+          echo "Shipping wasm: $WASM"
+
+          gcloud compute ssh mog-server \
+            --zone=us-central1-a \
+            --project="$PROJECT" \
+            --quiet \
+            --command "rm -rf /tmp/deploy-${SHA} && mkdir -p /tmp/deploy-${SHA}"
+
+          gcloud compute scp \
+            --zone=us-central1-a \
+            --project="$PROJECT" \
+            --quiet \
+            --recurse \
+            "$WASM" \
+            client/dist \
+            scripts/apply-artifacts.sh \
+            "mog-server:/tmp/deploy-${SHA}/"
+
+      # --- Phase 3: apply on VM ---
+
+      - name: Apply on mog-server
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT }}
+          SHA: ${{ github.sha }}
+        run: |
+          gcloud compute ssh mog-server \
+            --zone=us-central1-a \
+            --project="$PROJECT" \
+            --quiet \
+            --command "bash /tmp/deploy-${SHA}/apply-artifacts.sh prod ${SHA}"

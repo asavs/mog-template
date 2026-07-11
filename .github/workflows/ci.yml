@@ -1,0 +1,351 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A newer push to the same ref supersedes the whole chain — don't let a
+# ~15-minute browser-playtest run (or any earlier job) finish for a commit
+# that's already been replaced. Ported from PR #123.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-server:
+    name: Build server module (WASM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/spacetimedb/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('server/spacetimedb/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Build server module
+        working-directory: server/spacetimedb
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Run server tests
+        working-directory: server/spacetimedb
+        run: cargo test --release
+
+      # Lets browser-playtest download the already-built wasm instead of
+      # recompiling it from source (repo rule: build once, reuse via artifact).
+      - name: Stage wasm artifact
+        run: |
+          WASM=$(find server/spacetimedb/target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' | head -1)
+          if [ -z "$WASM" ]; then
+            echo "ERROR: no wasm file produced by cargo build" >&2
+            exit 1
+          fi
+          cp "$WASM" module.wasm
+
+      - name: Upload server module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-wasm
+          path: module.wasm
+          if-no-files-found: error
+          retention-days: 1
+
+  build-client:
+    name: Build client bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Terrain models are Git LFS objects; checkout doesn't fetch LFS
+      # content, so without this the dist artifact ships pointer files
+      # instead of .glb models and the browser playtest can't load terrain
+      # (the page errors and never becomes joinable). checkout's `lfs: true`
+      # would re-download them every run — expensive against GitHub's LFS
+      # bandwidth quota — so cache the objects keyed on the pointer OIDs and
+      # only pay bandwidth when an asset actually changes. Ported from PR #123.
+      - name: List LFS asset ids
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Pull LFS assets
+        run: git lfs pull
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Run client tests
+        working-directory: client
+        run: npm test
+
+      # Lets browser-playtest serve the already-built bundle (via `vite
+      # preview`) instead of rebuilding it (repo rule: build once, reuse via
+      # artifact) — it then exercises the actual production artifact.
+      - name: Upload client bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  integration-tests:
+    name: Integration tests vs live SpacetimeDB
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/spacetimedb/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('server/spacetimedb/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+          # Installer puts the wrapper at $HOME/.spacetime/spacetime and the
+          # versioned CLI under $HOME/.local/share/spacetime; the wrapper handles
+          # the indirection as long as the install was unscoped.
+          echo "$HOME/.spacetime" >> "$GITHUB_PATH"
+
+      - name: Verify install
+        run: |
+          which spacetime
+          spacetime --version
+
+      - name: Start SpacetimeDB
+        run: |
+          nohup spacetime start --listen-addr 127.0.0.1:3000 > /tmp/spacetime.log 2>&1 &
+          # Poll until the listening port is accepting connections
+          for i in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+              echo "SpacetimeDB ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "SpacetimeDB failed to start within 60s"
+          cat /tmp/spacetime.log
+          exit 1
+
+      - name: Publish server module
+        working-directory: server
+        run: spacetime publish --yes mog-game-v1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Run reconnect regression test
+        working-directory: client
+        run: npm run test:reconnect:local
+
+      - name: Run combat action-state regression test
+        working-directory: client
+        run: npm run test:combat-action:local
+
+      - name: Dump SpacetimeDB log on failure
+        if: failure()
+        run: cat /tmp/spacetime.log || true
+
+  # Permanent STRUCTURAL SMOKE test: this job proves the client bundle builds,
+  # headed Chromium launches under Xvfb, a bot can join a live SpacetimeDB
+  # session, traces are collected and parsed, and the harness's structural
+  # integrity checks pass (NaN/null checks and related GPU-independent checks).
+  # It is not a perf gate or a visual-regression gate. GitHub-hosted runners
+  # have no GPU and use SwiftShader software rendering, so browser CI cannot
+  # validate real-machine performance or rendering fidelity. That feel-testing
+  # happens locally against a real GPU; see client/qa-harness/README.md. The
+  # decision of whether/how browser CI could ever become a real gate is tracked
+  # in issue #195; do not re-introduce baseline/perf-gating language here.
+  #
+  # No docs-only paths-filter skip here: unlike PR #123 (superseded), this
+  # workflow doesn't have a dorny/paths-filter "changes" job yet, so there's
+  # nothing existing to hook into for issue #195's conditional docs-only
+  # requirement. Add one (with the job-level `pull-requests: read` permission
+  # paths-filter needs against the restricted default token) if/when this job
+  # is promoted out of placeholder status and the extra Actions minutes from
+  # docs-only pushes start to matter.
+  browser-playtest:
+    name: Browser playtest (structural smoke, headed via Xvfb)
+    runs-on: ubuntu-latest
+    # Gated behind EVERY other job in this workflow — runner minutes are
+    # paid while the repo is private, and this is by far the most expensive
+    # job here (Chromium + Xvfb + a full input sequence twice over, plus a
+    # perf scenario suite). Standing repo practice: cheap jobs first,
+    # expensive jobs behind `needs:`, not specific to this job.
+    needs: [build-server, build-client, integration-tests]
+    # Master pushes only, not per-PR: this job is 10-13 minutes of wall time
+    # (SwiftShader software-renders the full scene at seconds-per-frame) and,
+    # since #225, can only prove structural facts — bundle serves, join flow
+    # works, telemetry flows, rAF ticks. The 2-minute jobs above stay as the
+    # per-PR gate; a regression the smoke would catch surfaces on the merge
+    # commit instead of blocking every PR iteration for 15 minutes.
+    if: github.event_name == 'push'
+    # Hard cost cap while this is a paid-minutes placeholder. The step-level
+    # timeouts below fail the expensive steps individually so the trace
+    # upload still runs; this job-level value is the absolute backstop.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download server module artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: server-wasm
+
+      - name: Start local SpacetimeDB and publish module
+        uses: ./.github/actions/local-spacetimedb
+        with:
+          wasm-path: module.wasm
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      # Reuse the bundle build-client already produced instead of rebuilding
+      # (repo rule) — the playtest then exercises the production artifact via
+      # `vite preview` (QA_WEB_MODE=preview below), not a dev-mode rebuild.
+      - name: Download client bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('client/package-lock.json') }}
+
+      # OS-level deps (Xvfb + Chromium's shared libraries) install outside
+      # ~/.cache, so they're needed on every run regardless of the browser
+      # cache — one apt transaction covers both.
+      - name: Install Xvfb and Playwright OS deps
+        working-directory: client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          npx playwright install-deps chromium
+
+      - name: Install Playwright Chromium (cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: client
+        run: npx playwright install chromium
+
+      # Headed, not headless: pointer lock (camera look, spell-aim) hangs the
+      # CDP session in headless Chromium (hard requirement, see
+      # client/qa-harness/README.md). Xvfb gives headed Chromium a real
+      # (virtual) display to render into on a runner with no monitor.
+      - name: Run structural smoke playtest
+        working-directory: client
+        # 12 minutes proved too tight once video recording landed: the run
+        # completed its checks and was killed writing final artifacts.
+        timeout-minutes: 15
+        env:
+          QA_WEB_MODE: preview
+          QA_PHASES: walk_forward,jump_idle
+          # No video on the structural smoke: SwiftShader pays real render
+          # time for recording, and a structural tier has no feel to watch.
+          QA_VIDEO: '0'
+          # Structural checks only: this runner never grants pointer lock
+          # (Chromium rejects the engage gesture under Xvfb + SwiftShader)
+          # and the game gates ALL input on it, so movement invariants here
+          # would test the runner, not the game. The real-feel tier needs
+          # GPU hardware (#195).
+          QA_CHECKS: structural
+          # Point at a baselines dir that intentionally does not exist (and
+          # is never captured for this job): the harness then reports "no
+          # baseline yet" and enforces ONLY the structural checks. Without
+          # this it would default to baselines/ - GPU-captured locally and
+          # meaningless to compare against SwiftShader software rendering
+          # (observed: instant baseline-drift failures). This job must never
+          # gate on baselines; see the job comment above.
+          QA_BASELINE_DIR: qa-harness/baselines/ci
+          # One class, not two - each class is a fresh session paying the
+          # full SwiftShader startup cost, and class coverage is not what
+          # this smoke proves.
+          QA_CLASSES: wizard
+          # Quarter the pixels SwiftShader must software-render; on this
+          # GPU-less runner the default 1280x720 viewport left the rAF loop
+          # below 30 frames per 5 minutes (observed empirically).
+          QA_VIEWPORT: 640x360
+          # Prove the render loop ticks, don't measure it - the default 30
+          # frames can outlast any sane timeout at SwiftShader frame rates.
+          QA_RENDER_READY_FRAMES: '10'
+          # Structural waits (join dialog, first player frame, render loop
+          # ticking again) need far more headroom on SwiftShader: the render
+          # loop stalls for minutes right after join while terrain geometry/
+          # textures upload in software (observed empirically on this job —
+          # 90s was not enough). This does not loosen any regression
+          # tolerance; the step-level timeout above bounds the total cost.
+          QA_JOIN_TIMEOUT_MS: '300000'
+        run: xvfb-run -a npm run qa:harness
+
+      - name: Upload playtest report + traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-harness-traces
+          path: client/qa-harness/runs/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Dump SpacetimeDB log on failure
+        if: failure()
+        run: cat /tmp/spacetime.log || true

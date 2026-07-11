@@ -1,0 +1,45 @@
+{
+  "cold-load": {
+    "wizard": {
+      "timeToPlayableMs": 20000
+    },
+    "paladin": {
+      "timeToPlayableMs": 20000
+    },
+    "startup": {
+      "longTaskTotalMs": 15000
+    }
+  },
+  "first-cast": {
+    "steady_baseline": {
+      "worstFrameDeltaMs": 400
+    },
+    "fireball_1": {
+      "worstFrameDeltaMs": 100
+    },
+    "fireball_2": {
+      "worstFrameDeltaMs": 100
+    },
+    "lightning_1": {
+      "worstFrameDeltaMs": 5000
+    },
+    "lightning_2": {
+      "worstFrameDeltaMs": 5000
+    }
+  },
+  "player-join": {
+    "b_joining": {
+      "worstFrameDeltaMs": 2500
+    },
+    "after_b_join": {
+      "worstFrameDeltaMs": 3500
+    }
+  },
+  "remote-motion": {
+    "remote_motion": {
+      "worstFrameDeltaMs": 400,
+      "maxRemoteJumpUnits": 2.0,
+      "flickerIndex": 3.0
+    }
+  }
+}

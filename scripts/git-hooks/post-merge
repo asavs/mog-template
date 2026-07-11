@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "Automating permissions fix (post-merge)..."
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+"$HOOK_DIR/../fix-permissions.sh"

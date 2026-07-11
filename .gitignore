@@ -1,0 +1,32 @@
+# Node / Vite
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+
+# Rust / SpacetimeDB module
+target/
+*.wasm
+
+# SpacetimeDB CLI
+.spacetime/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local asset staging
+glb storage/
+.worktrees/
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# QA harness run artifacts
+client/qa-harness/runs/
+
+# Agent / assistant local tooling (never publish)
+.agent-runs/
+.claude/

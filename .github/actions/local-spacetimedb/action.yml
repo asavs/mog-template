@@ -1,0 +1,68 @@
+name: Start local SpacetimeDB and publish a module
+description: >
+  Installs the SpacetimeDB CLI, starts a local instance on 127.0.0.1:3000,
+  and publishes a prebuilt wasm module to it. Does not build anything —
+  callers must produce the wasm first (e.g. via the build-server job) and
+  pass it in via wasm-path.
+  Ported from the superseded PR #123 (ci/browser-playtest-pipeline) for
+  issue #195. That PR also cached the CLI binary between runs, keyed to a
+  specific install path layout; this v0 skips that cache (see the Install
+  step below) rather than risk porting a layout that may have drifted since
+  #123 was written — it can be reinstated once reverified.
+
+inputs:
+  wasm-path:
+    description: Path to the prebuilt .wasm module to publish
+    required: true
+  db-name:
+    description: Name of the database to publish
+    required: true
+    default: mog-game-v1
+
+runs:
+  using: composite
+  steps:
+    # No cache here deliberately: the existing integration-tests job in
+    # ci.yml installs fresh every run with this same script, so this mirrors
+    # a known-working pattern rather than the (unverified, in this repo,
+    # today) cached-binary variant from PR #123.
+    - name: Install SpacetimeDB CLI
+      shell: bash
+      run: |
+        curl -sSf https://install.spacetimedb.com | sh -s -- --yes
+        # Installer puts the wrapper at $HOME/.spacetime/spacetime and the
+        # versioned CLI under $HOME/.local/share/spacetime; the wrapper
+        # handles the indirection as long as the install was unscoped.
+        echo "$HOME/.spacetime" >> "$GITHUB_PATH"
+
+    - name: Verify install
+      shell: bash
+      run: |
+        which spacetime
+        spacetime --version
+
+    - name: Start SpacetimeDB
+      shell: bash
+      run: |
+        nohup spacetime start --listen-addr 127.0.0.1:3000 > /tmp/spacetime.log 2>&1 &
+        # Poll until the listening port is accepting connections
+        for i in $(seq 1 60); do
+          if (echo > /dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+            echo "SpacetimeDB ready after ${i}s"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "SpacetimeDB failed to start within 60s"
+        cat /tmp/spacetime.log
+        exit 1
+
+    # --server must be explicit: CLI 2.6.x defaults to maincloud.spacetimedb.com
+    # on a fresh config, so an unqualified publish tries to create the
+    # database on SpacetimeDB's public cloud instead of the local instance
+    # started above (known gotcha, see issue #195). --bin-path publishes the
+    # prebuilt artifact instead of rebuilding — same flag scripts/apply-artifacts.sh
+    # already uses for real deploys.
+    - name: Publish server module
+      shell: bash
+      run: spacetime publish --server http://127.0.0.1:3000 --bin-path "${{ inputs.wasm-path }}" --yes "${{ inputs.db-name }}"

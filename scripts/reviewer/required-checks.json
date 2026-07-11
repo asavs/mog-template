@@ -1,0 +1,5 @@
+[
+  "Build server module (WASM)",
+  "Build client bundle",
+  "Integration tests vs live SpacetimeDB"
+]

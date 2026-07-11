@@ -1,0 +1,11 @@
+---
+description: "Pointer to the canonical SpacetimeDB guidelines in server/GUIDELINES.md."
+globs: **/*.ts,**/*.tsx,**/*.js,**/*.jsx,**/*.rs,**/*.cs
+alwaysApply: true
+---
+
+# SpacetimeDB Core Guidelines
+
+This Cursor rule is intentionally a pointer stub.
+
+Read and follow `GUIDELINES.md` (or `server/GUIDELINES.md` relative to the repo root); it is the single source of truth for SpacetimeDB guidelines.

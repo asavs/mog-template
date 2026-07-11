@@ -1,0 +1,137 @@
+name: QA baseline capture
+
+# Manually-dispatched: captures browser-playtest baselines ON A RUNNER, in
+# the same physics the browser-playtest CI gate runs in (SwiftShader
+# software rendering, not a local GPU). The result is uploaded as an
+# artifact for human review — committing it to
+# client/qa-harness/baselines/ci/ is a deliberate, reviewed act, since it
+# redefines "current accepted reality" for the regression gate.
+#
+# Ported from the superseded PR #123 for issue #195. v0 placeholder note:
+# there is little point running this until the local perf fixes (Phase 2 of
+# the perf plan) land — capturing a baseline against known-bad numbers just
+# locks in the bad numbers as "acceptable".
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: qa-baseline
+  cancel-in-progress: false
+
+jobs:
+  capture-baseline:
+    name: Capture playtest baseline on runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Terrain models are Git LFS objects; actions/checkout doesn't fetch
+      # LFS content by default, so pull it explicitly. Cached on the pointer
+      # OIDs to spare LFS bandwidth quota (same pattern as build-client in
+      # ci.yml would use, if/when it grows this step).
+      - name: List LFS asset ids
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Pull LFS assets
+        run: git lfs pull
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/spacetimedb/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('server/spacetimedb/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Build server module
+        working-directory: server/spacetimedb
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Stage wasm artifact
+        run: |
+          WASM=$(find server/spacetimedb/target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' | head -1)
+          if [ -z "$WASM" ]; then
+            echo "ERROR: no wasm file produced by cargo build" >&2
+            exit 1
+          fi
+          cp "$WASM" module.wasm
+
+      - name: Start local SpacetimeDB and publish module
+        uses: ./.github/actions/local-spacetimedb
+        with:
+          wasm-path: module.wasm
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('client/package-lock.json') }}
+
+      - name: Install Xvfb and Playwright OS deps
+        working-directory: client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          npx playwright install-deps chromium
+
+      - name: Install Playwright Chromium (cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: client
+        run: npx playwright install chromium
+
+      - name: Capture baseline
+        working-directory: client
+        env:
+          QA_WEB_MODE: preview
+          QA_BASELINE_DIR: qa-harness/baselines/ci
+          QA_RUN_LABEL: ci-baseline
+          QA_JOIN_TIMEOUT_MS: '90000'
+        run: xvfb-run -a npm run qa:baseline:update
+
+      - name: Upload captured baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-baselines-ci
+          path: client/qa-harness/baselines/ci/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload capture traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-baseline-traces
+          path: client/qa-harness/runs/
+          retention-days: 14
+          if-no-files-found: warn

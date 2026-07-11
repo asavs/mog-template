@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "Automating permissions fix (post-checkout)..."
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+"$HOOK_DIR/../fix-permissions.sh"

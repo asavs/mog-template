@@ -1,0 +1,21 @@
+{
+  "//": "Type-checks the QA harness (run via vite-node, which transpiles without type-checking). The harness spans Node (fs/path) and browser (page.evaluate / addInitScript) code, so it needs both the node types and the DOM lib. noEmit-only; `npm run qa:typecheck`.",
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "types": ["node", "vite/client"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["."]
+}
+
