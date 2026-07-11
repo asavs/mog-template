@@ -67,9 +67,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.resolve.outputs.sha }}
-          # Do not fetch LFS objects here. The apply script preserves already
-          # deployed runtime assets when the built dist contains LFS pointers.
-          lfs: false
+          # Fetch LFS objects so the built bundle ships real runtime assets.
+          # Deploys are self-contained (a fresh VM needs no manual asset seeding).
+          lfs: true
 
       - name: Verify CI is green on PR head
         env:
