@@ -282,6 +282,18 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:github-actions-deploy@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/compute.viewer"
+
+# `gcloud compute ssh` impersonates the VM's ATTACHED service account, so the
+# deploy SA also needs actAs on it. By default the VM runs as the Compute
+# Engine default SA (<PROJECT_NUMBER>-compute@developer.gserviceaccount.com).
+# Without this the Stage step fails INSTANTLY (before any SSH) with:
+#   "PERMISSION_DENIED: ... does not have iam.serviceAccounts.actAs
+#    permission on the instance's service account".
+gcloud iam service-accounts add-iam-policy-binding \
+  <PROJECT_NUMBER>-compute@developer.gserviceaccount.com \
+  --project=<PROJECT_ID> \
+  --member="serviceAccount:github-actions-deploy@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 `osAdminLogin` (rather than plain `osLogin`) is what grants passwordless
@@ -352,6 +364,14 @@ If it fails, `gh run view --log-failed -R <GITHUB_ORG>/<GITHUB_REPO>` shows
 which step. Once green, `http://<vm-external-ip>/` should serve the client
 and the module should be live on `mog-game-v1`.
 
+Runtime assets (models, skybox) are stored in Git LFS. The deploy workflows
+check out with `lfs: true` so every deploy ships the real assets — a fresh VM
+needs no manual asset seeding. If LFS is unavailable at deploy time,
+`apply-artifacts.sh` skips the unresolved pointer with a warning (preserving
+any already-deployed real asset) rather than hard-failing; but note the
+client hard-requires its assets, so a deploy that ships without them will
+load and then crash the 3D scene.
+
 ## Troubleshooting
 
 **`spacetime publish` returns 403 / "not the owner"** — the connecting
@@ -360,16 +380,29 @@ user's default identity doesn't own the database. Re-check step 5: is
 `spacetimedb_token` line? `scripts/apply-artifacts.sh` only picks it up if
 that grep succeeds.
 
+**Stage step fails with `iam.serviceAccounts.actAs` PERMISSION_DENIED** — the
+deploy SA is missing `roles/iam.serviceAccountUser` on the VM's *attached*
+service account (step 4, the last grant). This fails immediately, before any
+SSH handshake, and is the single most common miss.
+
 **SSH/sudo fails from the workflow** — confirm the deploy SA has
 `roles/compute.osAdminLogin` (not just `osLogin`) at the project level, and
 that the WIF provider's `--attribute-condition` matches the repo exactly
 (`<org>/<repo>`, case-sensitive). Recheck after a few minutes — OS Login
 permission propagation can lag.
 
+**Deploy fails with "staged ... is a Git LFS pointer"** — the checkout didn't
+fetch LFS objects, so an asset shipped as a pointer file. The workflows set
+`lfs: true` for exactly this reason; if you changed it, restore it. (The
+apply script will otherwise skip the asset with a warning, and the client
+will crash on the missing model.)
+
 **VM runs out of memory / SpacetimeDB gets OOM-killed** — check
 `free -h` and `sudo systemctl status spacetimedb`. Increase the swapfile
 size, or move to a larger machine type; `e2-small` is the tested minimum.
 
-**GitHub Actions won't start any job at all** — check the repo/org's
-Billing & plans settings in GitHub; Actions minutes require a valid payment
-method independent of anything on the GCP side.
+**GitHub Actions won't start any job at all** ("The job was not started ...
+spending limit needs to be increased") — this is GitHub Actions minutes, not
+GCP. Private repos draw from a limited monthly minute quota; **public repos
+get unlimited free minutes on standard runners.** Either make the repo public
+or raise the spending limit in GitHub → Billing & plans.
