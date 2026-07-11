@@ -10,6 +10,21 @@ GitHub Actions to reach it over SSH using Workload Identity Federation (no
 long-lived service account keys). Everything is HTTP-only for now — TLS/
 Certbot is a separate follow-up.
 
+## Automated path
+
+`scripts/setup-deploy-infra.sh` runs every step below end to end (idempotent,
+safe to re-run). If you'd rather not do it by hand:
+
+```sh
+PROJECT_ID=<your-project> GITHUB_REPO=<owner>/<repo> \
+  CREATE_PROJECT=true BILLING_ACCOUNT=<XXXXXX-XXXXXX-XXXXXX> \
+  ./scripts/setup-deploy-infra.sh
+```
+
+Then trigger the first deploy (`gh workflow run prod-deploy.yml -R <owner>/<repo>
+--ref master`). The rest of this document explains what that script does and how
+to do it manually.
+
 ## Prerequisites
 
 - A GCP project with billing enabled, and the `gcloud` CLI authenticated
