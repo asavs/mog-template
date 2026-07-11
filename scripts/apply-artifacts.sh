@@ -71,6 +71,12 @@ if [ "$TARGET" = "beta" ]; then
 fi
 "$SPACETIME" "${CONFIG_ARGS[@]}" publish "${PUBLISH_ARGS[@]}" "$DB_NAME"
 
+# Handle runtime assets that arrived as unresolved Git LFS pointers (the deploy
+# checkout uses lfs:false, so LFS-tracked assets stage as pointer files). If a
+# real asset is already deployed, preserve it; otherwise ship the bundle WITHOUT
+# the asset (warn loudly) rather than hard-failing the deploy or serving a broken
+# pointer. This lets a fresh VM deploy succeed and makes asset-free test builds
+# possible.
 LFS_POINTER_EXCLUDES=()
 while IFS= read -r -d '' path; do
   if ! LC_ALL=C grep -aq '^version https://git-lfs.github.com/spec/v1$' "$path"; then
@@ -82,33 +88,10 @@ while IFS= read -r -d '' path; do
 
   if [ -f "$existing_path" ] && ! LC_ALL=C grep -aq '^version https://git-lfs.github.com/spec/v1$' "$existing_path"; then
     log "Preserving existing runtime asset $rel_path; staged file is a Git LFS pointer"
-    LFS_POINTER_EXCLUDES+=("--exclude=$rel_path")
-    continue
+  else
+    log "WARNING: $rel_path is an unresolved Git LFS pointer and no real asset is deployed; shipping WITHOUT it"
   fi
-
-  echo "ERROR: staged $rel_path is a Git LFS pointer, and no existing real asset is present at $existing_path" >&2
-  echo "Seed the runtime asset outside Git LFS or restore LFS access before deploying this commit." >&2
-  exit 1
-done < <(find "$STAGING_DIR/dist" -type f -print0)
-
-LFS_POINTER_EXCLUDES=()
-while IFS= read -r -d '' path; do
-  if ! LC_ALL=C grep -aq '^version https://git-lfs.github.com/spec/v1$' "$path"; then
-    continue
-  fi
-
-  rel_path="${path#"$STAGING_DIR/dist/"}"
-  existing_path="$WEB_ROOT/$rel_path"
-
-  if [ -f "$existing_path" ] && ! LC_ALL=C grep -aq '^version https://git-lfs.github.com/spec/v1$' "$existing_path"; then
-    log "Preserving existing runtime asset $rel_path; staged file is a Git LFS pointer"
-    LFS_POINTER_EXCLUDES+=("--exclude=$rel_path")
-    continue
-  fi
-
-  echo "ERROR: staged $rel_path is a Git LFS pointer, and no existing real asset is present at $existing_path" >&2
-  echo "Seed the runtime asset outside Git LFS or restore LFS access before deploying this commit." >&2
-  exit 1
+  LFS_POINTER_EXCLUDES+=("--exclude=$rel_path")
 done < <(find "$STAGING_DIR/dist" -type f -print0)
 
 log "Syncing client bundle to $WEB_ROOT..."
