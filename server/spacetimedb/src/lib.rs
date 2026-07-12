@@ -1122,6 +1122,8 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
 
     let transforms: Vec<PlayerTransform> = ctx.db.player_transform().iter().collect();
     for mut transform in transforms {
+        let before = player_logic::TransformPoseSnapshot::from(&transform);
+
         if ctx
             .db
             .player_health()
@@ -1132,9 +1134,11 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
         {
             transform.is_moving = false;
             transform.movement_state = idle_movement_state_for_position(&transform.position);
-            transform.server_tick = server_tick;
-            transform.updated_at = ctx.timestamp;
-            ctx.db.player_transform().identity().update(transform);
+            if player_logic::transform_needs_publish_from_snapshot(&before, &transform) {
+                transform.server_tick = server_tick;
+                transform.updated_at = ctx.timestamp;
+                ctx.db.player_transform().identity().update(transform);
+            }
             continue;
         }
 
@@ -1162,9 +1166,13 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
             } else {
                 ctx.db.player_jump_state().insert(jump_state);
             }
-            transform.server_tick = server_tick;
-            transform.updated_at = ctx.timestamp;
-            ctx.db.player_transform().identity().update(transform);
+            // Semantic deltas only: skip row updates that would only bump
+            // server_tick / updated_at for idle players.
+            if player_logic::transform_needs_publish_from_snapshot(&before, &transform) {
+                transform.server_tick = server_tick;
+                transform.updated_at = ctx.timestamp;
+                ctx.db.player_transform().identity().update(transform);
+            }
         }
     }
 
