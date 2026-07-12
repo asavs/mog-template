@@ -132,4 +132,56 @@ describe('tick-based remote interpolation', () => {
 
     expect(Math.abs(previousError)).toBeLessThan(0.000001);
   });
+
+  it('free-runs render tick after idle transform silence (no new server ticks)', () => {
+    const clock = new RenderTickClock();
+    const lastServerTick = 50;
+    clock.observeServerTick(BigInt(lastServerTick));
+    const frozenTarget = lastServerTick - RENDER_DELAY_TICKS;
+    clock.renderTick = frozenTarget;
+
+    // Without new pose publishes, the clock must not freeze at the last
+    // target — free-run keeps remote interpolation clocks alive while AFK
+    // players produce no transform rows.
+    for (let frame = 0; frame < 40; frame += 1) {
+      clock.advance(1 / SERVER_TICK_RATE_HZ);
+    }
+
+    expect(clock.renderTick).toBeGreaterThan(frozenTarget + 10);
+  });
+
+  it('holds idle remote pose while render tick free-runs past the buffer', () => {
+    const buffer = [snapshot(10, 500, 3), snapshot(11, 550, 3)];
+    const sample = sampleBuffer(buffer, 11 + MAX_EXTRAPOLATION_TICKS + 20);
+    expect(sample).not.toBeNull();
+    expect(sample!.position.x).toBe(3);
+  });
+
+  it('resumes convergence after long free-run when motion publishes again', () => {
+    const clock = new RenderTickClock();
+    clock.observeServerTick(BigInt(20));
+    clock.renderTick = 20 - RENDER_DELAY_TICKS;
+
+    for (let frame = 0; frame < 100; frame += 1) {
+      clock.advance(1 / SERVER_TICK_RATE_HZ);
+    }
+
+    let latestTick = 120;
+    clock.observeServerTick(BigInt(latestTick));
+
+    let previousError = Infinity;
+    for (let frame = 0; frame < 400; frame += 1) {
+      latestTick += 1;
+      clock.observeServerTick(BigInt(latestTick));
+      clock.advance(1 / SERVER_TICK_RATE_HZ);
+
+      const targetTick = latestTick - RENDER_DELAY_TICKS;
+      const error = Math.abs(targetTick - clock.renderTick);
+      expect(Number.isFinite(clock.renderTick)).toBe(true);
+      expect(error).toBeLessThanOrEqual(previousError + 0.05);
+      previousError = error;
+    }
+
+    expect(previousError).toBeLessThan(0.5);
+  });
 });

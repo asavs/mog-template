@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { InputState } from '../generated/types';
-import { prepareClientTickForSend } from './usePlayerActions';
+import {
+  inputNeedsForceResend,
+  prepareClientTickForSend,
+  shouldSendPlayerInput,
+} from './usePlayerActions';
 
 function input(fields: Partial<InputState> = {}): InputState {
   return {
@@ -15,6 +19,60 @@ function input(fields: Partial<InputState> = {}): InputState {
     ...fields,
   };
 }
+
+describe('shouldSendPlayerInput', () => {
+  it('sends when input changed even if fully idle', () => {
+    expect(shouldSendPlayerInput({
+      force: false,
+      input: input(),
+      inputChanged: true,
+    })).toBe(true);
+  });
+
+  it('does not force-send pure idle inputs', () => {
+    expect(shouldSendPlayerInput({
+      force: true,
+      input: input(),
+      inputChanged: false,
+    })).toBe(false);
+  });
+
+  it('force-sends while movement keys are held', () => {
+    expect(shouldSendPlayerInput({
+      force: true,
+      input: input({ forward: true }),
+      inputChanged: false,
+    })).toBe(true);
+  });
+
+  it('force-sends while jump is held', () => {
+    expect(shouldSendPlayerInput({
+      force: true,
+      input: input({ jump: true }),
+      inputChanged: false,
+    })).toBe(true);
+  });
+
+  it('does not send when neither forced nor changed', () => {
+    expect(shouldSendPlayerInput({
+      force: false,
+      input: input({ forward: true }),
+      inputChanged: false,
+    })).toBe(false);
+  });
+});
+
+describe('inputNeedsForceResend', () => {
+  it('is false for a fully idle input state', () => {
+    expect(inputNeedsForceResend(input())).toBe(false);
+  });
+
+  it('is true for any movement or jump bit', () => {
+    expect(inputNeedsForceResend(input({ left: true }))).toBe(true);
+    expect(inputNeedsForceResend(input({ jump: true }))).toBe(true);
+    expect(inputNeedsForceResend(input({ sprint: true }))).toBe(true);
+  });
+});
 
 describe('prepareClientTickForSend', () => {
   it('lets an immediate keydown claim the next unsent client tick', () => {

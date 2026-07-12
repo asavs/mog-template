@@ -66,6 +66,10 @@ pub const GRAVITY: f32 = -28.8;
 pub const JUMP_FORCE: f32 = 10.2;
 pub const GROUND_Y: f32 = 0.0;
 pub const GROUNDED_EPSILON: f32 = 0.01;
+/// Minimum pose delta that counts as a game-meaningful transform publish.
+/// Below this, idle ticks must not rebroadcast the row just to bump server_tick.
+pub const POSE_POSITION_EPSILON: f32 = 1e-4;
+pub const POSE_ROTATION_EPSILON: f32 = 1e-4;
 pub const TICK_RATE: f32 = 20.0;
 pub const DELTA_TIME: f32 = 1.0 / TICK_RATE;
 

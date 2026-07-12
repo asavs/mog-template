@@ -67,6 +67,16 @@ function isSameSentInputState(a: SentInputState | null, b: SentInputState): bool
     a.sprint === b.sprint;
 }
 
+/** True when held movement/jump warrants a periodic force-resend. */
+export function inputNeedsForceResend(input: InputState): boolean {
+  return input.forward
+    || input.backward
+    || input.left
+    || input.right
+    || input.jump
+    || input.sprint;
+}
+
 export function prepareClientTickForSend({
   acknowledgedClientTick,
   input,
@@ -86,6 +96,26 @@ export function prepareClientTickForSend({
     );
   }
   return input.clientTick > acknowledgedClientTick && input.clientTick > lastSentClientTick;
+}
+
+/**
+ * Gate for reducer sends.
+ * - Change-based sends always proceed (key up/down, rotation).
+ * - Forced interval sends only while movement/jump is active, so pure idle
+ *   does not mint new sequences that would rebroadcast player_transform acks.
+ */
+export function shouldSendPlayerInput({
+  force,
+  input,
+  inputChanged,
+}: {
+  force: boolean;
+  input: InputState;
+  inputChanged: boolean;
+}): boolean {
+  if (inputChanged) return true;
+  if (!force) return false;
+  return inputNeedsForceResend(input);
 }
 
 export function usePlayerActions({
@@ -113,7 +143,7 @@ export function usePlayerActions({
     const input = inputRef.current;
     const sentInputState = currentSentInputState(input, rotationYRef.current);
     const inputChanged = !isSameSentInputState(lastSentInputStateRef.current, sentInputState);
-    if (!force && !inputChanged) return;
+    if (!shouldSendPlayerInput({ force, input, inputChanged })) return;
 
     const metrics = metricsRef.current;
     if (!prepareClientTickForSend({

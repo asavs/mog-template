@@ -1,7 +1,7 @@
 use crate::collision::{self, MAX_SNAP_DOWN_HEIGHT};
 use crate::common::{
-    DELTA_TIME, GRAVITY, GROUNDED_EPSILON, InputState, JUMP_FORCE, MovementState, PLAYER_SPEED,
-    SPRINT_MULTIPLIER, Vector3,
+    DELTA_TIME, GROUNDED_EPSILON, InputState, MovementState, PLAYER_SPEED,
+    POSE_POSITION_EPSILON, POSE_ROTATION_EPSILON, SPRINT_MULTIPLIER, Vector3,
 };
 use crate::heightmap;
 use crate::locomotion::{self, LocomotionContext, LocomotionState, Vec2, DEFAULT_LOCOMOTION_CONFIG};
@@ -206,6 +206,72 @@ pub fn update_transform(
     transform.last_processed_client_tick = input.client_tick;
 }
 
+/// Semantic fields that justify publishing a `player_transform` row update.
+/// Excludes `server_tick` / `updated_at` so idle ticks do not rebroadcast.
+#[derive(Clone, Debug)]
+pub struct TransformPoseSnapshot {
+    pub position: Vector3,
+    pub rotation_y: f32,
+    pub is_moving: bool,
+    pub movement_state: MovementState,
+    pub last_input_seq: u32,
+    pub last_processed_client_tick: u32,
+}
+
+impl From<&PlayerTransform> for TransformPoseSnapshot {
+    fn from(transform: &PlayerTransform) -> Self {
+        Self {
+            position: transform.position.clone(),
+            rotation_y: transform.rotation_y,
+            is_moving: transform.is_moving,
+            movement_state: transform.movement_state.clone(),
+            last_input_seq: transform.last_input_seq,
+            last_processed_client_tick: transform.last_processed_client_tick,
+        }
+    }
+}
+
+/// True when game-meaningful transform fields changed enough to justify a
+/// SpacetimeDB row update (and therefore a wire delta to subscribers).
+///
+/// `server_tick` / `updated_at` alone must never force a publish — that is the
+/// idle rebroadcast bug. Acks are included so CSP reconciliation still moves
+/// when a new input was applied without a visible pose change.
+pub fn transform_needs_publish_from_snapshot(
+    before: &TransformPoseSnapshot,
+    after: &PlayerTransform,
+) -> bool {
+    pose_snapshot_needs_publish(before, &after.into())
+}
+
+pub fn pose_snapshot_needs_publish(
+    before: &TransformPoseSnapshot,
+    after: &TransformPoseSnapshot,
+) -> bool {
+    !positions_near_equal(&before.position, &after.position)
+        || !rotations_near_equal(before.rotation_y, after.rotation_y)
+        || before.is_moving != after.is_moving
+        || before.movement_state != after.movement_state
+        || before.last_input_seq != after.last_input_seq
+        || before.last_processed_client_tick != after.last_processed_client_tick
+}
+
+fn positions_near_equal(a: &Vector3, b: &Vector3) -> bool {
+    (a.x - b.x).abs() <= POSE_POSITION_EPSILON
+        && (a.y - b.y).abs() <= POSE_POSITION_EPSILON
+        && (a.z - b.z).abs() <= POSE_POSITION_EPSILON
+}
+
+fn rotations_near_equal(a: f32, b: f32) -> bool {
+    let delta = (a - b).rem_euclid(std::f32::consts::TAU);
+    let shortest = if delta > std::f32::consts::PI {
+        std::f32::consts::TAU - delta
+    } else {
+        delta
+    };
+    shortest <= POSE_ROTATION_EPSILON
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +279,88 @@ mod tests {
 
     fn assert_close(left: f32, right: f32) {
         assert!((left - right).abs() < 0.0001, "{left} != {right}");
+    }
+
+    fn snapshot(fields: TransformPoseSnapshot) -> TransformPoseSnapshot {
+        fields
+    }
+
+    fn idle_snapshot() -> TransformPoseSnapshot {
+        TransformPoseSnapshot {
+            position: Vector3::zero(),
+            rotation_y: 0.0,
+            is_moving: false,
+            movement_state: MovementState::grounded(),
+            last_input_seq: 1,
+            last_processed_client_tick: 10,
+        }
+    }
+
+    #[test]
+    fn idle_pose_does_not_need_publish() {
+        let before = idle_snapshot();
+        let after = idle_snapshot();
+        assert!(!pose_snapshot_needs_publish(&before, &after));
+    }
+
+    #[test]
+    fn sub_epsilon_position_noise_does_not_need_publish() {
+        let before = idle_snapshot();
+        let after = snapshot(TransformPoseSnapshot {
+            position: Vector3 {
+                x: POSE_POSITION_EPSILON * 0.5,
+                y: 0.0,
+                z: 0.0,
+            },
+            ..idle_snapshot()
+        });
+        assert!(!pose_snapshot_needs_publish(&before, &after));
+    }
+
+    #[test]
+    fn position_change_needs_publish() {
+        let before = idle_snapshot();
+        let after = snapshot(TransformPoseSnapshot {
+            position: Vector3 {
+                x: 0.01,
+                y: 0.0,
+                z: 0.0,
+            },
+            ..idle_snapshot()
+        });
+        assert!(pose_snapshot_needs_publish(&before, &after));
+    }
+
+    #[test]
+    fn rotation_change_needs_publish() {
+        let before = idle_snapshot();
+        let after = snapshot(TransformPoseSnapshot {
+            rotation_y: 0.05,
+            ..idle_snapshot()
+        });
+        assert!(pose_snapshot_needs_publish(&before, &after));
+    }
+
+    #[test]
+    fn movement_state_change_needs_publish() {
+        let before = idle_snapshot();
+        let after = snapshot(TransformPoseSnapshot {
+            is_moving: true,
+            movement_state: MovementState::new(true, true, false, false),
+            ..idle_snapshot()
+        });
+        assert!(pose_snapshot_needs_publish(&before, &after));
+    }
+
+    #[test]
+    fn ack_change_needs_publish() {
+        let before = idle_snapshot();
+        let after = snapshot(TransformPoseSnapshot {
+            last_input_seq: before.last_input_seq + 1,
+            last_processed_client_tick: before.last_processed_client_tick + 1,
+            ..idle_snapshot()
+        });
+        assert!(pose_snapshot_needs_publish(&before, &after));
     }
 
     #[test]
