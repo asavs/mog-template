@@ -275,7 +275,9 @@ fn rotations_near_equal(a: f32, b: f32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{GROUND_Y, default_input};
+    // Explicit imports: tests must not rely on production `use` lists via super::*
+    // (see public #24). JUMP_FORCE / GRAVITY are locomotion-owned constants.
+    use crate::common::{GROUND_Y, GRAVITY, JUMP_FORCE, default_input};
 
     fn assert_close(left: f32, right: f32) {
         assert!((left - right).abs() < 0.0001, "{left} != {right}");
