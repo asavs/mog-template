@@ -61,6 +61,11 @@ jobs:
       # isolated, so reusing that name lets the stock `npm run build` client
       # connect with no preview-specific build flag.
       PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-v1' }}
+      # Golden-image family (plan §9). When an image exists in this family,
+      # preview-up.sh creates the VM from it and the bootstrap self-skips (fast
+      # path); otherwise it falls back to debian-12 + full bootstrap. Bake with
+      # scripts/preview-bootstrap.sh, then `gcloud compute images create`.
+      IMAGE_FAMILY: ${{ vars.IMAGE_FAMILY || 'mog-preview' }}
 
     steps:
       # ---- cheap gates FIRST (resolve → fork guard → CI green), THEN build ----

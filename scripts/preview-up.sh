@@ -19,6 +19,11 @@
 #                          the preview VM is fully isolated so reusing that name
 #                          here is free of collision and lets the stock client
 #                          connect with no preview-specific build flag.
+#   IMAGE_FAMILY           [mog-preview]  golden-image family (plan §9). If an
+#                          image exists in this family (in PROJECT), the VM is
+#                          created FROM it and the bootstrap below self-skips via
+#                          its sentinel; otherwise falls back to stock debian-12
+#                          + full bootstrap. Baked by scripts/preview-bootstrap.sh.
 #   PROJECT / GCP_PROJECT               GCP project id (required)
 #   WASM_PATH                           override wasm path (else auto-find)
 #   DIST_DIR               [client/dist]  built client bundle
@@ -33,6 +38,7 @@ MACHINE_TYPE="${MACHINE_TYPE:-e2-micro}"
 PREVIEW_MAX_CONCURRENT="${PREVIEW_MAX_CONCURRENT:-3}"
 ZONE="${ZONE:-us-central1-a}"
 PREVIEW_DB_NAME="${PREVIEW_DB_NAME:-mog-game-v1}"
+IMAGE_FAMILY="${IMAGE_FAMILY:-mog-preview}"
 PROJECT="${PROJECT:-${GCP_PROJECT:?PROJECT (or GCP_PROJECT) is required}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -80,10 +86,22 @@ else
     log "Tear down another preview (scripts/preview-down.sh <PR>) or wait for GC/TTL."
     exit 1
   fi
-  log "creating $INSTANCE ($MACHINE_TYPE, debian-12, 10GB pd-standard)"
+  # Image source: prefer the golden image family (plan Phase 4 / §9) so a fresh
+  # VM already has OS + STDB + nginx + firewall + layout and the bootstrap step
+  # below self-skips via its sentinel. Fall back to stock debian-12 + full
+  # bootstrap when no image has been baked into IMAGE_FAMILY yet (first-ever run,
+  # or a cleared image family). Custom images live in THIS project, so both the
+  # family lookup and `--image-project` scope to $PROJECT.
+  if gc compute images describe-from-family "$IMAGE_FAMILY" >/dev/null 2>&1; then
+    log "creating $INSTANCE ($MACHINE_TYPE) from golden image family '$IMAGE_FAMILY' (bootstrap self-skips)"
+    IMAGE_ARGS=(--image-family="$IMAGE_FAMILY" --image-project="$PROJECT")
+  else
+    log "creating $INSTANCE ($MACHINE_TYPE) from debian-12 (no image in family '$IMAGE_FAMILY'; full bootstrap)"
+    IMAGE_ARGS=(--image-family=debian-12 --image-project=debian-cloud)
+  fi
   gc compute instances create "$INSTANCE" --zone="$ZONE" \
     --machine-type="$MACHINE_TYPE" \
-    --image-family=debian-12 --image-project=debian-cloud \
+    "${IMAGE_ARGS[@]}" \
     --boot-disk-size=10GB --boot-disk-type=pd-standard \
     --tags=http-server \
     --labels="mog-preview=true,pr=${PR_NUMBER}" \
