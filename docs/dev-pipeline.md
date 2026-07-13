@@ -75,6 +75,8 @@ Maps to issues #51 (Rust unit tests with mocks — partly addressed by the headl
 
 Build-then-apply order (compile and bundle first, publish and swap only if the build succeeded) keeps the skew-safe property from #16.
 
+`scripts/preview-up.sh` / `preview-down.sh` preflight their environment first (via `tools/env-requirements/preflight.mjs --tool preview-up`/`preview-down`), so a missing/unauthed `gcloud` or an unresolved LFS asset surfaces as a clear `why` + `remedy` before any VM is touched. See [`environment-matrix.md`](environment-matrix.md) for where each tool is supported.
+
 Requirements: Workload Identity Federation secrets for GitHub Actions to reach GCP, plus (for previews) instance create/delete permission on the deploy service account.
 
 Maps to issues #2 (deploy automation) and #16 (skew-safe order).

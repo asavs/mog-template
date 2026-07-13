@@ -24,6 +24,12 @@ node tools/env-requirements/preflight.mjs --fingerprint
 node tools/env-requirements/preflight.mjs --tool preview-up
 ```
 
+See [`tools/env-requirements/README.md`](../tools/env-requirements/README.md)
+for the architecture and how to add a tool or an environment, the
+per-requirement `why`/`remedy` reference in
+[`environment-requirements.md`](environment-requirements.md), and where this
+preflight fits the deploy flow in [`dev-pipeline.md`](dev-pipeline.md).
+
 | tool | `ci-runner` | `preview-vm` | `windows-native` | `wsl` |
 |------|---|---|---|---|
 | `preview-down` | ✓ | ✗ missing: `gcloud-cli`, `gcloud-auth` | ✓ | ✓ |

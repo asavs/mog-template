@@ -14,6 +14,11 @@ subset from the CLI:
 node tools/env-requirements/preflight.mjs gh-cli gcloud-cli
 ```
 
+See [`tools/env-requirements/README.md`](../tools/env-requirements/README.md)
+for the architecture and the recipe for adding a requirement. The derived
+tool × environment support matrix lives in
+[`environment-matrix.md`](environment-matrix.md).
+
 | id | why | remedy | severity | probe |
 |----|-----|--------|----------|-------|
 | `gcloud-auth` | gcloud commands run but every API call 403s or prompts interactively when no account is active. | Authenticate with `gcloud auth login` (CI authenticates via Workload Identity Federation before calling the deploy scripts). | fail | `command-succeeds(gcloud auth list --filter=status:ACTIVE --format=value(account))` † |

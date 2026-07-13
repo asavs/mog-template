@@ -24,6 +24,7 @@ mog-template/
 - [Architecture Guide](docs/spacetimedb-threejs-architecture.md)
 - [Asset Storage Design](docs/asset-storage.md)
 - [Deployment and Security Checklist](docs/deployment-security-checklist.md)
+- [Environment Requirements](tools/env-requirements/README.md) — what each tool needs and where it runs ([support matrix](docs/environment-matrix.md))
 
 ## Development
 

@@ -23,7 +23,8 @@
     "qa:baseline:update": "vite-node qa-harness/run-harness.ts -- --update-baseline",
     "qa:report": "vite-node qa-harness/report-cli.ts --",
     "qa:typecheck": "tsc -p qa-harness/tsconfig.qa.json",
-    "env:check": "node ../tools/env-requirements/preflight.mjs"
+    "env:check": "node ../tools/env-requirements/preflight.mjs",
+    "env:fingerprint": "node ../tools/env-requirements/preflight.mjs --fingerprint"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

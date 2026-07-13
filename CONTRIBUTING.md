@@ -68,6 +68,28 @@ Use focused checks first:
 
 If a relevant check is skipped, explain why in the PR body.
 
+## Environment Requirements
+
+The QA harness and the preview-deploy scripts preflight their environment before
+doing real work, so a missing tool surfaces as a clear `why` + `remedy` instead
+of a cryptic downstream error. To check your own machine:
+
+```bash
+npm run env:check -- --tool qa-harness-local   # from client/; or any tool id
+node tools/env-requirements/preflight.mjs --tool preview-up   # from repo root
+node tools/env-requirements/preflight.mjs --fingerprint       # which environment am I?
+```
+
+`--tool <name>` reports every requirement that tool needs plus a derived
+"is this tool supported here?" verdict; `--fingerprint` names the environment
+cell you're in. The full picture lives in two generated docs —
+[`docs/environment-requirements.md`](docs/environment-requirements.md) (each
+requirement's why/remedy) and
+[`docs/environment-matrix.md`](docs/environment-matrix.md) (which tool runs in
+which environment) — both derived from declarations in `tools/env-requirements/`.
+See [`tools/env-requirements/README.md`](tools/env-requirements/README.md) for
+the architecture and how to add a requirement, tool, or environment.
+
 ## VM Usage Policy
 
 The VM (`mog-server` in these docs) is the beta/prod runtime, not a development machine. Normal contributors and agents should not use it for day-to-day coding, Codex sessions, local builds, tmux workspaces, or dependency installation.
