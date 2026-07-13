@@ -7,9 +7,15 @@
  *   - CLI:    node tools/env-requirements/preflight.mjs <id> [<id>...]
  *             node tools/env-requirements/preflight.mjs --tool <name>
  *             node tools/env-requirements/preflight.mjs --list | --docs |
- *                       --matrix | --fingerprint  (any of these with --json)
+ *                       --matrix | --fingerprint
+ *             node tools/env-requirements/preflight.mjs --help
+ *             (--json gives the machine-readable form of --tool,
+ *              --fingerprint, or a bare id list)
  *   - Module: import { checkRequirements, checkTool, fingerprintEnvironment }
  *             from './preflight.mjs'
+ *
+ * See tools/env-requirements/README.md for the architecture and the recipes
+ * for adding a requirement, a tool, or an environment.
  *
  * ONE declaration axis — everything else derived:
  *   - requirements.json `requirements` — the probe registry (why/remedy/probe/
@@ -529,6 +535,11 @@ export function renderDocs(registry = loadRegistry()) {
     'node tools/env-requirements/preflight.mjs gh-cli gcloud-cli',
     '```',
     '',
+    'See [`tools/env-requirements/README.md`](../tools/env-requirements/README.md)',
+    'for the architecture and the recipe for adding a requirement. The derived',
+    'tool × environment support matrix lives in',
+    '[`environment-matrix.md`](environment-matrix.md).',
+    '',
     '| id | why | remedy | severity | probe |',
     '|----|-----|--------|----------|-------|',
     ...rows,
@@ -592,6 +603,12 @@ export function renderMatrix(registry = loadRegistry(), environments = loadEnvir
     'node tools/env-requirements/preflight.mjs --tool preview-up',
     '```',
     '',
+    'See [`tools/env-requirements/README.md`](../tools/env-requirements/README.md)',
+    'for the architecture and how to add a tool or an environment, the',
+    'per-requirement `why`/`remedy` reference in',
+    '[`environment-requirements.md`](environment-requirements.md), and where this',
+    'preflight fits the deploy flow in [`dev-pipeline.md`](dev-pipeline.md).',
+    '',
     `| tool | ${cellIds.map((id) => `\`${id}\``).join(' | ')} |`,
     `|------|${cellIds.map(() => '---').join('|')}|`,
     ...rows,
@@ -614,10 +631,38 @@ export function renderMatrix(registry = loadRegistry(), environments = loadEnvir
 // ---------------------------------------------------------------------------
 
 const USAGE =
-  'usage: node preflight.mjs <id> [<id>...] | --tool <name> | --list | --docs | --matrix | --fingerprint | --json\n';
+  'usage: node preflight.mjs <id> [<id>...] | --tool <name> | --list | --docs | --matrix | --fingerprint | --json | --help\n';
+
+const HELP = `Environment-requirements preflight — check that the tools this repo runs have
+what they need before they do real work, and see which tool runs where.
+
+Invocations:
+  <id> [<id>...]     Check specific requirement ids (see --list for the set).
+  --tool <name>      Check every requirement a named tool needs, plus the
+                     derived "supported here?" verdict for this environment.
+  --list             List all requirement ids.
+  --docs             Print the generated requirements reference (Markdown).
+  --matrix           Print the generated tool x environment support matrix.
+  --fingerprint      Print which environment cell this process is running in.
+  --help, -h         Show this help.
+
+Flags:
+  --json             Machine-readable output, for --tool, --fingerprint, or a
+                     bare id list.
+
+Exit status: 0 all clear, 1 an unmet fail-severity requirement, 2 usage error.
+
+Architecture and the "add a requirement / tool / environment" recipes:
+  tools/env-requirements/README.md
+`;
 
 function runCli(argv) {
   const jsonMode = argv.includes('--json');
+
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stdout.write(HELP);
+    return 0;
+  }
 
   if (argv.includes('--list')) {
     const registry = loadRegistry();
@@ -668,13 +713,18 @@ function runCli(argv) {
     const outcome = checkTool(toolName);
     if (!outcome.tool) {
       const known = Object.keys(loadRegistry().tools ?? {}).sort().join(', ');
-      process.stderr.write(`unknown tool: ${toolName} (known tools: ${known})\n`);
+      process.stderr.write(
+        `unknown tool: ${toolName} (known tools: ${known}); tools are declared in tools/env-requirements/requirements.json\n`,
+      );
       return 2;
     }
     if (jsonMode) {
       const { ok, toolName: name, fingerprint, support, supportedIn, results } = outcome;
       process.stdout.write(`${JSON.stringify({ ok, tool: name, fingerprint, support, supportedIn, results }, null, 2)}\n`);
     } else {
+      // Name the fingerprinted environment first, so the derived "not supported
+      // in <id>" verdict below reads in context (matches run-harness output).
+      process.stdout.write(`${toolName} — environment: ${outcome.fingerprint.id} (${outcome.fingerprint.detail})\n`);
       // Derived verdict leads the failure output, before the per-probe lines.
       const banner = formatUnsupportedBanner(outcome);
       if (!outcome.ok && banner) process.stdout.write(`${banner}\n`);

@@ -70,6 +70,22 @@ been approved?"), when the fence is malformed, or when it lacks a `url`.
 The repo is inferred from the `public` git remote; override with
 `QA_PREVIEW_REPO=owner/name`. `QA_PR=20` is equivalent to `--pr 20`.
 
+Before it shells out to `gh`, a `--pr` run preflights the `qa-harness-pr` tool
+(`tools/env-requirements/`). It prints one line naming your environment, then
+the per-requirement results. If a fail-severity requirement is unmet it leads
+with a derived banner — e.g. from WSL, where `gh` isn't installed:
+
+```
+[run-harness] 'qa-harness-pr' is not supported in wsl (missing: gh-cli, gh-auth); supported environments: ci-runner, windows-native
+```
+
+That's the environment-requirements system telling you `--pr` runs from the
+Windows host or CI, not WSL — see the derived
+[`docs/environment-matrix.md`](../../docs/environment-matrix.md). Re-run the
+same check standalone with `node tools/env-requirements/preflight.mjs --tool
+qa-harness-pr`. (`windows-node-modules` is declared win32-only, so it SKIPs off
+Windows rather than giving confusing "reinstall from PowerShell" advice.)
+
 > Local baselines were captured against loopback, not real network RTT, so
 > baseline drift on a `--pr` run is expected signal about network/feel, not
 > an automatic "client is broken." Prefer structural + invariant checks for

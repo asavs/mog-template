@@ -72,6 +72,11 @@ mog-template/
 │   ├── reviewer-cron.md                    ← peer-account automated reviewer cron
 │   ├── spacetimedb-threejs-architecture.md ← how the stack fits together
 │   └── deployment-security-checklist.md    ← security rules to follow
+├── tools/
+│   └── env-requirements/                   ← zero-dep environment preflight (registry + engine)
+│       ├── README.md                        ← architecture + add-a-requirement/tool/environment recipes
+│       ├── requirements.json                ← requirement + tool declarations
+│       └── environments.json                ← environment cells and their capabilities
 ├── CONTRIBUTING.md                ← day-to-day branch, PR, check, and deploy workflow
 ├── AGENTS.md                      ← this file
 └── README.md
@@ -163,6 +168,28 @@ See `docs/dev-pipeline.md` for the full automation around this: what triggers CI
 See `CONTRIBUTING.md` for the practical contributor checklist and local command guidance.
 
 ---
+
+## Environment Requirements
+
+Before running the QA harness or a preview deploy, confirm your environment has
+what the tool needs — the preflight turns a missing `gh`/`gcloud`/WSL or
+wrong-platform `node_modules` into a clear `why` + `remedy` up front:
+
+```bash
+node tools/env-requirements/preflight.mjs --tool qa-harness-local   # or preview-up, etc.
+node tools/env-requirements/preflight.mjs --fingerprint             # which environment am I in?
+node tools/env-requirements/preflight.mjs --help                    # all flags
+```
+
+The QA harness (`client/qa-harness/run-harness.ts`) and the preview scripts
+(`scripts/preview-up.sh`, `scripts/preview-down.sh`) already run this by tool
+name, so an agent usually sees the verdict without invoking it. Which tool runs
+in which environment is the derived matrix in
+[`docs/environment-matrix.md`](docs/environment-matrix.md); each requirement's
+why/remedy is in [`docs/environment-requirements.md`](docs/environment-requirements.md).
+Both are generated — edit the declarations in `tools/env-requirements/`, never
+the docs. See [`tools/env-requirements/README.md`](tools/env-requirements/README.md)
+for the architecture and the recipes.
 
 ## Important Constraints
 
