@@ -1,6 +1,9 @@
 import { shouldEnableQaGameDebug } from './qaGate';
 
-const PROD_DB_NAME = 'mog-game-v1';
+// VITE_STDB_DB_NAME lets the build pin the client to a specific database
+// (e.g. the preview-VM factory's PREVIEW_DB_NAME knob) without touching
+// source. Unset in prod/dev builds, so the default is unchanged.
+const PROD_DB_NAME = import.meta.env.VITE_STDB_DB_NAME || 'mog-game-v1';
 const BETA_DB_NAME = 'mog-game-beta';
 
 export function selectStdbDatabaseName(baseUrl: string, pathname: string) {
