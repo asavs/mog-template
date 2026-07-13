@@ -40,6 +40,15 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx curl rsync ufw
 id spacetimedb >/dev/null 2>&1 || \
   sudo useradd --system --create-home --home-dir /stdb --shell /usr/sbin/nologin spacetimedb
 
+# The deploy step (preview-up.sh, run as the SSH user) resolves the CLI by
+# globbing /stdb/bin/*/spacetimedb-cli, which needs /stdb traversable by that
+# user. Debian-12 GCE's useradd already makes /stdb 0755 (apply-artifacts.sh
+# relies on the same traversal in prod), but set it explicitly so this never
+# depends on the image's default HOME_MODE — a 0700 home would make the glob
+# resolve empty and halt with "spacetime CLI not found". /stdb/data and
+# /stdb/config keep their own (private) modes.
+sudo chmod 755 /stdb
+
 if [ ! -x /stdb/spacetime ]; then
   sudo -u spacetimedb -H bash -c 'cd /stdb && curl -sSf https://install.spacetimedb.com | sh -s -- --yes'
   sudo -u spacetimedb -H bash -c '
