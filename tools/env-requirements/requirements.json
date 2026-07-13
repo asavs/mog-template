@@ -1,0 +1,73 @@
+{
+  "requirements": {
+    "gh-cli": {
+      "why": "The harness resolves a PR's preview-VM URL (`--pr`) and reviewer/CI adjudication shell out to `gh`; without it those calls die with a bare ENOENT.",
+      "remedy": "Install the GitHub CLI from https://cli.github.com (Windows: `winget install --id GitHub.cli`).",
+      "probe": { "type": "binary-on-path", "binary": "gh" },
+      "severity": "fail"
+    },
+    "gh-auth": {
+      "why": "`gh api` calls that read a PR's preview announce comment return 401 when no gh session is authenticated.",
+      "remedy": "Authenticate once with `gh auth login`.",
+      "probe": { "type": "command-succeeds", "command": "gh", "args": ["auth", "status"] },
+      "severity": "fail"
+    },
+    "gcloud-cli": {
+      "why": "Preview-VM create/deploy/teardown (scripts/preview-up.sh, scripts/preview-down.sh) invoke `gcloud`; absent it every deploy step aborts with command-not-found.",
+      "remedy": "Install the Google Cloud SDK: https://cloud.google.com/sdk/docs/install.",
+      "probe": { "type": "binary-on-path", "binary": "gcloud" },
+      "severity": "fail"
+    },
+    "gcloud-auth": {
+      "why": "gcloud commands run but every API call 403s or prompts interactively when no account is active.",
+      "remedy": "Authenticate with `gcloud auth login` (CI authenticates via Workload Identity Federation before calling the deploy scripts).",
+      "probe": {
+        "type": "command-succeeds",
+        "command": "gcloud",
+        "args": ["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
+        "expectOutputMatch": "\\S"
+      },
+      "severity": "fail"
+    },
+    "openssh-not-plink": {
+      "why": "On Windows `gcloud compute ssh` uses PuTTY/plink, which does not forward heredocs; preview-up.sh's heredoc-over-ssh publish step fails with rc=127.",
+      "remedy": "Run preview deploys from CI, WSL, or Linux (OpenSSH transport), or use the scp-the-script workaround documented in scripts/preview-up.sh.",
+      "probe": { "type": "not-plink-transport" },
+      "severity": "warn"
+    },
+    "headed-display": {
+      "why": "The QA harness launches headed Chromium (pointer lock hangs the headless CDP session); with no display available it cannot open a browser window.",
+      "remedy": "On Linux export `DISPLAY` or wrap the run in `xvfb-run -a` (win32/macOS always have a display).",
+      "probe": { "type": "display-headed" },
+      "severity": "fail"
+    },
+    "windows-node-modules": {
+      "why": "Linux-native node_modules on Windows ship the wrong-platform vite/esbuild binaries and a `.bin` with no *.cmd shims, so `npm run qa:*` fails with 'vite-node is not recognized'.",
+      "remedy": "Reinstall from a native shell: `cd client; npm ci` (PowerShell on Windows, not inside WSL).",
+      "probe": { "type": "node-modules-platform", "dir": "client" },
+      "severity": "fail"
+    },
+    "wsl-available": {
+      "why": "On Windows the harness runs its isolated SpacetimeDB inside WSL2 via `wsl.exe`; absent it ensure-env's bring-up throws a bare spawn ENOENT.",
+      "remedy": "Install WSL2 Ubuntu: `wsl --install -d Ubuntu` (this requirement applies only on Windows hosts).",
+      "probe": { "type": "binary-on-path", "binary": "wsl.exe" },
+      "severity": "fail"
+    },
+    "lfs-real-assets": {
+      "why": "If Git LFS content was not pulled, the terrain .glb is a ~130-byte pointer file instead of the real model, so the client ships broken terrain and never becomes joinable.",
+      "remedy": "Fetch LFS objects: `git lfs pull`.",
+      "probe": {
+        "type": "file-min-size",
+        "path": "client/public/models/terrain/dark-fantasy-map-2.glb",
+        "minBytes": 1048576
+      },
+      "severity": "fail"
+    },
+    "spacetime-cli": {
+      "why": "Publishing and starting the module (`spacetime publish`, `spacetime start`) invoke the SpacetimeDB CLI; absent it the integration and publish steps abort. The CLI is Linux-only, so on the Windows dev setup it lives inside WSL rather than on the host PATH.",
+      "remedy": "Install it: `curl -sSf https://install.spacetimedb.com | sh -s -- --yes`.",
+      "probe": { "type": "binary-on-path", "binary": "spacetime" },
+      "severity": "fail"
+    }
+  }
+}

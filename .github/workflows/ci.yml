@@ -94,6 +94,15 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
 
+      # docs/environment-requirements.md is generated from the env-requirements
+      # registry by the zero-dependency preflight engine. Regenerate and fail if
+      # it drifts, so the doc can never silently diverge from requirements.json.
+      # Pure node, no install needed — runs right after Setup Node.
+      - name: Check generated environment-requirements doc is current
+        run: |
+          node tools/env-requirements/preflight.mjs --docs > docs/environment-requirements.md
+          git diff --exit-code -- docs/environment-requirements.md
+
       - name: Install client dependencies
         working-directory: client
         run: npm ci
