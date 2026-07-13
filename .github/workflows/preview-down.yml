@@ -1,7 +1,7 @@
 name: Preview VM down
 
 # Teardown + garbage-collection for the ephemeral preview-VM factory
-# (docs/preview-vm-factory-plan-v1 §8.3). A PR close deletes its VM; a
+# (preview-VM factory plan v1 §8.3). A PR close deletes its VM; a
 # scheduled sweep reaps orphans (closed PR) and VMs past their TTL.
 #
 # Config knobs come from repo variables with plan §11 fallback defaults in env:

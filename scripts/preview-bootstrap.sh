@@ -6,8 +6,8 @@
 # preview-up.sh, or run by hand after `gcloud compute ssh`). It is a strict
 # RUNTIME subset of scripts/setup-deploy-infra.sh: only what a player's browser
 # needs to reach the game. Deliberately NO Node, NO Rust, NO git, NO reviewer
-# stack, NO multi-env beta/prod roots — see docs/preview-vm-factory-plan-v1
-# §3 and §9.
+# stack, NO multi-env beta/prod roots — see the preview-VM factory plan v1
+# (§3 and §9).
 #
 # Installs:
 #   - nginx, curl, rsync

@@ -1,6 +1,6 @@
 name: Preview VM up
 
-# Ephemeral preview-VM factory (docs/preview-vm-factory-plan-v1 phases 3+5).
+# Ephemeral preview-VM factory (preview-VM factory plan v1, phases 3+5).
 # On a TRUSTED approval (or manual dispatch), build the PR's client + WASM,
 # create-or-reuse an e2-micro VM `mog-pr-<N>`, deploy with a cleared world, and
 # upsert ONE PR comment announcing the URL. Replaces the retired shared-beta

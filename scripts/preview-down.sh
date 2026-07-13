@@ -5,7 +5,7 @@
 # Tolerant of an already-absent instance (exits 0): teardown fires on PR close,
 # TTL GC, and manual dispatch, so races where the VM is already gone are normal.
 #
-# Config knobs (env vars; defaults match docs/preview-vm-factory-plan-v1 §11):
+# Config knobs (env vars; defaults match the preview-VM factory plan v1 §11):
 #   ZONE                 [us-central1-a]
 #   PROJECT / GCP_PROJECT             GCP project id (required)
 #

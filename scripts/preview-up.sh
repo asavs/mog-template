@@ -8,7 +8,7 @@
 # gcloud + prebuilt artifacts. This script does NOT build anything — it consumes
 # a prebuilt WASM and client dist (like apply-artifacts.sh).
 #
-# Config knobs (env vars; defaults match docs/preview-vm-factory-plan-v1 §11).
+# Config knobs (env vars; defaults match the preview-VM factory plan v1 §11).
 # In CI these are sourced from repo `vars.*` with these same fallbacks:
 #   MACHINE_TYPE           [e2-micro]   VM shape (fallback e2-small if micro OOMs)
 #   PREVIEW_MAX_CONCURRENT [3]          hard cap on live preview VMs project-wide
