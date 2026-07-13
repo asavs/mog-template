@@ -17,6 +17,16 @@ concurrency:
 jobs:
   deploy:
     name: Build and deploy master → mog-game-v1
+    # SCAFFOLD-OFF (plan v1 decision I): prod deploy is wired but disabled by
+    # default. There is no always-on prod host in this project yet, so a merge
+    # to master must NOT deploy anywhere until a prod VM exists and someone
+    # opts in. This job runs ONLY when the repo variable PROD_DEPLOY_ENABLED is
+    # exactly the string 'true'; if the variable is unset or anything else, the
+    # job is skipped (a skipped job is a green check, so master stays green).
+    # To turn prod on: stand up a VM, set the GCP_* secrets, then
+    #   gh variable set PROD_DEPLOY_ENABLED --body true
+    # See docs/prod-enable.md for the full flip-switch procedure.
+    if: vars.PROD_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

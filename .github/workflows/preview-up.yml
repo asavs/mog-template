@@ -1,0 +1,245 @@
+name: Preview VM up
+
+# Ephemeral preview-VM factory (docs/preview-vm-factory-plan-v1 phases 3+5).
+# On a TRUSTED approval (or manual dispatch), build the PR's client + WASM,
+# create-or-reuse an e2-micro VM `mog-pr-<N>`, deploy with a cleared world, and
+# upsert ONE PR comment announcing the URL. Replaces the retired shared-beta
+# preview-deploy.yml — there is no always-on game host in this project.
+#
+# Config knobs live in repo variables (an ops agent sets these); the env block
+# below carries plan §11 fallback defaults so the workflow runs before vars are
+# set: MACHINE_TYPE, PREVIEW_MAX_CONCURRENT, ZONE, PREVIEW_DB_NAME.
+on:
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to deploy a preview VM for
+        required: true
+        type: string
+
+# One in-flight deploy per PR. A newer commit's deploy supersedes an older
+# in-flight one for the SAME PR (the VM is reused and republished with
+# --delete-data, so the latest SHA wins); different PRs never block each other.
+concurrency:
+  group: preview-up-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build + deploy preview VM
+    runs-on: ubuntu-latest
+    # SECURITY (salvaged from preview-deploy.yml #185): this job checks out and
+    # BUILDS untrusted PR head code in a context holding GCP deploy credentials,
+    # so the approval that triggers it must come from a trusted role
+    # (OWNER/MEMBER/COLLABORATOR) or the allowlisted reviewer bot. Without this
+    # gate any GitHub user could approve a PR on this PUBLIC repo and run
+    # untrusted code with our credentials. goob-reviewer[bot]'s author_association
+    # is NONE (not a collaborator), so it is allowlisted by login explicitly.
+    # workflow_dispatch requires write access to the repo, so it is trusted here;
+    # the fork guard below still applies to BOTH paths.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.review.state == 'approved' &&
+       github.event.pull_request.state == 'open' &&
+       github.event.pull_request.draft == false &&
+       (contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association) ||
+        github.event.review.user.login == 'goob-reviewer[bot]'))
+    timeout-minutes: 25
+    permissions:
+      id-token: write        # required for Workload Identity Federation
+      contents: read
+      pull-requests: write   # upsert the announce comment
+      checks: read           # check-runs API for check-ci.sh
+    env:
+      MACHINE_TYPE: ${{ vars.MACHINE_TYPE || 'e2-micro' }}
+      PREVIEW_MAX_CONCURRENT: ${{ vars.PREVIEW_MAX_CONCURRENT || '3' }}
+      ZONE: ${{ vars.ZONE || 'us-central1-a' }}
+      PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-preview' }}
+
+    steps:
+      # ---- cheap gates FIRST (resolve → fork guard → CI green), THEN build ----
+      - name: Resolve PR number and head SHA
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUM="${{ inputs.pr }}"
+          else
+            PR_NUM="${{ github.event.pull_request.number }}"
+          fi
+          # Resolve head repo + SHA from the API so both trigger paths agree and
+          # fork PRs can be rejected before anything is built. The base repo is
+          # always this workflow's own repo ($REPO); a fork PR's head repo differs.
+          read -r HEAD_SHA HEAD_REPO STATE IS_DRAFT < <(
+            gh pr view "$PR_NUM" --repo "$REPO" \
+              --json headRefOid,headRepository,headRepositoryOwner,isDraft,state \
+              --jq '[.headRefOid,
+                     (.headRepositoryOwner.login + "/" + .headRepository.name),
+                     .state, (.isDraft|tostring)] | @tsv'
+          )
+          echo "pr=$PR_NUM"           >> "$GITHUB_OUTPUT"
+          echo "sha=$HEAD_SHA"        >> "$GITHUB_OUTPUT"
+          echo "head_repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
+          echo "base_repo=$REPO"      >> "$GITHUB_OUTPUT"
+          echo "state=$STATE"         >> "$GITHUB_OUTPUT"
+          echo "draft=$IS_DRAFT"      >> "$GITHUB_OUTPUT"
+          echo "Resolved PR #$PR_NUM head=$HEAD_SHA repo=$HEAD_REPO state=$STATE draft=$IS_DRAFT"
+
+      - name: Guard — PR open and not draft
+        run: |
+          if [ "${{ steps.resolve.outputs.state }}" != "OPEN" ]; then
+            echo "ERROR: PR is not open (state=${{ steps.resolve.outputs.state }})." >&2
+            exit 1
+          fi
+          if [ "${{ steps.resolve.outputs.draft }}" = "true" ]; then
+            echo "ERROR: PR is a draft; not ready for a feel-test preview." >&2
+            exit 1
+          fi
+
+      - name: Guard — fork PRs never provision
+        # Public repo: a fork's head code must never provision a VM with our
+        # credentials, even via workflow_dispatch (plan §10.8). Head repo must
+        # equal base repo.
+        run: |
+          HEAD='${{ steps.resolve.outputs.head_repo }}'
+          BASE='${{ steps.resolve.outputs.base_repo }}'
+          if [ "$HEAD" != "$BASE" ]; then
+            echo "ERROR: fork PR ($HEAD != $BASE) — refusing to provision a preview VM." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
+
+      - name: Guard — CI green on PR head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          STATE=$(bash scripts/reviewer/check-ci.sh "$REPO" "$SHA")
+          echo "CI state on ${SHA}: $STATE"
+          if [ "$STATE" != "success" ]; then
+            echo "ERROR: CI is not green on PR head ${SHA}; re-run once CI completes." >&2
+            exit 1
+          fi
+
+      # ---- build artifacts on the runner (client assets are Git LFS) ----
+      - name: List LFS asset ids
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Pull LFS assets
+        run: git lfs pull
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Preview cache is scoped per-PR so untrusted PR code can't poison the
+      # cache prod-deploy/CI read from (same isolation preview-deploy.yml used).
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/spacetimedb/target
+          key: cargo-preview-${{ runner.os }}-pr-${{ steps.resolve.outputs.pr }}-${{ hashFiles('server/spacetimedb/Cargo.lock') }}
+          restore-keys: |
+            cargo-preview-${{ runner.os }}-pr-${{ steps.resolve.outputs.pr }}-
+
+      - name: Build server WASM
+        working-directory: server/spacetimedb
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      # ---- auth + provision + deploy ----
+      - name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create-or-reuse preview VM and deploy
+        id: deploy
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          PR: ${{ steps.resolve.outputs.pr }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          bash scripts/preview-up.sh "$PR" "$SHA" | tee preview-up.out
+          # Extract the announce JSON emitted between the markers.
+          sed -n '/MOG_PREVIEW_ANNOUNCE_BEGIN/,/MOG_PREVIEW_ANNOUNCE_END/p' preview-up.out \
+            | sed '1d;$d' > announce.json
+          test -s announce.json || { echo "ERROR: no announce JSON produced" >&2; exit 1; }
+          cat announce.json
+
+      - name: Upsert PR announce comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.resolve.outputs.pr }}
+        run: |
+          URL=$(jq -r '.url' announce.json)
+          SHA=$(jq -r '.sha' announce.json)
+          VM=$(jq -r '.vm' announce.json)
+          AT=$(jq -r '.deployedAt' announce.json)
+          {
+            echo '<!-- mog-preview-announce -->'
+            echo "### Preview VM is live"
+            echo ""
+            echo "Feel-test it here: **${URL}**"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| VM | \`${VM}\` |"
+            echo "| SHA | \`${SHA}\` |"
+            echo "| Deployed | ${AT} |"
+            echo ""
+            echo "Local/agent target: \`cd client && npm run qa:harness -- --pr ${PR}\`"
+            echo ""
+            echo "This VM is ephemeral: it is deleted on merge/close or after the TTL. A new approved commit redeploys this same VM in place."
+            echo ""
+            echo '```json'
+            cat announce.json
+            echo '```'
+          } > comment.md
+          # Upsert: update the existing marked comment in place, else create one.
+          EXISTING=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | contains("<!-- mog-preview-announce -->")) | .id' | head -1)
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing announce comment $EXISTING"
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING" -F body=@comment.md >/dev/null
+          else
+            echo "Creating new announce comment"
+            gh pr comment "$PR" -R "$REPO" --body-file comment.md
+          fi

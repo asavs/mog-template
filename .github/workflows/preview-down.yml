@@ -1,0 +1,131 @@
+name: Preview VM down
+
+# Teardown + garbage-collection for the ephemeral preview-VM factory
+# (docs/preview-vm-factory-plan-v1 §8.3). A PR close deletes its VM; a
+# scheduled sweep reaps orphans (closed PR) and VMs past their TTL.
+#
+# Config knobs come from repo variables with plan §11 fallback defaults in env:
+# ZONE, PREVIEW_TTL_HOURS.
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number whose preview VM to delete
+        required: true
+        type: string
+  schedule:
+    # Every 30 minutes: cheap GC sweep (single gcloud list + loop, no builds).
+    - cron: '*/30 * * * *'
+
+env:
+  ZONE: ${{ vars.ZONE || 'us-central1-a' }}
+  PREVIEW_TTL_HOURS: ${{ vars.PREVIEW_TTL_HOURS || '3' }}
+
+jobs:
+  # Direct teardown when a PR closes (merged or not) or on manual dispatch.
+  teardown:
+    name: Tear down PR preview VM
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete preview VM
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: bash scripts/preview-down.sh "$PR"
+
+  # Scheduled garbage collection: reap any preview VM whose PR is closed or
+  # whose last deploy is older than PREVIEW_TTL_HOURS. Intentionally build-free.
+  gc:
+    name: GC orphaned / expired preview VMs
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read   # read PR state to decide reaping
+    steps:
+      - name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Sweep preview VMs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: |
+          NOW=$(date -u +%s)
+          TTL_SECONDS=$(( PREVIEW_TTL_HOURS * 3600 ))
+          echo "GC sweep: TTL=${PREVIEW_TTL_HOURS}h (${TTL_SECONDS}s)"
+
+          # JSON + jq (not a --format projection): label KEYS contain hyphens
+          # (mog-preview, last-deploy) which a gcloud format projection can
+          # misparse. jq's ["key"] access is unambiguous.
+          gcloud compute instances list --project="$PROJECT" \
+            --filter="labels.mog-preview=true" --format=json > previews.json || echo '[]' > previews.json
+
+          # SAFETY double-guard: only ever consider instances whose mog-preview
+          # label is literally "true", regardless of what the server-side filter
+          # returned. This is what keeps GC from ever touching a prod/other VM.
+          jq -r '.[]
+                 | select(.labels["mog-preview"] == "true")
+                 | [.name, (.labels.pr // ""), (.labels["last-deploy"] // "")]
+                 | @tsv' previews.json > previews.tsv || true
+
+          if [ ! -s previews.tsv ]; then
+            echo "No preview VMs to consider."
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r NAME PR LAST; do
+            [ -n "$NAME" ] || continue
+            REASON=""
+
+            # Reap if the PR is closed/merged.
+            if [ -n "$PR" ]; then
+              PRSTATE=$(gh pr view "$PR" -R "$REPO" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+              if [ "$PRSTATE" = "CLOSED" ] || [ "$PRSTATE" = "MERGED" ]; then
+                REASON="pr #$PR is $PRSTATE"
+              fi
+            fi
+
+            # Otherwise reap if past TTL since last deploy.
+            if [ -z "$REASON" ] && [ -n "$LAST" ]; then
+              AGE=$(( NOW - LAST ))
+              if [ "$AGE" -gt "$TTL_SECONDS" ]; then
+                REASON="idle ${AGE}s > TTL ${TTL_SECONDS}s"
+              fi
+            fi
+
+            if [ -n "$REASON" ]; then
+              echo "GC deleting $NAME ($REASON)"
+              gcloud compute instances delete "$NAME" \
+                --project="$PROJECT" --zone="$ZONE" --quiet || true
+            else
+              echo "GC keeping  $NAME (pr=$PR last-deploy=$LAST)"
+            fi
+          done < previews.tsv
