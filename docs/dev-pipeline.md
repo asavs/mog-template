@@ -26,7 +26,9 @@ The merge is the human's "ship it" decision: it means "I feel-tested this on the
 
 ## Architectural choice: ephemeral preview VMs, no always-on game host
 
-> **Naming note:** final public names can still change when the game has a real name. Each isolated preview VM publishes under the DB name the built client connects to — `mog-game-v1` for a base-`/` build (see `client/src/environment.ts`) — so the stock client needs no preview-specific build flag. Reusing that name on an ephemeral, single-DB preview box does not collide with any real prod host (there is none yet).
+> **Naming note:** final public names can still change when the game has a real name. Each isolated preview VM publishes under the DB name the built client connects to. `client/src/environment.ts` reads the build-time `VITE_STDB_DB_NAME` env var (falling back to `mog-game-v1` when unset, e.g. prod/dev builds); `preview-up.yml` builds the client with `VITE_STDB_DB_NAME="$PREVIEW_DB_NAME"` so the same `PREVIEW_DB_NAME` knob drives both the publish target and what the shipped client connects to. Reusing the default name on an ephemeral, single-DB preview box does not collide with any real prod host (there is none yet).
+>
+> **Manual runs from Windows:** `preview-up.sh`'s publish step pipes a heredoc over `gcloud compute ssh`, which fails under Windows gcloud's plink transport (rc=127). Workaround: scp the apply logic to the VM and run it as a plain `--command` instead of a heredoc. CI (Ubuntu/OpenSSH) is unaffected.
 
 **Decision (plan v1 decisions A–J): there is no always-on game host while there are no players.** The old shared-beta path on `mog-server` (a single `mog-game-beta` root) is retired. Instead, an approved PR gets its own short-lived VM.
 

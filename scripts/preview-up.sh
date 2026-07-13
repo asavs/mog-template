@@ -14,11 +14,12 @@
 #   PREVIEW_MAX_CONCURRENT [3]          hard cap on live preview VMs project-wide
 #   ZONE                   [us-central1-a]
 #   PREVIEW_DB_NAME        [mog-game-v1]  MUST match the DB name the built client
-#                          connects to. client/src/environment.ts maps a base-'/'
-#                          build (what `npm run build` produces) to 'mog-game-v1';
-#                          the preview VM is fully isolated so reusing that name
-#                          here is free of collision and lets the stock client
-#                          connect with no preview-specific build flag.
+#                          connects to. The caller (preview-up.yml) builds the
+#                          client with VITE_STDB_DB_NAME="$PREVIEW_DB_NAME",
+#                          which client/src/environment.ts reads (falling back
+#                          to 'mog-game-v1' when unset), so this one knob
+#                          governs both the publish target here and the
+#                          client's connection target.
 #   IMAGE_FAMILY           [mog-preview]  golden-image family (plan §9). If an
 #                          image exists in this family (in PROJECT), the VM is
 #                          created FROM it and the bootstrap below self-skips via
@@ -28,6 +29,13 @@
 #   WASM_PATH                           override wasm path (else auto-find)
 #   DIST_DIR               [client/dist]  built client bundle
 #   (PREVIEW_TTL_HOURS is consumed by the GC job in preview-down.yml, not here.)
+#
+# Manual runs from Windows: the heredoc-over-ssh publish step below (`gcloud
+# compute ssh ... --command=... <<'REMOTE'`) fails under Windows gcloud's
+# plink SSH transport with rc=127 (plink does not forward the heredoc the way
+# OpenSSH does). Workaround: scp the apply script to the VM and run it there
+# as a plain `--command` instead of piping a heredoc over ssh. CI runs on
+# Ubuntu/OpenSSH and is unaffected.
 #
 set -euo pipefail
 
@@ -99,12 +107,20 @@ else
     log "creating $INSTANCE ($MACHINE_TYPE) from debian-12 (no image in family '$IMAGE_FAMILY'; full bootstrap)"
     IMAGE_ARGS=(--image-family=debian-12 --image-project=debian-cloud)
   fi
+  # Stamp last-deploy at CREATE time too, not only after a successful publish
+  # (see the "record TTL marker" step below). A VM that is created but then
+  # fails bootstrap/publish before reaching that step would otherwise carry NO
+  # last-deploy label at all, and preview-down.yml's GC sweep only TTL-reaps
+  # instances that HAVE one (a missing label skips the age check entirely) —
+  # such a create-then-fail VM would leak forever unless its PR happens to
+  # close. Stamping the label here closes that GC gap; the refresh after a
+  # real publish (below) still overwrites it with the true last-deploy time.
   gc compute instances create "$INSTANCE" --zone="$ZONE" \
     --machine-type="$MACHINE_TYPE" \
     "${IMAGE_ARGS[@]}" \
     --boot-disk-size=10GB --boot-disk-type=pd-standard \
     --tags=http-server \
-    --labels="mog-preview=true,pr=${PR_NUMBER}" \
+    --labels="mog-preview=true,pr=${PR_NUMBER},last-deploy=$(date -u +%s)" \
     --metadata=enable-oslogin=true >&2
 
   log "waiting for SSH..."

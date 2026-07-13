@@ -56,10 +56,10 @@ jobs:
       MACHINE_TYPE: ${{ vars.MACHINE_TYPE || 'e2-micro' }}
       PREVIEW_MAX_CONCURRENT: ${{ vars.PREVIEW_MAX_CONCURRENT || '3' }}
       ZONE: ${{ vars.ZONE || 'us-central1-a' }}
-      # Must match the DB name the built client connects to: client
-      # environment.ts maps a base-'/' build to 'mog-game-v1'. The preview VM is
-      # isolated, so reusing that name lets the stock `npm run build` client
-      # connect with no preview-specific build flag.
+      # Drives BOTH the publish target (scripts/preview-up.sh) and the built
+      # client's connection target: the "Build client" step below passes this
+      # through as VITE_STDB_DB_NAME, which client/src/environment.ts reads
+      # (falling back to 'mog-game-v1' when unset).
       PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-v1' }}
       # Golden-image family (plan §9). When an image exists in this family,
       # preview-up.sh creates the VM from it and the bootstrap self-skips (fast
@@ -164,6 +164,11 @@ jobs:
 
       - name: Build client
         working-directory: client
+        # VITE_STDB_DB_NAME makes PREVIEW_DB_NAME control both the publish
+        # target (preview-up.sh) AND the built client's connection target
+        # (client/src/environment.ts), so the knob genuinely governs both ends.
+        env:
+          VITE_STDB_DB_NAME: ${{ env.PREVIEW_DB_NAME }}
         run: npm run build
 
       - name: Install Rust toolchain
