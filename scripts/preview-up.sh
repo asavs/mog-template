@@ -130,8 +130,15 @@ SPACETIME=$(ls /stdb/bin/*/spacetimedb-cli 2>/dev/null | sort -V | tail -1 || tr
 # Publish AS the spacetimedb user (HOME=/stdb) — the identity/config live there
 # and that user stably owns the preview DB across redeploys, so a reused VM never
 # hits the 403 "not the owner" that a per-SSH-user identity would. This is the
-# path proven end-to-end in the phase-2 spike. The staged wasm under /tmp is
-# world-readable, so spacetimedb can read --bin-path.
+# path proven end-to-end in the phase-2 spike.
+#
+# spacetimedb must be able to traverse the staging dir and read the wasm. Default
+# Debian-12 GCE umask (022) already allows this, but set the bits explicitly so
+# the publish never depends on the ambient OS Login umask (a stricter 077/027
+# would otherwise leave /tmp/deploy-<sha> unreadable to spacetimedb). The SSH
+# user owns both, so no sudo is needed to chmod them.
+chmod 755 "$STAGING"
+chmod 644 "$WASM_FILE"
 echo "[preview-apply] publishing $DB_NAME to $STDB_SERVER as spacetimedb (cleared world)"
 sudo -u spacetimedb -H "$SPACETIME" publish --server "$STDB_SERVER" \
   --bin-path "$WASM_FILE" --delete-data --yes "$DB_NAME"
