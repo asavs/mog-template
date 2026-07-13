@@ -69,7 +69,11 @@ if instance_exists; then
 else
   # Hard concurrency cap (plan decision A): count live preview VMs. This PR's
   # own VM does not exist yet, so it counts fully against the cap.
-  LIVE=$(gc compute instances list --filter="labels.mog-preview=true" --format='value(name)' | grep -c . || true)
+  # `| wc -l` (no `|| true`): if `gcloud list` itself fails (auth / API / rate
+  # limit), pipefail propagates the error and the script halts loudly instead of
+  # masking it as LIVE=0 and creating a VM that could blow past the cap. wc -l on
+  # empty output is a correct 0.
+  LIVE=$(gc compute instances list --filter="labels.mog-preview=true" --format='value(name)' | wc -l)
   log "live preview VMs: $LIVE / cap $PREVIEW_MAX_CONCURRENT"
   if [ "$LIVE" -ge "$PREVIEW_MAX_CONCURRENT" ]; then
     log "ERROR: preview VM cap ($PREVIEW_MAX_CONCURRENT) reached; refusing to create $INSTANCE."
