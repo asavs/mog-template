@@ -91,9 +91,13 @@ jobs:
           # SAFETY double-guard: only ever consider instances whose mog-preview
           # label is literally "true", regardless of what the server-side filter
           # returned. This is what keeps GC from ever touching a prod/other VM.
+          # Indexing a null .labels with a string is already null-safe in jq
+          # (returns null, not an error), but bind `.labels // {}` first so the
+          # null-safety is explicit for future readers.
           jq -r '.[]
-                 | select(.labels["mog-preview"] == "true")
-                 | [.name, (.labels.pr // ""), (.labels["last-deploy"] // "")]
+                 | (.labels // {}) as $l
+                 | select($l["mog-preview"] == "true")
+                 | [.name, ($l.pr // ""), ($l["last-deploy"] // "")]
                  | @tsv' previews.json > previews.tsv || true
 
           if [ ! -s previews.tsv ]; then
