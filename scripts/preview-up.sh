@@ -170,9 +170,11 @@ REMOTE
 # ---------------------------------------------------------------- record TTL marker
 # Stamp the deploy time as a numeric instance label so the scheduled GC job can
 # age out VMs past PREVIEW_TTL_HOURS with a single `gcloud instances list`.
+# `add-labels` is the canonical single-label upsert (it overwrites the key's
+# value on redeploy), so no separate update/clear dance is needed.
 DEPLOY_EPOCH=$(date -u +%s)
-gc compute instances update "$INSTANCE" --zone="$ZONE" \
-  --update-labels="last-deploy=${DEPLOY_EPOCH}" >&2
+gc compute instances add-labels "$INSTANCE" --zone="$ZONE" \
+  --labels="last-deploy=${DEPLOY_EPOCH}" >&2
 
 # ---------------------------------------------------------------- announce
 IP=$(gc compute instances describe "$INSTANCE" --zone="$ZONE" \
