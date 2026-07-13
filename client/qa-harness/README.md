@@ -42,6 +42,39 @@ Each run produces these artifacts in `runs/`:
 A run is also checked against a checked-in baseline (see "Baseline
 regression checks" below) for a real pass/fail outcome.
 
+## Targeting a PR's preview VM (`--pr`)
+
+After a PR is approved by a trusted reviewer with green CI, the Preview VM
+Factory (see `docs/preview-vm-factory-plan-v1.md`) spins up an ephemeral
+`mog-pr-<N>` VM, deploys the client + SpacetimeDB, and posts a single
+announce comment on the PR. Instead of hunting for the VM's IP in gcloud,
+point the harness straight at it:
+
+```powershell
+cd client
+npm run qa:harness -- --pr 20
+```
+
+This resolves the PR's announce comment to the remote URL and drives the
+harness against it, **skipping the local WSL SpacetimeDB / Vite bootstrap**
+— the VM already serves the client at `/` and its own SpacetimeDB via the
+same-origin `/v1` proxy. Requires the `gh` CLI authenticated for the repo.
+
+How resolution works: it reads the PR's comments (`gh api
+repos/<owner>/<repo>/issues/<N>/comments`), finds the one comment carrying
+the `<!-- mog-preview-announce -->` marker (taking the most recent if more
+than one), and parses the ```json fence for `url`. Clear errors surface
+when nothing is announced yet ("no preview VM announced on PR N — has it
+been approved?"), when the fence is malformed, or when it lacks a `url`.
+
+The repo is inferred from the `public` git remote; override with
+`QA_PREVIEW_REPO=owner/name`. `QA_PR=20` is equivalent to `--pr 20`.
+
+> Local baselines were captured against loopback, not real network RTT, so
+> baseline drift on a `--pr` run is expected signal about network/feel, not
+> an automatic "client is broken." Prefer structural + invariant checks for
+> remote gates.
+
 ## Why WSL2, and why headed (not headless)
 
 - The SpacetimeDB CLI is Linux-only, so the harness runs its own SpacetimeDB
@@ -91,10 +124,11 @@ the CLI or Rust toolchain.
 
 ```powershell
 cd client
-npm run qa:harness
+npm run qa:harness                  # local (WSL SpacetimeDB + Vite)
+npm run qa:harness -- --pr 20       # a PR's live preview VM (see "Targeting a PR's preview VM")
 ```
 
-This will, idempotently:
+Local mode will, idempotently:
 1. Ensure SpacetimeDB is running in WSL2 (starts it if not; does **not**
    auto-publish — pass `--publish` after the script name if you changed
    `server/spacetimedb`).
@@ -138,7 +172,14 @@ Useful env vars:
 - `QA_AUTOTRACE=1` — in default phase mode, stage Chromium traces per phase
   and keep only traces for phases that fail the existing baseline/structural
   checks. Perf mode stages traces by default and keeps only budget failures.
-- `QA_CLIENT_URL=http://localhost:5173` — point at a different dev server.
+- `QA_CLIENT_URL=http://localhost:5173` — point at a different dev server. A
+  non-loopback URL is treated as remote and skips the local SpacetimeDB/Vite
+  bootstrap (same as `--pr`).
+- `--pr 20` / `QA_PR=20` — resolve a PR's preview-VM announce comment and
+  target that remote URL, skipping local bootstrap (see "Targeting a PR's
+  preview VM").
+- `QA_PREVIEW_REPO=owner/name` — override the repo used for `--pr` announce
+  lookup (default: inferred from the `public` git remote).
 - `QA_WEB_MODE=preview` — serve the built bundle (`vite preview`) instead of
   the dev server; requires `client/dist/` to exist (`npm run build`, or the
   downloaded build artifact in CI). CI uses this so the playtest exercises
