@@ -45,13 +45,15 @@
       "why": "Linux-native node_modules on Windows ship the wrong-platform vite/esbuild binaries and a `.bin` with no *.cmd shims, so `npm run qa:*` fails with 'vite-node is not recognized'.",
       "remedy": "Reinstall from a native shell: `cd client; npm ci` (PowerShell on Windows, not inside WSL).",
       "probe": { "type": "node-modules-platform", "dir": "client" },
-      "severity": "fail"
+      "severity": "fail",
+      "platforms": ["win32"]
     },
     "wsl-available": {
       "why": "On Windows the harness runs its isolated SpacetimeDB inside WSL2 via `wsl.exe`; absent it ensure-env's bring-up throws a bare spawn ENOENT.",
       "remedy": "Install WSL2 Ubuntu: `wsl --install -d Ubuntu` (this requirement applies only on Windows hosts).",
       "probe": { "type": "binary-on-path", "binary": "wsl.exe" },
-      "severity": "fail"
+      "severity": "fail",
+      "platforms": ["win32"]
     },
     "lfs-real-assets": {
       "why": "If Git LFS content was not pulled, the terrain .glb is a ~130-byte pointer file instead of the real model, so the client ships broken terrain and never becomes joinable.",
@@ -68,6 +70,24 @@
       "remedy": "Install it: `curl -sSf https://install.spacetimedb.com | sh -s -- --yes`.",
       "probe": { "type": "binary-on-path", "binary": "spacetime" },
       "severity": "fail"
+    }
+  },
+  "tools": {
+    "qa-harness-local": {
+      "label": "QA harness, local mode (npm run qa:harness)",
+      "requires": ["headed-display", "wsl-available", "windows-node-modules"]
+    },
+    "qa-harness-pr": {
+      "label": "QA harness against a PR's preview VM (npm run qa:harness -- --pr <N>)",
+      "requires": ["gh-cli", "gh-auth", "windows-node-modules"]
+    },
+    "preview-up": {
+      "label": "Preview-VM create/deploy (scripts/preview-up.sh)",
+      "requires": ["gcloud-cli", "gcloud-auth", "lfs-real-assets", "openssh-not-plink"]
+    },
+    "preview-down": {
+      "label": "Preview-VM teardown (scripts/preview-down.sh)",
+      "requires": ["gcloud-cli", "gcloud-auth"]
     }
   }
 }

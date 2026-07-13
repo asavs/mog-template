@@ -57,14 +57,15 @@ INSTANCE="mog-pr-${PR_NUMBER}"
 
 # ---------------------------------------------------------------- env preflight
 # Surface a missing/unauthed tool as a clear why/remedy before we create any VM,
-# instead of a cryptic gcloud/rsync error mid-deploy. Checks gcloud CLI + auth,
-# that the terrain LFS asset is real (not a pointer) before we ship dist, and
-# warns (never fails) about the plink SSH transport on Windows.
+# instead of a cryptic gcloud/rsync error mid-deploy. The requirement list
+# (gcloud CLI + auth, the terrain LFS asset being real before we ship dist,
+# and the warn-only plink SSH transport hazard on Windows) is declared in
+# tools/env-requirements/requirements.json under `tools.preview-up.requires`;
+# see docs/environment-matrix.md for where this tool is supported.
 # FAIL-OPEN: if `node` itself is unavailable (e.g. a CI step-ordering gap),
 # skip the check — preflight must never be the thing that breaks a deploy.
 if command -v node >/dev/null 2>&1; then
-  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" \
-    gcloud-cli gcloud-auth lfs-real-assets openssh-not-plink >&2
+  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" --tool preview-up >&2
 else
   echo "[preview-up] preflight skipped (node unavailable)" >&2
 fi

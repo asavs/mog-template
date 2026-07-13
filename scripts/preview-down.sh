@@ -24,10 +24,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ---------------------------------------------------------------- env preflight
 # Fail fast with a clear why/remedy if gcloud is missing or unauthed, rather
-# than a cryptic error mid-teardown. FAIL-OPEN when `node` is unavailable —
-# preflight must never be the thing that blocks a teardown.
+# than a cryptic error mid-teardown. The requirement list is declared in
+# tools/env-requirements/requirements.json under `tools.preview-down.requires`.
+# FAIL-OPEN when `node` is unavailable — preflight must never be the thing
+# that blocks a teardown.
 if command -v node >/dev/null 2>&1; then
-  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" gcloud-cli gcloud-auth >&2
+  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" --tool preview-down >&2
 else
   echo "[preview-down] preflight skipped (node unavailable)" >&2
 fi
