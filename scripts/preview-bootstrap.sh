@@ -36,11 +36,6 @@ echo "preview-bootstrap: starting lean runtime provision..."
 sudo apt-get update -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx curl rsync ufw
 
-# --- firewall: SSH + HTTP only, SpacetimeDB never public (plan §10) ---
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw --force enable
-
 # --- SpacetimeDB user + CLI under /stdb (layout matches apply-artifacts.sh) ---
 id spacetimedb >/dev/null 2>&1 || \
   sudo useradd --system --create-home --home-dir /stdb --shell /usr/sbin/nologin spacetimedb
@@ -123,6 +118,13 @@ NGINX
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sfn /etc/nginx/sites-available/mog /etc/nginx/sites-enabled/mog
 sudo nginx -t && sudo systemctl restart nginx && sudo systemctl enable nginx >/dev/null 2>&1
+
+# --- firewall LAST: SSH + HTTP only, SpacetimeDB never public (plan §10).
+# Enabled after everything else is up so the SSH-driven provision can't lose
+# its own connection mid-setup (allow 22 before enable; matches spike ordering).
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw --force enable
 
 # --- sentinel for skip-if-provisioned on VM reuse ---
 sudo mkdir -p "$(dirname "$SENTINEL")"

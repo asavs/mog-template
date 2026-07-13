@@ -123,16 +123,18 @@ WASM_FILE=$(find "$STAGING" -maxdepth 1 -name '*.wasm' | head -1)
 [ -n "$WASM_FILE" ] && [ -f "$WASM_FILE" ] || { echo "ERROR: no wasm in $STAGING" >&2; exit 1; }
 [ -d "$STAGING/dist" ] || { echo "ERROR: no dist/ in $STAGING" >&2; exit 1; }
 
-# Resolve the versioned CLI (the /stdb/spacetime wrapper resolves per-user paths
-# that don't exist for the SSH user) — same approach as apply-artifacts.sh.
+# Resolve the versioned CLI (the /stdb/spacetime wrapper resolves per-user paths).
 SPACETIME=$(ls /stdb/bin/*/spacetimedb-cli 2>/dev/null | sort -V | tail -1 || true)
-if [ -z "${SPACETIME:-}" ] && command -v spacetime >/dev/null 2>&1; then
-  SPACETIME=$(command -v spacetime)
-fi
 [ -n "${SPACETIME:-}" ] && [ -x "$SPACETIME" ] || { echo "ERROR: spacetime CLI not found" >&2; exit 1; }
 
-echo "[preview-apply] publishing $DB_NAME to $STDB_SERVER (cleared world)"
-"$SPACETIME" publish --server "$STDB_SERVER" --bin-path "$WASM_FILE" --delete-data --yes "$DB_NAME"
+# Publish AS the spacetimedb user (HOME=/stdb) — the identity/config live there
+# and that user stably owns the preview DB across redeploys, so a reused VM never
+# hits the 403 "not the owner" that a per-SSH-user identity would. This is the
+# path proven end-to-end in the phase-2 spike. The staged wasm under /tmp is
+# world-readable, so spacetimedb can read --bin-path.
+echo "[preview-apply] publishing $DB_NAME to $STDB_SERVER as spacetimedb (cleared world)"
+sudo -u spacetimedb -H "$SPACETIME" publish --server "$STDB_SERVER" \
+  --bin-path "$WASM_FILE" --delete-data --yes "$DB_NAME"
 
 # Skip any dist file that arrived as an unresolved Git LFS pointer rather than
 # shipping a broken asset (CI pulls LFS, so this should be a no-op there).
