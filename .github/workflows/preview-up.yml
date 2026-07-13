@@ -241,8 +241,10 @@ jobs:
           # Pick the LATEST marker comment (comments API is chronological, so
           # tail -1) to match the harness resolver in PR #26, which reads the
           # newest marker comment — updater and resolver then act on the same one.
+          # `.body // ""` guards against a null/absent comment body — jq's
+          # contains() on null would abort the pipeline.
           EXISTING=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.body | contains("<!-- mog-preview-announce -->")) | .id' | tail -1)
+            --jq '.[] | select((.body // "") | contains("<!-- mog-preview-announce -->")) | .id' | tail -1)
           if [ -n "$EXISTING" ]; then
             echo "Updating existing announce comment $EXISTING"
             gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING" -F body=@comment.md >/dev/null
