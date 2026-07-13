@@ -26,7 +26,7 @@ The merge is the human's "ship it" decision: it means "I feel-tested this on the
 
 ## Architectural choice: ephemeral preview VMs, no always-on game host
 
-> **Naming note:** final public names can still change when the game has a real name. The current preview database name is `mog-game-preview`; prod would be `mog-game-v1`.
+> **Naming note:** final public names can still change when the game has a real name. Each isolated preview VM publishes under the DB name the built client connects to — `mog-game-v1` for a base-`/` build (see `client/src/environment.ts`) — so the stock client needs no preview-specific build flag. Reusing that name on an ephemeral, single-DB preview box does not collide with any real prod host (there is none yet).
 
 **Decision (plan v1 decisions A–J): there is no always-on game host while there are no players.** The old shared-beta path on `mog-server` (a single `mog-game-beta` root) is retired. Instead, an approved PR gets its own short-lived VM.
 
@@ -67,7 +67,7 @@ Maps to issues #51 (Rust unit tests with mocks — partly addressed by the headl
 
 ### Step 4 — Deploy automation (ephemeral previews + scaffolded prod)
 
-**`preview-up.yml`** — triggers on `pull_request_review` (state: approved) plus `workflow_dispatch`. Cheap gates run first (PR open, not draft, trusted approver association or allowlisted bot, **fork PRs rejected**, CI green on head SHA); only then does it build the client + WASM and call `scripts/preview-up.sh` to create-or-reuse `mog-pr-<N>`, publish to `mog-game-preview` with a cleared world, and upsert the announce comment. `preview-down.yml` handles teardown (PR close, manual dispatch) and the scheduled TTL/orphan GC.
+**`preview-up.yml`** — triggers on `pull_request_review` (state: approved) plus `workflow_dispatch`. Cheap gates run first (PR open, not draft, trusted approver association or allowlisted bot, **fork PRs rejected**, CI green on head SHA); only then does it build the client + WASM and call `scripts/preview-up.sh` to create-or-reuse `mog-pr-<N>`, publish the module (to the DB name the built client connects to, `mog-game-v1`) with a cleared world, and upsert the announce comment. `preview-down.yml` handles teardown (PR close, manual dispatch) and the scheduled TTL/orphan GC.
 
 **`prod-deploy.yml`** — triggers on push to master, but is **gated on `vars.PROD_DEPLOY_ENABLED == 'true'`** and skipped by default. It builds the root bundle with `npm run build`, publishes to `mog-game-v1`, and syncs the prod web root via `scripts/apply-artifacts.sh`. See `prod-enable.md` to turn it on.
 

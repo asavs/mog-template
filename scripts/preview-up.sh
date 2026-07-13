@@ -13,7 +13,12 @@
 #   MACHINE_TYPE           [e2-micro]   VM shape (fallback e2-small if micro OOMs)
 #   PREVIEW_MAX_CONCURRENT [3]          hard cap on live preview VMs project-wide
 #   ZONE                   [us-central1-a]
-#   PREVIEW_DB_NAME        [mog-game-preview]
+#   PREVIEW_DB_NAME        [mog-game-v1]  MUST match the DB name the built client
+#                          connects to. client/src/environment.ts maps a base-'/'
+#                          build (what `npm run build` produces) to 'mog-game-v1';
+#                          the preview VM is fully isolated so reusing that name
+#                          here is free of collision and lets the stock client
+#                          connect with no preview-specific build flag.
 #   PROJECT / GCP_PROJECT               GCP project id (required)
 #   WASM_PATH                           override wasm path (else auto-find)
 #   DIST_DIR               [client/dist]  built client bundle
@@ -27,7 +32,7 @@ SHA="${2:?usage: preview-up.sh <PR_NUMBER> <SHA>}"
 MACHINE_TYPE="${MACHINE_TYPE:-e2-micro}"
 PREVIEW_MAX_CONCURRENT="${PREVIEW_MAX_CONCURRENT:-3}"
 ZONE="${ZONE:-us-central1-a}"
-PREVIEW_DB_NAME="${PREVIEW_DB_NAME:-mog-game-preview}"
+PREVIEW_DB_NAME="${PREVIEW_DB_NAME:-mog-game-v1}"
 PROJECT="${PROJECT:-${GCP_PROJECT:?PROJECT (or GCP_PROJECT) is required}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

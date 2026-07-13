@@ -56,7 +56,11 @@ jobs:
       MACHINE_TYPE: ${{ vars.MACHINE_TYPE || 'e2-micro' }}
       PREVIEW_MAX_CONCURRENT: ${{ vars.PREVIEW_MAX_CONCURRENT || '3' }}
       ZONE: ${{ vars.ZONE || 'us-central1-a' }}
-      PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-preview' }}
+      # Must match the DB name the built client connects to: client
+      # environment.ts maps a base-'/' build to 'mog-game-v1'. The preview VM is
+      # isolated, so reusing that name lets the stock `npm run build` client
+      # connect with no preview-specific build flag.
+      PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-v1' }}
 
     steps:
       # ---- cheap gates FIRST (resolve → fork guard → CI green), THEN build ----
