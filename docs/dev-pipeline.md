@@ -19,10 +19,13 @@ For the practical contributor checklist and local commands, see `CONTRIBUTING.md
 | 7 | Automated peer review runs | peer-reviewer daemon | PR opened/updated |
 | 8 | Iterate on review feedback | LLM | repeat 3–7 |
 | 9 | Auto-deploy to `mog-game-beta` for feel-test | CI | reviewer approval + CI green |
-| 10 | Human plays beta in browser | human | manual |
-| 11 | Merge to master → auto-deploy to `mog-game-v1` | human, then CI | `gh pr merge --squash` |
+| 10 | PR gets a "Beta feel-test ready" comment with URL + SHA; agents run `npm run qa:beta` | CI + local | deploy success |
+| 11 | Human (or harness `--beta`) feel-tests beta | human / agent | manual |
+| 12 | Merge to master → auto-deploy to `mog-game-v1` | human, then CI | `gh pr merge --squash` |
 
 The merge is the human's "ship it" decision: it means "I feel-tested this on beta and it's good." Merging then auto-deploys to `mog-game-v1`. Master never runs unvetted code because nothing reaches prod without passing through the feel-test on beta. A `workflow_dispatch` trigger is also wired up so the preview deploy can be fired manually if ever needed.
+
+Beta URL discovery (for humans and agents): host is checked into `deploy/runtime.json`; live SHA/PR are at `/beta/deploy.json` after apply; `cd client && npm run qa:beta` prints the link and alignment. See `client/qa-harness/README.md`.
 
 ## Architectural choice: two SpacetimeDB databases on one VM
 

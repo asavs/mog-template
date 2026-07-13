@@ -18,6 +18,8 @@
     "test:reconnect:local": "STDB_URL=ws://127.0.0.1:3000 vite-node test-reconnect.ts",
     "test:reconnect:vm": "STDB_URL=ws://your-vm-host vite-node test-reconnect.ts",
     "qa:env:up": "vite-node qa-harness/ensure-env.ts",
+    "qa:beta": "vite-node qa-harness/resolve-target-cli.ts",
+    "qa:diagnose": "vite-node qa-harness/diagnostics-cli.ts",
     "qa:harness": "vite-node qa-harness/run-harness.ts",
     "qa:perf": "QA_MODE=perf vite-node qa-harness/run-harness.ts",
     "qa:baseline:update": "vite-node qa-harness/run-harness.ts -- --update-baseline",

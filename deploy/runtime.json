@@ -1,0 +1,10 @@
+{
+  "$schema_note": "Canonical public endpoints for the shared mog-server VM. Agents and the QA harness read this file so beta/prod URLs do not have to be rediscovered via gcloud. Forks: edit host/project after standing up your own VM (see docs/deploy-your-vm.md).",
+  "host": "130.211.221.100",
+  "protocol": "http",
+  "betaPath": "/beta/",
+  "prodPath": "/",
+  "gcpProject": "mog-template-deploy",
+  "vmName": "mog-server",
+  "zone": "us-central1-a"
+}

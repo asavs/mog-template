@@ -42,6 +42,52 @@ Each run produces these artifacts in `runs/`:
 A run is also checked against a checked-in baseline (see "Baseline
 regression checks" below) for a real pass/fail outcome.
 
+## Finding the PR beta link (feel-tests)
+
+Agents previously had to dig through gcloud projects to rediscover the VM
+IP. That is now a single command. The canonical host lives in
+`deploy/runtime.json`; every beta/prod apply also writes
+`/beta/deploy.json` (or `/deploy.json`) with the live SHA + PR.
+
+```powershell
+cd client
+npm run qa:beta
+# align against a specific PR (exits 2 on mismatch with --require-align):
+npm run qa:beta -- --pr 20 --require-align
+```
+
+Output includes `clientUrl`, the live deploy SHA (from `deploy.json`, or
+the join-screen bake as fallback), optional PR alignment, and a ready-to-
+paste `QA_CLIENT_URL=...` line.
+
+Then drive the harness against beta (skips local WSL SpacetimeDB / Vite):
+
+```powershell
+npm run qa:harness -- --beta
+npm run qa:harness -- --beta --pr 20 --require-align
+```
+
+Offline stall / movement / combat diagnostics over saved NDJSON:
+
+```powershell
+npm run qa:diagnose -- --latest 8
+npm run qa:diagnose -- qa-harness/runs/<run>.ndjson
+```
+
+After a successful preview deploy, the workflow also comments the same URL
++ SHA on the PR (`Beta feel-test ready`).
+
+**Red flags the resolver surfaces:**
+- Live SHA ≠ PR head → wrong build is on beta (another PR overwrote it, or
+  deploy is stale).
+- `deploy.json` missing and bundle commit unreadable → host down or path wrong.
+- `deploy/runtime.json` host wrong after a VM rebuild → update that file.
+
+Local baselines were captured against loopback, not real RTT — baseline
+drift on `--beta` runs is expected signal about network/feel, not an
+automatic "client is broken." Prefer structural + invariant checks for
+remote gates.
+
 ## Why WSL2, and why headed (not headless)
 
 - The SpacetimeDB CLI is Linux-only, so the harness runs its own SpacetimeDB
@@ -91,10 +137,11 @@ the CLI or Rust toolchain.
 
 ```powershell
 cd client
-npm run qa:harness
+npm run qa:harness                  # local (WSL SpacetimeDB + Vite)
+npm run qa:harness -- --beta        # live VM beta (see "Finding the PR beta link")
 ```
 
-This will, idempotently:
+Local mode will, idempotently:
 1. Ensure SpacetimeDB is running in WSL2 (starts it if not; does **not**
    auto-publish — pass `--publish` after the script name if you changed
    `server/spacetimedb`).
@@ -103,6 +150,9 @@ This will, idempotently:
 3. Launch headed Chromium, join once as `wizard` and once as `paladin`,
    drive the full input sequence for each, and write one JSON + CSV trace
    per class to `client/qa-harness/runs/<timestamp>-<label>-<class>.{json,csv}`.
+
+`--beta` / `QA_TARGET=beta` skips steps 1–2 and points Chromium at the host
+in `deploy/runtime.json`.
 
 To regenerate a report from a stored run, or visually diff two runs (the
 second run overlays every chart as a dashed reference line and appears as
@@ -138,7 +188,14 @@ Useful env vars:
 - `QA_AUTOTRACE=1` — in default phase mode, stage Chromium traces per phase
   and keep only traces for phases that fail the existing baseline/structural
   checks. Perf mode stages traces by default and keeps only budget failures.
-- `QA_CLIENT_URL=http://localhost:5173` — point at a different dev server.
+- `QA_CLIENT_URL=http://localhost:5173` — point at a different dev server
+  (wins over `--beta` / `QA_TARGET`).
+- `QA_TARGET=beta|prod` — resolve the client URL from `deploy/runtime.json`
+  (same as `--beta` / `--prod`). Skips local env bootstrap when remote.
+- `QA_PR=20` / `--pr 20` — compare live deploy SHA to that PR's head.
+- `QA_EXPECT_SHA=<sha>` / `--expect-sha` — compare live deploy to a SHA.
+- `QA_REQUIRE_ALIGN=1` / `--require-align` — refuse to run (or `qa:beta`
+  exits 2) when live deploy does not match the expected PR/SHA.
 - `QA_WEB_MODE=preview` — serve the built bundle (`vite preview`) instead of
   the dev server; requires `client/dist/` to exist (`npm run build`, or the
   downloaded build artifact in CI). CI uses this so the playtest exercises

@@ -52,6 +52,12 @@ import {
   waitForRenderLoop,
   type SessionConfig,
 } from './page-driver';
+import {
+  formatResolvedTarget,
+  parseTargetArgs,
+  resolveTarget,
+  type ResolvedTarget,
+} from './resolve-target';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, 'runs');
@@ -64,7 +70,8 @@ const BASELINES_DIR = process.env.QA_BASELINE_DIR
   ? path.resolve(process.env.QA_BASELINE_DIR)
   : path.join(__dirname, 'baselines');
 
-const CLIENT_URL = process.env.QA_CLIENT_URL ?? 'http://localhost:5173';
+// Resolved in main() so --beta / deploy/runtime.json can override the default.
+let CLIENT_URL = process.env.QA_CLIENT_URL ?? 'http://localhost:5173';
 // Structural wait budget for reaching the join dialog and the first player
 // frame. Generous values don't affect metric quality (the trace starts after
 // join) — CI raises this because SwiftShader + full asset parsing can stall
@@ -77,6 +84,7 @@ const PERF_ENFORCE = process.env.QA_PERF_ENFORCE === '1';
 const AUTOTRACE_PHASES = process.env.QA_AUTOTRACE === '1';
 const PHASE_SPEC = process.env.QA_PHASES;
 const QA_TIER = parseQaTier(process.env.QA_TIER);
+const TARGET_ARGS = parseTargetArgs(process.argv.slice(2));
 // QA_CHECKS=structural drops the movement-invariant layer, keeping only
 // structural integrity checks. For environments where the game is not
 // actually playable: GitHub's GPU-less runners never grant pointer lock
@@ -523,11 +531,64 @@ async function mainGrid(browser: Browser, baseCfg: SessionConfig): Promise<{ ok:
   return { ok, reports };
 }
 
-async function main() {
-  await ensureEnv({ publish: process.argv.includes('--publish') });
+async function resolveHarnessTarget(): Promise<ResolvedTarget> {
+  // Precedence: explicit QA_CLIENT_URL > --beta/--prod > local default.
+  const explicit = process.env.QA_CLIENT_URL?.trim();
+  if (explicit) {
+    return resolveTarget({
+      clientUrl: explicit,
+      pr: TARGET_ARGS.pr,
+      expectSha: TARGET_ARGS.expectSha,
+    });
+  }
+  if (TARGET_ARGS.beta || TARGET_ARGS.prod) {
+    return resolveTarget({
+      target: TARGET_ARGS.prod ? 'prod' : 'beta',
+      pr: TARGET_ARGS.pr,
+      expectSha: TARGET_ARGS.expectSha,
+    });
+  }
+  return resolveTarget({ target: 'local' });
+}
 
-  const envProxy = MODE === 'grid' ? null : await startEnvNetProxy();
-  const cfg = makeSessionConfig({ stdbUrl: envProxy?.stdbUrl });
+async function main() {
+  const resolved = await resolveHarnessTarget();
+  CLIENT_URL = resolved.clientUrl;
+
+  console.log('[run-harness] target resolution:');
+  console.log(formatResolvedTarget(resolved).split('\n').map((l) => `  ${l}`).join('\n'));
+
+  if (TARGET_ARGS.requireAlign && resolved.alignment?.match === false) {
+    throw new Error(
+      `Live deploy does not match expected PR/SHA (pass without --require-align to run anyway).\n` +
+        `  ${resolved.alignment.detail}`,
+    );
+  }
+  if (TARGET_ARGS.requireAlign && resolved.alignment?.match == null && (TARGET_ARGS.pr != null || TARGET_ARGS.expectSha)) {
+    throw new Error(
+      `Could not verify deploy alignment (missing deploy.json / gh / network). ` +
+        `Refusing to run with --require-align.`,
+    );
+  }
+
+  // Remote feel-test against the VM: no local SpacetimeDB / Vite needed.
+  // Local runs still bootstrap WSL SpacetimeDB + the Vite dev server.
+  if (resolved.remote) {
+    console.log('[run-harness] remote client URL — skipping local SpacetimeDB/Vite bootstrap');
+    if (MODE === 'grid' || process.env.QA_NET_PROFILE) {
+      console.warn(
+        '[run-harness] WARNING: net-proxy / grid mode still targets 127.0.0.1:3000; ' +
+          'it will not shape traffic to a remote beta host. Prefer local mode for latency grids.',
+      );
+    }
+  } else {
+    await ensureEnv({ publish: process.argv.includes('--publish') });
+  }
+
+  // Net proxy only makes sense in front of a local SpacetimeDB. On a remote
+  // beta/prod URL the page already talks to the VM's /v1; do not rewrite stdb.
+  const envProxy = resolved.remote || MODE === 'grid' ? null : await startEnvNetProxy();
+  const cfg = makeSessionConfig({ clientUrl: CLIENT_URL, stdbUrl: envProxy?.stdbUrl });
   let browser: Browser | null = null;
   let result: { ok: boolean; reports: string[] };
 

@@ -27,8 +27,8 @@ Do not edit, stage, commit, or inspect `example code folder/vibe code game decem
 8. Patch until CI is green.
 9. Mark the PR ready for review.
 10. Address review feedback.
-11. Let the beta deploy run after approval.
-12. A human feel-tests beta and merges when satisfied.
+11. Let the beta deploy run after approval. The workflow comments the feel-test URL + SHA on the PR; you can also run `cd client && npm run qa:beta -- --pr <N> --require-align`.
+12. A human feel-tests beta (or runs `npm run qa:harness -- --beta --pr <N> --require-align`) and merges when satisfied.
 
 Branch names should describe the change:
 

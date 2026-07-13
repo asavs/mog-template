@@ -43,7 +43,7 @@ jobs:
     permissions:
       id-token: write       # required for Workload Identity Federation
       contents: read
-      pull-requests: read   # for gh pr view / gh api on the PR
+      pull-requests: write  # gh pr view + post the beta feel-test comment
       checks: read          # for check-runs API access in check-ci.sh
 
     steps:
@@ -182,9 +182,53 @@ jobs:
         env:
           PROJECT: ${{ secrets.GCP_PROJECT }}
           SHA: ${{ steps.resolve.outputs.sha }}
+          PR: ${{ steps.resolve.outputs.pr }}
         run: |
           gcloud compute ssh mog-server \
             --zone=us-central1-a \
             --project="$PROJECT" \
             --quiet \
-            --command "bash /tmp/deploy-${SHA}/apply-artifacts.sh beta ${SHA}"
+            --command "bash /tmp/deploy-${SHA}/apply-artifacts.sh beta ${SHA} ${PR}"
+
+      # Surface the feel-test URL on the PR so humans and agents do not have
+      # to rediscover the VM host. Host comes from deploy/runtime.json (the
+      # same file `npm run qa:beta` reads). deploy.json on the VM also records
+      # this SHA + PR for later alignment checks.
+      - name: Comment beta feel-test URL on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.resolve.outputs.pr }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          HOST=$(node -e "const r=require('./deploy/runtime.json'); process.stdout.write(r.protocol+'://'+r.host+(r.betaPath.endsWith('/')?r.betaPath:r.betaPath+'/'))")
+          SHORT="${SHA:0:7}"
+          BODY=$(cat <<EOF
+          ## Beta feel-test ready
+
+          | | |
+          |---|---|
+          | **URL** | ${HOST} |
+          | **QA gate** | ${HOST}?qa |
+          | **PR** | #${PR} |
+          | **SHA** | \`${SHA}\` (\`${SHORT}\`) |
+
+          The join screen also shows \`commit ${SHORT}\` — confirm it matches before playtesting.
+
+          Local harness against this deploy (from \`client/\`):
+
+          \`\`\`powershell
+          npm run qa:beta -- --pr ${PR} --require-align
+          npm run qa:harness -- --beta --pr ${PR} --require-align
+          \`\`\`
+          EOF
+          )
+          # Replace any previous bot feel-test comment so the PR stays tidy.
+          PREV=$(gh api "repos/${REPO}/issues/${PR}/comments" --jq '.[] | select(.user.type=="Bot" and (.body|contains("Beta feel-test ready"))) | .id' | tail -1 || true)
+          if [ -n "${PREV}" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${PREV}" -f body="$BODY" >/dev/null
+            echo "Updated existing beta comment id=${PREV}"
+          else
+            gh pr comment "$PR" --repo "$REPO" --body "$BODY"
+            echo "Posted new beta comment on PR #${PR}"
+          fi

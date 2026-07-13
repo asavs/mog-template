@@ -28,6 +28,7 @@ It is a learning-first template, not a production game yet. The stack is intenti
 |---|---|
 | GitHub repo | `<owner>/mog-template` |
 | GCP VM (`mog-server`) | Debian, `e2-small`; beta/prod runtime, not a development box |
+| Public endpoints | `deploy/runtime.json` (host + `/beta/` path). Live SHA/PR: `GET /beta/deploy.json`. Discover with `cd client && npm run qa:beta` |
 | Nginx | installed, running, configured |
 | SpacetimeDB 2.1.0 | installed, running as systemd service on `127.0.0.1:3000` |
 | Rust / Node build tooling | not required for normal VM operation; GitHub Actions is the build environment |

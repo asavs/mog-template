@@ -8,14 +8,16 @@
 # Args:
 #   $1  target  prod|beta
 #   $2  sha     deploy commit SHA (used as the staging dir suffix)
+#   $3  pr      optional PR number (beta only; written into deploy.json)
 
 set -euo pipefail
 
 TARGET="${1:-}"
 SHA="${2:-}"
+PR="${3:-}"
 
 if [ -z "$TARGET" ] || [ -z "$SHA" ]; then
-  echo "Usage: $0 prod|beta <sha>" >&2
+  echo "Usage: $0 prod|beta <sha> [pr]" >&2
   exit 1
 fi
 
@@ -100,8 +102,24 @@ sudo mkdir -p "$WEB_ROOT"
 # root. This lets browser validators reuse cached runtime assets when a
 # code-only PR ships a fresh bundle.
 sudo rsync -a --checksum --no-times --delete "${LFS_POINTER_EXCLUDES[@]}" "$STAGING_DIR/dist/" "$WEB_ROOT/"
+
+# Machine-readable deploy pointer for agents / QA harness (served at
+# /deploy.json for prod, /beta/deploy.json for beta). Written AFTER rsync
+# so --delete does not wipe it. Contains the full SHA the apply step just
+# published, plus optional PR number for beta feel-test alignment.
+DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [ -n "$PR" ]; then
+  PR_JSON="$PR"
+else
+  PR_JSON="null"
+fi
+printf '{"target":"%s","sha":"%s","pr":%s,"deployedAt":"%s"}\n' \
+  "$TARGET" "$SHA" "$PR_JSON" "$DEPLOYED_AT" \
+  | sudo tee "$WEB_ROOT/deploy.json" >/dev/null
+
 sudo chown -R www-data:www-data "$WEB_ROOT"
 
+log "Wrote $WEB_ROOT/deploy.json (sha=${SHA:0:7} pr=${PR:-none})"
 log "Cleaning up $STAGING_DIR..."
 rm -rf "$STAGING_DIR"
 
