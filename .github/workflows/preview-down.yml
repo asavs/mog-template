@@ -4,8 +4,8 @@ name: Preview VM down
 # (preview-VM factory plan v1 §8.3). A PR close deletes its VM; a
 # scheduled sweep reaps orphans (closed PR) and VMs past their TTL.
 #
-# Config knobs come from repo variables with plan §11 fallback defaults in env:
-# ZONE, PREVIEW_TTL_HOURS.
+# Config knob: PREVIEW_TTL_HOURS (repo variable, plan §11 fallback in env).
+# Teardown is zone-agnostic — the VM's real zone is discovered, not assumed.
 on:
   pull_request:
     types: [closed]
@@ -20,7 +20,8 @@ on:
     - cron: '*/30 * * * *'
 
 env:
-  ZONE: ${{ vars.ZONE || 'us-central1-a' }}
+  # Teardown is zone-agnostic (the VM's real zone is discovered from its name /
+  # list JSON), so ZONE is intentionally not needed here.
   PREVIEW_TTL_HOURS: ${{ vars.PREVIEW_TTL_HOURS || '3' }}
 
 jobs:
@@ -94,10 +95,13 @@ jobs:
           # Indexing a null .labels with a string is already null-safe in jq
           # (returns null, not an error), but bind `.labels // {}` first so the
           # null-safety is explicit for future readers.
+          # Emit each VM's ACTUAL zone (basename of the zone URL) alongside its
+          # labels so the delete targets the zone the VM is really in — never a
+          # static ZONE guess that could miss (and leak) a VM.
           jq -r '.[]
                  | (.labels // {}) as $l
                  | select($l["mog-preview"] == "true")
-                 | [.name, ($l.pr // ""), ($l["last-deploy"] // "")]
+                 | [.name, ($l.pr // ""), ($l["last-deploy"] // ""), (.zone | sub(".*/"; ""))]
                  | @tsv' previews.json > previews.tsv || true
 
           if [ ! -s previews.tsv ]; then
@@ -105,7 +109,7 @@ jobs:
             exit 0
           fi
 
-          while IFS=$'\t' read -r NAME PR LAST; do
+          while IFS=$'\t' read -r NAME PR LAST VMZONE; do
             [ -n "$NAME" ] || continue
             REASON=""
 
@@ -126,10 +130,10 @@ jobs:
             fi
 
             if [ -n "$REASON" ]; then
-              echo "GC deleting $NAME ($REASON)"
+              echo "GC deleting $NAME in $VMZONE ($REASON)"
               gcloud compute instances delete "$NAME" \
-                --project="$PROJECT" --zone="$ZONE" --quiet || true
+                --project="$PROJECT" --zone="$VMZONE" --quiet || true
             else
-              echo "GC keeping  $NAME (pr=$PR last-deploy=$LAST)"
+              echo "GC keeping  $NAME (pr=$PR last-deploy=$LAST zone=$VMZONE)"
             fi
           done < previews.tsv
