@@ -98,18 +98,25 @@ jobs:
           # Emit each VM's ACTUAL zone (basename of the zone URL) alongside its
           # labels so the delete targets the zone the VM is really in — never a
           # static ZONE guess that could miss (and leak) a VM.
+          #
+          # Delimit with '|', NOT tab: a VM with no last-deploy label (deploy
+          # failed before the label was stamped) yields an empty field, and tab
+          # is IFS-whitespace so `read` would COLLAPSE the adjacent tabs and shift
+          # every later field left (zone lands in LAST, VMZONE goes empty →
+          # broken TTL math + a delete with --zone=""). '|' is non-whitespace, so
+          # read preserves empty fields. No field can contain '|'.
           jq -r '.[]
                  | (.labels // {}) as $l
                  | select($l["mog-preview"] == "true")
                  | [.name, ($l.pr // ""), ($l["last-deploy"] // ""), (.zone | sub(".*/"; ""))]
-                 | @tsv' previews.json > previews.tsv || true
+                 | join("|")' previews.json > previews.tsv || true
 
           if [ ! -s previews.tsv ]; then
             echo "No preview VMs to consider."
             exit 0
           fi
 
-          while IFS=$'\t' read -r NAME PR LAST VMZONE; do
+          while IFS='|' read -r NAME PR LAST VMZONE; do
             [ -n "$NAME" ] || continue
             REASON=""
 
