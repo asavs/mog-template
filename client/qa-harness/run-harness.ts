@@ -52,6 +52,7 @@ import {
   waitForRenderLoop,
   type SessionConfig,
 } from './page-driver';
+import { formatAnnounce, isRemoteClientUrl, parsePrArg, resolvePreviewTarget } from './preview-target';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, 'runs');
@@ -524,10 +525,42 @@ async function mainGrid(browser: Browser, baseCfg: SessionConfig): Promise<{ ok:
 }
 
 async function main() {
-  await ensureEnv({ publish: process.argv.includes('--publish') });
+  // Precedence: --pr <N> (preview VM announce) > a remote QA_CLIENT_URL >
+  // local default. A --pr target resolves the PR's announce comment to the
+  // ephemeral VM URL; both remote paths skip the local SpacetimeDB/Vite
+  // bootstrap (the VM already serves the client + its own SpacetimeDB /v1).
+  const prTarget = parsePrArg(process.argv.slice(2));
+  let clientUrl = CLIENT_URL;
+  let remote = isRemoteClientUrl(CLIENT_URL);
+  if (prTarget != null) {
+    const announce = resolvePreviewTarget(prTarget);
+    clientUrl = announce.url;
+    remote = true;
+    console.log(`[run-harness] resolved preview target for PR #${prTarget}:`);
+    console.log(
+      formatAnnounce(announce)
+        .split('\n')
+        .map((l) => `  ${l}`)
+        .join('\n'),
+    );
+  }
 
-  const envProxy = MODE === 'grid' ? null : await startEnvNetProxy();
-  const cfg = makeSessionConfig({ stdbUrl: envProxy?.stdbUrl });
+  if (remote) {
+    console.log(`[run-harness] remote client URL (${clientUrl}) — skipping local SpacetimeDB/Vite bootstrap`);
+    if (MODE === 'grid' || process.env.QA_NET_PROFILE) {
+      console.warn(
+        '[run-harness] WARNING: net-proxy / grid latency shaping only fronts a local SpacetimeDB ' +
+          '(127.0.0.1:3000); it will not shape traffic to the remote VM. Prefer local mode for latency grids.',
+      );
+    }
+  } else {
+    await ensureEnv({ publish: process.argv.includes('--publish') });
+  }
+
+  // The net proxy only makes sense in front of a local SpacetimeDB. Against a
+  // remote VM the page talks to the VM's own /v1, so leave stdbUrl unset.
+  const envProxy = remote || MODE === 'grid' ? null : await startEnvNetProxy();
+  const cfg = makeSessionConfig({ clientUrl, stdbUrl: envProxy?.stdbUrl });
   let browser: Browser | null = null;
   let result: { ok: boolean; reports: string[] };
 
