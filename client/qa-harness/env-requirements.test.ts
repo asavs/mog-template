@@ -8,6 +8,8 @@ import {
   describeProbe,
   loadRegistry,
   renderDocs,
+  type CheckContext,
+  type Probe,
 } from '../../tools/env-requirements/preflight.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,10 +21,10 @@ const registry = loadRegistry();
 
 // A single-requirement registry so probe logic can be exercised in isolation
 // with injected fs/env/platform stubs (no real filesystem or PATH access).
-function oneReq(probe: Record<string, unknown>, severity: 'fail' | 'warn' = 'fail') {
+function oneReq(probe: Probe, severity: 'fail' | 'warn' = 'fail') {
   return { requirements: { x: { why: 'w', remedy: 'r', probe, severity } } };
 }
-function check(probe: Record<string, unknown>, opts: Record<string, unknown>, severity: 'fail' | 'warn' = 'fail') {
+function check(probe: Probe, opts: CheckContext, severity: 'fail' | 'warn' = 'fail') {
   return checkRequirements(['x'], { registry: oneReq(probe, severity), ...opts }).results[0];
 }
 

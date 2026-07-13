@@ -61,7 +61,7 @@ export const ESCAPE_HATCH_PROBE: 'command-succeeds';
 
 export function loadRegistry(registryPath?: string): Registry;
 export function makeContext(opts?: CheckContext): Required<CheckContext>;
-export function runProbe(probe: Probe, ctx?: unknown): { pass: boolean; detail: string };
+export function runProbe(probe: Probe, ctx?: CheckContext): { pass: boolean; detail: string };
 export function checkRequirements(ids: string[], opts?: CheckContext): CheckOutcome;
 export function formatResult(r: CheckResult): string;
 export function formatResults(results: CheckResult[]): string;

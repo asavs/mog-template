@@ -556,10 +556,12 @@ async function main() {
   const prTarget = parsePrArg(process.argv.slice(2));
   // The --pr path shells out to `gh` to read the PR's announce comment and
   // drives a local Chromium against the remote VM, so it needs the gh CLI +
-  // auth and a native node_modules; check before the gh call, not after it
-  // fails.
+  // auth; check before the gh call, not after it fails. windows-node-modules
+  // is a Windows-only failure mode (its why/remedy are Windows-specific), so
+  // gate it on win32 to match how local mode treats it — no confusing
+  // "reinstall from PowerShell" advice on Linux/macOS.
   if (prTarget != null) {
-    envPreflight(['gh-cli', 'gh-auth', 'windows-node-modules']);
+    envPreflight(['gh-cli', 'gh-auth', ...(process.platform === 'win32' ? ['windows-node-modules'] : [])]);
   }
   let clientUrl = CLIENT_URL;
   let remote = isRemoteClientUrl(CLIENT_URL);

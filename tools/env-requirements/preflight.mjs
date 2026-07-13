@@ -81,6 +81,13 @@ function defaultRun(command, args) {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 20000,
+      // On Windows, CLIs like `gcloud`/`gh` are often .cmd/.ps1 shims, not
+      // .exe. Node refuses to run a .cmd via execFile without a shell and
+      // throws ENOENT even when the tool is present, so a probe would report
+      // a false FAIL. Command + args here are static registry values (never
+      // user input), so a shell is safe. Verified: `--format=value(account)`
+      // survives cmd.exe unquoted.
+      shell: process.platform === 'win32',
     });
     return { status: 0, stdout };
   } catch (err) {
