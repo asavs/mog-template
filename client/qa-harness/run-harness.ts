@@ -53,6 +53,7 @@ import {
   type SessionConfig,
 } from './page-driver';
 import { formatAnnounce, isRemoteClientUrl, parsePrArg, resolvePreviewTarget } from './preview-target';
+import { checkRequirements, formatResults } from '../../tools/env-requirements/preflight.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, 'runs');
@@ -524,12 +525,42 @@ async function mainGrid(browser: Browser, baseCfg: SessionConfig): Promise<{ ok:
   return { ok, reports };
 }
 
+// Preflight a set of environment requirements (tools/env-requirements) and
+// abort with the registry's why/remedy if any fail-severity one is unmet —
+// surfacing e.g. a missing `gh` or Linux-native node_modules as a clear
+// message here rather than a cryptic ENOENT deep in the run. warns print but
+// never abort. Stage-A groundwork for the derived tool x environment matrix.
+function envPreflight(ids: string[]): void {
+  const { ok, results } = checkRequirements(ids);
+  console.log('[run-harness] environment preflight:');
+  console.log(
+    formatResults(results)
+      .split('\n')
+      .map((l) => `  ${l}`)
+      .join('\n'),
+  );
+  if (!ok) {
+    const failed = results.filter((r) => r.status === 'FAIL').map((r) => r.id);
+    throw new Error(
+      `environment preflight failed (${failed.join(', ')}) — see the why/remedy above, ` +
+        `or re-run: node tools/env-requirements/preflight.mjs ${ids.join(' ')}`,
+    );
+  }
+}
+
 async function main() {
   // Precedence: --pr <N> (preview VM announce) > a remote QA_CLIENT_URL >
   // local default. A --pr target resolves the PR's announce comment to the
   // ephemeral VM URL; both remote paths skip the local SpacetimeDB/Vite
   // bootstrap (the VM already serves the client + its own SpacetimeDB /v1).
   const prTarget = parsePrArg(process.argv.slice(2));
+  // The --pr path shells out to `gh` to read the PR's announce comment and
+  // drives a local Chromium against the remote VM, so it needs the gh CLI +
+  // auth and a native node_modules; check before the gh call, not after it
+  // fails.
+  if (prTarget != null) {
+    envPreflight(['gh-cli', 'gh-auth', 'windows-node-modules']);
+  }
   let clientUrl = CLIENT_URL;
   let remote = isRemoteClientUrl(CLIENT_URL);
   if (prTarget != null) {
@@ -554,6 +585,16 @@ async function main() {
       );
     }
   } else {
+    // Local mode drives headed Chromium against a WSL2-hosted SpacetimeDB +
+    // local Vite. Migrate ensure-env's implicit host assumptions into probes:
+    // it needs a display for headed Chromium (unless QA_HEADLESS=1) and, on
+    // Windows, `wsl.exe` and a native node_modules. (SpacetimeDB itself is
+    // brought up by ensure-env inside WSL/CI, not required on the host PATH.)
+    const localIds = [
+      ...(HEADLESS ? [] : ['headed-display']),
+      ...(process.platform === 'win32' ? ['wsl-available', 'windows-node-modules'] : []),
+    ];
+    if (localIds.length > 0) envPreflight(localIds);
     await ensureEnv({ publish: process.argv.includes('--publish') });
   }
 

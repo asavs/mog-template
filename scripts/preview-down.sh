@@ -19,6 +19,19 @@ PROJECT="${PROJECT:-${GCP_PROJECT:?PROJECT (or GCP_PROJECT) is required}}"
 
 INSTANCE="mog-pr-${PR_NUMBER}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ---------------------------------------------------------------- env preflight
+# Fail fast with a clear why/remedy if gcloud is missing or unauthed, rather
+# than a cryptic error mid-teardown. FAIL-OPEN when `node` is unavailable —
+# preflight must never be the thing that blocks a teardown.
+if command -v node >/dev/null 2>&1; then
+  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" gcloud-cli gcloud-auth >&2
+else
+  echo "[preview-down] preflight skipped (node unavailable)" >&2
+fi
+
 gc() { gcloud --project="$PROJECT" "$@"; }
 log() { printf '[preview-down] %s\n' "$*" >&2; }
 
