@@ -27,14 +27,18 @@ jobs:
     # Filter: approved reviews on open PRs, or manual dispatch.
     # SECURITY (#185): this job checks out and BUILDS untrusted PR head code in a
     # context that holds GCP deploy credentials, so the approval that triggers it
-    # must come from a trusted role. Without the author_association gate, any user
-    # could approve any PR on this public repo and run code with our credentials.
+    # must come from a trusted role (OWNER/MEMBER/COLLABORATOR) or the allowlisted
+    # peer-reviewer bot. Without this gate, any random GitHub user could approve a
+    # PR on this public repo and run untrusted code with our deploy credentials.
+    # goob-reviewer[bot] is the automated reviewer; its author_association is NONE
+    # (not a repo collaborator), so it must be allowlisted by login explicitly.
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.review.state == 'approved' &&
        github.event.pull_request.state == 'open' &&
        github.event.pull_request.draft == false &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association))
+       (contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association) ||
+        github.event.review.user.login == 'goob-reviewer[bot]'))
     timeout-minutes: 20
     permissions:
       id-token: write       # required for Workload Identity Federation
