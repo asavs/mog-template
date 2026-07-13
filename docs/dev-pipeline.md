@@ -18,23 +18,19 @@ For the practical contributor checklist and local commands, see `CONTRIBUTING.md
 | 6 | Open pull request | LLM | `gh pr create` |
 | 7 | Automated peer review runs | peer-reviewer daemon | PR opened/updated |
 | 8 | Iterate on review feedback | LLM | repeat 3–7 |
-| 9 | Auto-deploy to `mog-game-beta` for feel-test | CI | reviewer approval + CI green |
-| 10 | Human plays beta in browser | human | manual |
-| 11 | Merge to master → auto-deploy to `mog-game-v1` | human, then CI | `gh pr merge --squash` |
+| 9 | Approval spins up an ephemeral preview VM `mog-pr-<N>` | CI | reviewer approval + CI green |
+| 10 | Human plays the announced preview URL in browser | human | manual |
+| 11 | Merge/close → preview VM torn down; prod deploy is scaffolded off | human, then CI | `gh pr merge --squash` |
 
-The merge is the human's "ship it" decision: it means "I feel-tested this on beta and it's good." Merging then auto-deploys to `mog-game-v1`. Master never runs unvetted code because nothing reaches prod without passing through the feel-test on beta. A `workflow_dispatch` trigger is also wired up so the preview deploy can be fired manually if ever needed.
+The merge is the human's "ship it" decision: it means "I feel-tested this on the preview VM and it's good." Prod deploy on merge is **scaffolded but off** by default (there is no always-on prod host yet); see [`prod-enable.md`](prod-enable.md) for the flip-switch. A `workflow_dispatch` trigger on `preview-up.yml` can fire a preview deploy manually if the approval auto-trigger is ever missed.
 
-## Architectural choice: two SpacetimeDB databases on one VM
+## Architectural choice: ephemeral preview VMs, no always-on game host
 
-> **Naming note:** final public names can still change when the game has a real name. The current database names are `mog-game-beta` and `mog-game-v1`.
+> **Naming note:** final public names can still change when the game has a real name. Each isolated preview VM publishes under the DB name the built client connects to — `mog-game-v1` for a base-`/` build (see `client/src/environment.ts`) — so the stock client needs no preview-specific build flag. Reusing that name on an ephemeral, single-DB preview box does not collide with any real prod host (there is none yet).
 
-**Decision: `mog-game-beta` (preview) and `mog-game-v1` (prod) on the same VM. Sequential PR previews, master always running.**
+**Decision (plan v1 decisions A–J): there is no always-on game host while there are no players.** The old shared-beta path on `mog-server` (a single `mog-game-beta` root) is retired. Instead, an approved PR gets its own short-lived VM.
 
-`mog-game-v1` runs whatever was last merged. `mog-game-beta` runs whatever PR is currently being feel-tested. The client picks which database to connect to from the served base path. Both databases share the same VM resources but are independent state.
-
-Only one PR can be on `mog-game-beta` at a time. GitHub Actions' `concurrency` group is set so a newer preview deploy cancels any older in-flight one — whichever PR was most recently approved is what's live on beta.
-
-**Upgrade path:** per-PR ephemeral databases (`mog-pr-60`, `mog-pr-61`, …) become worthwhile when (a) the VM is upgraded beyond e2-small so concurrent SpacetimeDB instances don't risk OOM, and (b) PR volume is high enough that parallel feel-testing is actually needed. Neither is true today.
+After CI green + a trusted approval, `preview-up.yml` creates or reuses at most **three** concurrent `e2-micro` VMs named `mog-pr-<N>`, boots a lean SpacetimeDB + nginx runtime (`scripts/preview-bootstrap.sh`), deploys the client + WASM with a **cleared world** (`--delete-data`), and upserts one PR comment announcing `{ pr, sha, vm, url, deployedAt, machineType }`. A new approved commit **redeploys the same VM** in place. `preview-down.yml` deletes the VM on merge/close, and a 30-minute GC sweep reaps any VM whose PR is closed or that is past its **3-hour TTL**. Config knobs (`MACHINE_TYPE`, `PREVIEW_MAX_CONCURRENT`, `PREVIEW_TTL_HOURS`, `ZONE`, `PREVIEW_DB_NAME`, `IMAGE_FAMILY`) live in repo variables with script-level fallback defaults; the full decision log (A–J) is captured in the locked preview-VM factory design plan (v1).
 
 ## Build order — five steps
 
@@ -69,17 +65,15 @@ Adds a third CI job that installs the SpacetimeDB CLI, starts a standalone insta
 
 Maps to issues #51 (Rust unit tests with mocks — partly addressed by the headless `cargo test`) and #44 (automated perf regression — future addition once the integration harness is stable). Grows over time as more headless gameplay scripts are added — "approaching LLM playability" means continually moving more verification from the human's feel-test into CI.
 
-### Step 4 — Two-environment deploy automation
+### Step 4 — Deploy automation (ephemeral previews + scaffolded prod)
 
-Two workflows, both SSH into the VM and run `scripts/apply-artifacts.sh`.
+**`preview-up.yml`** — triggers on `pull_request_review` (state: approved) plus `workflow_dispatch`. Cheap gates run first (PR open, not draft, trusted approver association or allowlisted bot, **fork PRs rejected**, CI green on head SHA); only then does it build the client + WASM and call `scripts/preview-up.sh` to create-or-reuse `mog-pr-<N>`, publish the module (to the DB name the built client connects to, `mog-game-v1`) with a cleared world, and upsert the announce comment. `preview-down.yml` handles teardown (PR close, manual dispatch) and the scheduled TTL/orphan GC.
 
-**`preview-deploy.yml`** — triggers on `pull_request_review` (state: approved) when CI is green, plus `workflow_dispatch` as a manual fallback. Builds the PR's branch in CI with `npm run build:beta`, then publishes the WASM to `mog-game-beta` and copies the `/beta/` client bundle to the beta web root. A `concurrency` group ensures newer preview deploys cancel older in-flight ones.
+**`prod-deploy.yml`** — triggers on push to master, but is **gated on `vars.PROD_DEPLOY_ENABLED == 'true'`** and skipped by default. It builds the root bundle with `npm run build`, publishes to `mog-game-v1`, and syncs the prod web root via `scripts/apply-artifacts.sh`. See `prod-enable.md` to turn it on.
 
-**`prod-deploy.yml`** — triggers on push to master (i.e., when a PR merges). Same flow, but builds the root bundle with `npm run build`, publishes to `mog-game-v1`, and syncs the prod web root.
+Build-then-apply order (compile and bundle first, publish and swap only if the build succeeded) keeps the skew-safe property from #16.
 
-Both scripts use the same build-then-apply order (compile and bundle first, publish and swap only if the build succeeded) — the skew-safe property from #16 is baked in.
-
-Requirements: Workload Identity Federation secrets for GitHub Actions to reach GCP, plus two SpacetimeDB databases provisioned on the VM (`spacetime` supports multiple named databases on one instance). Client config must stay aware of which database to connect to for `/` versus `/beta/`.
+Requirements: Workload Identity Federation secrets for GitHub Actions to reach GCP, plus (for previews) instance create/delete permission on the deploy service account.
 
 Maps to issues #2 (deploy automation) and #16 (skew-safe order).
 
@@ -98,7 +92,7 @@ No code. Prevents accidental bypass of the pipeline.
 
 | Issue | Step | Notes |
 |---|---|---|
-| #2 Automate Deployment | 4 | Covered by both `preview-deploy.yml` (on approval) and `prod-deploy.yml` (on merge) |
+| #2 Automate Deployment | 4 | Covered by `preview-up.yml`/`preview-down.yml` (on approval / close) and scaffolded `prod-deploy.yml` (on merge, flag-gated) |
 | #16 Deploy version skew | 4 | Preview script enforces build-before-publish |
 | #44 Perf regression testing | 3 | Add as one of the CI test jobs |
 | #51 Rust unit testing suite | 3 | First test job after `cargo build` succeeds |
@@ -106,8 +100,8 @@ No code. Prevents accidental bypass of the pipeline.
 
 ## Non-goals
 
-- **Deploying without a feel-test.** Auto-deploys are gated on reviewer approval (`mog-game-beta`) and on merge (`mog-game-v1`). The merge gate exists because the human only merges after feel-testing on beta. Skip neither.
+- **Deploying without a feel-test.** Preview provisioning is gated on a trusted reviewer approval + CI green; the human only merges after feel-testing the announced preview URL. Skip neither.
 - **Local Windows development.** SpacetimeDB CLI is Linux-only; CI handles the Linux builds, the VM remains the only place server code actually runs. WSL2 is a possible future productivity upgrade, not part of this pipeline.
 - **Production hardening.** TLS (#1), static IP (#3), nginx route restrictions (#11), `wss://` (#12) are tracked separately. This document covers dev workflow only.
-- **Per-PR ephemeral databases.** Single `mog-game-beta` is the explicit choice for the current VM size and PR volume. Upgrade path documented above.
+- **Always-on prod / shared beta in this project.** No always-on game host while there are no players; prod deploy is scaffolded off (`prod-enable.md`) and the shared `mog-server` beta path is retired in favor of ephemeral `mog-pr-<N>` previews.
 - **Schema migration automation.** When a PR changes the SpacetimeDB schema, the prod-deploy may need a migration step before publishing the new module. Out of scope for the initial pipeline; revisit before there is user state on `mog-game-v1` worth preserving.
