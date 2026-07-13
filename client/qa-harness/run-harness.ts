@@ -53,7 +53,7 @@ import {
   type SessionConfig,
 } from './page-driver';
 import { formatAnnounce, isRemoteClientUrl, parsePrArg, resolvePreviewTarget } from './preview-target';
-import { checkRequirements, formatResults } from '../../tools/env-requirements/preflight.mjs';
+import { checkTool, formatResults, formatUnsupportedBanner } from '../../tools/env-requirements/preflight.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, 'runs');
@@ -525,14 +525,22 @@ async function mainGrid(browser: Browser, baseCfg: SessionConfig): Promise<{ ok:
   return { ok, reports };
 }
 
-// Preflight a set of environment requirements (tools/env-requirements) and
-// abort with the registry's why/remedy if any fail-severity one is unmet —
+// Preflight a named tool's environment requirements (tools/env-requirements)
+// and abort with the registry's why/remedy if any fail-severity one is unmet —
 // surfacing e.g. a missing `gh` or Linux-native node_modules as a clear
-// message here rather than a cryptic ENOENT deep in the run. warns print but
-// never abort. Stage-A groundwork for the derived tool x environment matrix.
-function envPreflight(ids: string[]): void {
-  const { ok, results } = checkRequirements(ids);
-  console.log('[run-harness] environment preflight:');
+// message here rather than a cryptic ENOENT deep in the run. The tool's
+// requirement list lives in requirements.json (`tools.<name>.requires`), the
+// current environment is fingerprinted, and an unsupported combination leads
+// the failure output with the DERIVED verdict (docs/environment-matrix.md).
+// warns print but never abort; platform-inapplicable requirements SKIP.
+// `omit` drops requirements a runtime flag makes irrelevant (QA_HEADLESS=1
+// needs no display).
+function envPreflight(toolName: string, omit: string[] = []): void {
+  const outcome = checkTool(toolName, { omit });
+  const { ok, results, fingerprint } = outcome;
+  console.log(`[run-harness] environment preflight: ${toolName} (environment: ${fingerprint.id})`);
+  const banner = formatUnsupportedBanner(outcome);
+  if (!ok && banner) console.error(`[run-harness] ${banner}`);
   console.log(
     formatResults(results)
       .split('\n')
@@ -543,7 +551,7 @@ function envPreflight(ids: string[]): void {
     const failed = results.filter((r) => r.status === 'FAIL').map((r) => r.id);
     throw new Error(
       `environment preflight failed (${failed.join(', ')}) — see the why/remedy above, ` +
-        `or re-run: node tools/env-requirements/preflight.mjs ${ids.join(' ')}`,
+        `or re-run: node tools/env-requirements/preflight.mjs --tool ${toolName}`,
     );
   }
 }
@@ -556,12 +564,12 @@ async function main() {
   const prTarget = parsePrArg(process.argv.slice(2));
   // The --pr path shells out to `gh` to read the PR's announce comment and
   // drives a local Chromium against the remote VM, so it needs the gh CLI +
-  // auth; check before the gh call, not after it fails. windows-node-modules
-  // is a Windows-only failure mode (its why/remedy are Windows-specific), so
-  // gate it on win32 to match how local mode treats it — no confusing
-  // "reinstall from PowerShell" advice on Linux/macOS.
+  // auth; check before the gh call, not after it fails. The id list lives in
+  // requirements.json (`tools.qa-harness-pr.requires`); windows-node-modules
+  // is declared win32-only there, so it SKIPs on Linux/macOS — no confusing
+  // "reinstall from PowerShell" advice off-Windows.
   if (prTarget != null) {
-    envPreflight(['gh-cli', 'gh-auth', ...(process.platform === 'win32' ? ['windows-node-modules'] : [])]);
+    envPreflight('qa-harness-pr');
   }
   let clientUrl = CLIENT_URL;
   let remote = isRemoteClientUrl(CLIENT_URL);
@@ -588,15 +596,13 @@ async function main() {
     }
   } else {
     // Local mode drives headed Chromium against a WSL2-hosted SpacetimeDB +
-    // local Vite. Migrate ensure-env's implicit host assumptions into probes:
-    // it needs a display for headed Chromium (unless QA_HEADLESS=1) and, on
-    // Windows, `wsl.exe` and a native node_modules. (SpacetimeDB itself is
-    // brought up by ensure-env inside WSL/CI, not required on the host PATH.)
-    const localIds = [
-      ...(HEADLESS ? [] : ['headed-display']),
-      ...(process.platform === 'win32' ? ['wsl-available', 'windows-node-modules'] : []),
-    ];
-    if (localIds.length > 0) envPreflight(localIds);
+    // local Vite. The id list lives in requirements.json
+    // (`tools.qa-harness-local.requires`): a display for headed Chromium
+    // (omitted under QA_HEADLESS=1 — a runtime flag, not an environment
+    // fact) and, via win32-only `platforms` declarations, `wsl.exe` and a
+    // native node_modules. (SpacetimeDB itself is brought up by ensure-env
+    // inside WSL/CI, not required on the host PATH.)
+    envPreflight('qa-harness-local', HEADLESS ? ['headed-display'] : []);
     await ensureEnv({ publish: process.argv.includes('--publish') });
   }
 

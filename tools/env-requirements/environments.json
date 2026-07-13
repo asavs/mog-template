@@ -1,0 +1,60 @@
+{
+  "environments": {
+    "windows-native": {
+      "label": "Windows host (PowerShell / Git Bash)",
+      "platform": "win32",
+      "description": "The Windows dev machine itself — where the QA harness, gh, and gcloud normally run.",
+      "capabilities": [
+        "gh-cli",
+        "gh-auth",
+        "gcloud-cli",
+        "gcloud-auth",
+        "headed-display",
+        "windows-node-modules",
+        "wsl-available",
+        "lfs-real-assets"
+      ],
+      "notes": "gcloud's ssh transport here is PuTTY/plink, so heredoc-over-ssh deploy steps break (openssh-not-plink is unsatisfiable on this host); the SpacetimeDB CLI is Linux-only and lives inside WSL instead of on this PATH."
+    },
+    "wsl": {
+      "label": "WSL2 Ubuntu",
+      "platform": "linux",
+      "description": "The Ubuntu distro under WSL2 on the dev machine — hosts the harness's isolated SpacetimeDB and is the documented OpenSSH path for manual preview deploys.",
+      "capabilities": [
+        "spacetime-cli",
+        "gcloud-cli",
+        "gcloud-auth",
+        "headed-display",
+        "lfs-real-assets",
+        "openssh-not-plink"
+      ],
+      "notes": "gh is not installed here — PR-targeting flows run from the Windows host or CI. headed-display needs WSLg or an exported DISPLAY."
+    },
+    "ci-runner": {
+      "label": "GitHub Actions (ubuntu-latest)",
+      "platform": "linux",
+      "description": "Hosted CI runner — gh and gcloud preinstalled, gh auth via GITHUB_TOKEN, gcloud auth via Workload Identity Federation, headed Chromium via xvfb-run.",
+      "capabilities": [
+        "gh-cli",
+        "gh-auth",
+        "gcloud-cli",
+        "gcloud-auth",
+        "spacetime-cli",
+        "headed-display",
+        "lfs-real-assets",
+        "openssh-not-plink"
+      ],
+      "notes": "No GPU: headed Chromium renders via SwiftShader, so CI runs structural checks only (see ci.yml's browser-playtest job)."
+    },
+    "preview-vm": {
+      "label": "Preview VM (lean Debian runtime)",
+      "platform": "linux",
+      "description": "The ephemeral mog-pr-<N> deploy TARGET — runs SpacetimeDB + nginx and nearly nothing else; deploys are pushed TO it, tools are not run FROM it.",
+      "capabilities": [
+        "spacetime-cli",
+        "openssh-not-plink"
+      ],
+      "notes": "The SpacetimeDB CLI lives under /stdb (owned by the spacetimedb user), not on the SSH user's PATH; there is no git checkout, node, gh, or gcloud on the box."
+    }
+  }
+}
