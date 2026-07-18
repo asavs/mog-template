@@ -59,6 +59,21 @@ export type MemorySample = {
   jsHeapSizeLimit: number;
 };
 
+/**
+ * One SpacetimeDB WebSocket frame seen by the harness meter (perf-collectors.ts
+ * wraps window.WebSocket before app scripts run). `dir` is 'in' for a frame the
+ * page received, 'out' for one it sent; `bytes` is the payload size. Every frame
+ * on the game socket is counted, not player_transform specifically — for #21 the
+ * signal is the rate delta between phases (an AFK observer's inbound rate with a
+ * mover idle vs walking, and a mover's outbound rate idle vs moving).
+ */
+export type WsMessageRecord = {
+  t: number;
+  phase: string;
+  dir: 'in' | 'out';
+  bytes: number;
+};
+
 /** One performance resource-timing entry, snapshotted at collection time. */
 export type ResourceEntry = {
   name: string;
@@ -95,6 +110,8 @@ export type PerfData = {
   perfStartedAt: number;
   longTasks: LongTaskRecord[];
   memorySamples: MemorySample[];
+  /** SpacetimeDB WebSocket frames in/out, phase-tagged (see WsMessageRecord). */
+  wsMessages: WsMessageRecord[];
   resources: ResourceEntry[];
   landmarks?: LoadLandmarks;
 };
