@@ -34,6 +34,7 @@ export function installPerfCollectors() {
   // seconds session.
   const CAP_LONGTASK = 20000;
   const CAP_MEMORY = 4000;
+  const CAP_WS = 100000;
   const RESOURCE_BUFFER = 5000;
 
   const phase = () => w.__qaPhase ?? 'startup';
@@ -48,6 +49,7 @@ export function installPerfCollectors() {
       totalJSHeapSize: number;
       jsHeapSizeLimit: number;
     }>,
+    wsMessages: [] as Array<{ t: number; phase: string; dir: 'in' | 'out'; bytes: number }>,
   };
   w.__qaPerf = perf;
 
@@ -102,6 +104,46 @@ export function installPerfCollectors() {
       });
     }, 1000);
   }
+
+  // SpacetimeDB WebSocket meter. Wrapping window.WebSocket here — before any app
+  // script runs — lets us count frames in/out on the game socket without touching
+  // game code. This is #21's substrate: inbound rate on an AFK observer is the
+  // transform-receive churn (#5), outbound rate on a mover is the input send rate
+  // (#6). Every game-socket frame is counted (not player_transform alone), so the
+  // signal is the delta between phases (mover_idle vs mover_walk). The URL filter
+  // excludes the Vite HMR socket in dev.
+  try {
+    const NativeWebSocket = window.WebSocket;
+    type WsCtor = new (url: string | URL, protocols?: string | string[]) => WebSocket;
+    const isGameSocket = (url: string) => /\/database\//.test(url) || /\/subscribe/.test(url);
+    const sizeOf = (data: unknown): number => {
+      if (typeof data === 'string') return data.length;
+      if (data instanceof ArrayBuffer) return data.byteLength;
+      if (ArrayBuffer.isView(data)) return (data as ArrayBufferView).byteLength;
+      if (typeof Blob !== 'undefined' && data instanceof Blob) return data.size;
+      return 0;
+    };
+    const record = (dir: 'in' | 'out', bytes: number) => {
+      if (perf.wsMessages.length >= CAP_WS) return;
+      perf.wsMessages.push({ t: performance.now(), phase: phase(), dir, bytes });
+    };
+
+    class MeteredWebSocket extends (NativeWebSocket as WsCtor) {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        if (isGameSocket(typeof url === 'string' ? url : url.toString())) {
+          this.addEventListener('message', (ev) => record('in', sizeOf((ev as MessageEvent).data)));
+        }
+      }
+      send(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+        if (isGameSocket(this.url)) record('out', sizeOf(data));
+        super.send(data as Parameters<WebSocket['send']>[0]);
+      }
+    }
+    (window as unknown as { WebSocket: WsCtor }).WebSocket = MeteredWebSocket as unknown as WsCtor;
+  } catch {
+    /* WebSocket unavailable or not subclassable — leave wsMessages empty rather than throw */
+  }
 }
 
 /**
@@ -120,10 +162,16 @@ export async function collectPerf(page: Page): Promise<PerfData> {
         totalJSHeapSize: number;
         jsHeapSizeLimit: number;
       }>;
+      wsMessages: Array<{ t: number; phase: string; dir: 'in' | 'out'; bytes: number }>;
     };
 
     const w = window as unknown as { __qaPerf?: PerfInPage };
-    const perf: PerfInPage = w.__qaPerf ?? { perfStartedAt: 0, longTasks: [], memorySamples: [] };
+    const perf: PerfInPage = w.__qaPerf ?? {
+      perfStartedAt: 0,
+      longTasks: [],
+      memorySamples: [],
+      wsMessages: [],
+    };
 
     const resources = (performance.getEntriesByType('resource') as PerformanceResourceTiming[]).map((r) => ({
       name: r.name,

@@ -4,7 +4,7 @@
  * are derived here from the frame trace (each frame carries t + phase) rather
  * than from a second parallel per-frame stream.
  *
- * Purely descriptive � no thresholds, no pass/fail. See README perf section.
+ * Purely descriptive � no thresholds, no pass/fail. See README perf section.
  */
 import type { PerfData, ResourceEntry, RunData, TraceRecord } from './trace-types';
 
@@ -140,6 +140,78 @@ export function summarizePerfByPhase(run: RunData): PerfPhaseSummary[] {
       heapStartMB: heapStart,
       heapEndMB: heapEnd,
       heapGrowthMB: heapStart !== null && heapEnd !== null ? heapEnd - heapStart : null,
+    };
+  });
+}
+
+export type WsPhaseRate = {
+  phase: string;
+  durationMs: number;
+  inCount: number;
+  outCount: number;
+  inBytes: number;
+  outBytes: number;
+  /** Inbound frames/sec — on an AFK observer this is the transform-receive churn (#5). */
+  inHz: number;
+  /** Outbound frames/sec — on a mover this is the input send rate (#6). */
+  outHz: number;
+  inBytesPerSec: number;
+  outBytesPerSec: number;
+};
+
+/** Per-phase wall-clock spans (performance.now ms) from the frame trace. */
+function phaseSpans(frames: TraceRecord[]): Map<string, { start: number; end: number }> {
+  const spans = new Map<string, { start: number; end: number }>();
+  for (const f of frames) {
+    const s = spans.get(f.phase);
+    if (!s) spans.set(f.phase, { start: f.t, end: f.t });
+    else {
+      if (f.t < s.start) s.start = f.t;
+      if (f.t > s.end) s.end = f.t;
+    }
+  }
+  return spans;
+}
+
+/**
+ * Per-phase SpacetimeDB WebSocket rates from the WS meter (perf-collectors.ts).
+ * Phase duration is the phase's wall-clock span from the frame trace; if a phase
+ * has <2 frames the ws timestamps are used as a fallback so a rate still reports.
+ * This is the #21 measurement surface — the same run yields an AFK observer's
+ * inbound churn (inHz) and a mover's input send rate (outHz); the acceptance
+ * signal is the delta between an idle phase and a moving phase.
+ */
+export function summarizeWsByPhase(run: RunData): WsPhaseRate[] {
+  const { frames, perf } = run;
+  const msgs = perf?.wsMessages ?? [];
+  const spans = phaseSpans(frames);
+  const order = phaseOrder(frames);
+  // Include ws-only phases (no frames) at the end, preserving first-seen order.
+  for (const m of msgs) if (!order.includes(m.phase)) order.push(m.phase);
+
+  return order.map((phase) => {
+    const inMsgs = msgs.filter((m) => m.phase === phase && m.dir === 'in');
+    const outMsgs = msgs.filter((m) => m.phase === phase && m.dir === 'out');
+    const span = spans.get(phase);
+    let durationMs = span ? span.end - span.start : 0;
+    if (durationMs <= 0) {
+      const ts = [...inMsgs, ...outMsgs].map((m) => m.t);
+      durationMs = ts.length >= 2 ? Math.max(...ts) - Math.min(...ts) : 0;
+    }
+    const secs = durationMs > 0 ? durationMs / 1000 : 0;
+    const inBytes = inMsgs.reduce((a, m) => a + m.bytes, 0);
+    const outBytes = outMsgs.reduce((a, m) => a + m.bytes, 0);
+    return {
+      phase,
+      durationMs,
+      inCount: inMsgs.length,
+      outCount: outMsgs.length,
+      inBytes,
+      outBytes,
+      inHz: secs > 0 ? inMsgs.length / secs : 0,
+      outHz: secs > 0 ? outMsgs.length / secs : 0,
+      inBytesPerSec: secs > 0 ? inBytes / secs : 0,
+      outBytesPerSec: secs > 0 ? outBytes / secs : 0,
     };
   });
 }

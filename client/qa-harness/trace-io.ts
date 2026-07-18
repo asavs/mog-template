@@ -20,6 +20,7 @@ import type {
   RunData,
   RunMeta,
   TraceRecord,
+  WsMessageRecord,
 } from './trace-types';
 
 type NdjsonLine =
@@ -33,6 +34,7 @@ type NdjsonLine =
   | { type: 'perfmeta'; perfStartedAt: number; landmarks?: LoadLandmarks }
   | ({ type: 'longtask' } & LongTaskRecord)
   | ({ type: 'memory' } & MemorySample)
+  | ({ type: 'wsmessage' } & WsMessageRecord)
   | ({ type: 'resource' } & ResourceEntry);
 
 export function writeRunNdjson(filePath: string, run: RunData): void {
@@ -51,6 +53,7 @@ export function writeRunNdjson(filePath: string, run: RunData): void {
     });
     lines.push(...run.perf.longTasks.map((lt): NdjsonLine => ({ type: 'longtask', ...lt })));
     lines.push(...run.perf.memorySamples.map((m): NdjsonLine => ({ type: 'memory', ...m })));
+    lines.push(...run.perf.wsMessages.map((m): NdjsonLine => ({ type: 'wsmessage', ...m })));
     lines.push(...run.perf.resources.map((r): NdjsonLine => ({ type: 'resource', ...r })));
   }
 
@@ -103,7 +106,7 @@ export function readRun(filePath: string): RunData {
   const events: InputEvent[] = [];
   let perf: PerfData | null = null;
   const ensurePerf = (): PerfData => {
-    if (!perf) perf = { perfStartedAt: 0, longTasks: [], memorySamples: [], resources: [] };
+    if (!perf) perf = { perfStartedAt: 0, longTasks: [], memorySamples: [], wsMessages: [], resources: [] };
     return perf;
   };
   for (const line of raw.split('\n')) {
@@ -127,6 +130,9 @@ export function readRun(filePath: string): RunData {
         break;
       case 'memory':
         ensurePerf().memorySamples.push(stripType(rec));
+        break;
+      case 'wsmessage':
+        ensurePerf().wsMessages.push(stripType(rec));
         break;
       case 'resource':
         ensurePerf().resources.push(stripType(rec));

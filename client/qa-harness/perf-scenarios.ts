@@ -18,6 +18,7 @@
  */
 import type { Browser, Page } from 'playwright';
 import type { CharacterClass, LoadLandmarks, RunData } from './trace-types';
+import { summarizeWsByPhase } from './perf-stats';
 import {
   acquirePointerLock,
   captureChromeTrace,
@@ -318,6 +319,27 @@ async function runRemoteMotion(
     const runB = await collectRun(botB, scfg);
     runsBySession.set(botA, runA);
     runsBySession.set(botB, runB);
+
+    // #21 headline: the WS meter turns this observe-a-mover run into the
+    // idle-transform / input-policy measurement. Observer A's inbound rate is
+    // the transform-receive churn; mover B's outbound rate is the input send
+    // rate. The signal is the idle→walk delta on each.
+    const wsA = summarizeWsByPhase(runA);
+    const wsB = summarizeWsByPhase(runB);
+    const hz = (v: number | undefined) => (v === undefined ? '—' : v.toFixed(1));
+    const bps = (v: number | undefined) => (v === undefined ? '—' : v.toFixed(0));
+    const aIdle = wsA.find((w) => w.phase === 'remote_baseline');
+    const aWalk = wsA.find((w) => w.phase === 'remote_motion');
+    const bIdle = wsB.find((w) => w.phase === 'remote_baseline');
+    const bWalk = wsB.find((w) => w.phase === 'remote_walk');
+    notes.push(
+      `#21 observer(A) inbound: idle ${hz(aIdle?.inHz)}Hz → walk ${hz(aWalk?.inHz)}Hz ` +
+        `(bytes/s ${bps(aIdle?.inBytesPerSec)} → ${bps(aWalk?.inBytesPerSec)}) — idle rate ≈0 means no tick-rate transform churn`,
+    );
+    notes.push(
+      `#21 mover(B) outbound: idle ${hz(bIdle?.outHz)}Hz → walk ${hz(bWalk?.outHz)}Hz — idle ≈0 with moving sustained is the #6 input policy`,
+    );
+
     return [runA, runB];
   } catch (err) {
     for (const session of sessions) await saveFailureDiagnostics(session, scfg);
