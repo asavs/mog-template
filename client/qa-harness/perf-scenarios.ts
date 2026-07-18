@@ -294,6 +294,14 @@ async function runRemoteMotion(
     await joinAs(botB, scfg);
     await waitForRenderLoop(botB.page, scfg.joinTimeoutMs);
 
+    // The mover must hold pointer lock or its movement never happens: keydowns are
+    // ignored unless document.pointerLockElement === document.body (useInputManager,
+    // useLocalPlayerControls). Without this the "walk" phase moves nobody — the
+    // remote stays put (maxRemoteJumpUnits 0) and no transform traffic is published,
+    // which silently made #21's measurement meaningless. The observer (A) stays AFK
+    // and unlocked by design.
+    await acquirePointerLock(botB.page);
+
     // Baseline while both stand still.
     await setPhase(botB.page, 'remote_baseline');
     await tracedPhase(botA, scfg, 'remote_baseline', () => botA.page.waitForTimeout(BASELINE_MS));
