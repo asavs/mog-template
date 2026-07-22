@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import type { InputState, MovementState, PlayerTransform } from '../generated/types';
+import type { InputState, MovementState, PlayerInputAck, PlayerTransform } from '../generated/types';
 import { terrainHeightAt } from '../heightmap';
 import { simulateMovementTick, type LocomotionState } from '../movement';
 import { createMetrics } from '../netcode';
@@ -12,6 +12,11 @@ import {
 
 const IDENTITY = { toHexString: () => 'local-player' };
 const RECONCILIATION_EPSILON_METERS = 0.12;
+
+type AuthoritySnapshot = {
+  transform: PlayerTransform;
+  ack: PlayerInputAck;
+};
 
 function input(sequence: number, fields: Partial<InputState> = {}): InputState {
   return {
@@ -37,21 +42,31 @@ function initialMovementState(): MovementState {
   };
 }
 
-function transformFromState(state: FakeServerState): PlayerTransform {
+function authorityFromState(state: FakeServerState): AuthoritySnapshot {
   return {
-    identity: IDENTITY,
-    position: { x: state.position.x, y: state.position.y, z: state.position.z },
-    rotationY: state.rotationY,
-    isMoving: state.latestInput.forward || state.latestInput.backward || state.latestInput.left || state.latestInput.right,
-    movementState: { ...state.movementState },
-    lastInputSeq: state.latestInput.sequence,
-    lastProcessedClientTick: state.latestInput.clientTick,
-    serverTick: BigInt(state.serverTick),
-    updatedAt: {} as PlayerTransform['updatedAt'],
-  } as PlayerTransform;
+    transform: {
+      identity: IDENTITY,
+      position: { x: state.position.x, y: state.position.y, z: state.position.z },
+      rotationY: state.rotationY,
+      isMoving: state.latestInput.forward || state.latestInput.backward || state.latestInput.left || state.latestInput.right,
+      movementState: { ...state.movementState },
+      serverTick: BigInt(state.serverTick),
+      updatedAt: {} as PlayerTransform['updatedAt'],
+    } as PlayerTransform,
+    ack: {
+      identity: IDENTITY,
+      lastInputSeq: state.latestInput.sequence,
+      lastProcessedClientTick: state.latestInput.clientTick,
+      serverTick: BigInt(state.serverTick),
+    } as PlayerInputAck,
+  };
 }
 
-function transformFromPosition({
+function transformFromState(state: FakeServerState): PlayerTransform {
+  return authorityFromState(state).transform;
+}
+
+function authorityFromPosition({
   clientTick,
   inputSeq,
   movementState,
@@ -65,18 +80,46 @@ function transformFromPosition({
   position: THREE.Vector3;
   rotationY?: number;
   serverTick: number;
-}): PlayerTransform {
+}): AuthoritySnapshot {
   return {
-    identity: IDENTITY,
-    position: { x: position.x, y: position.y, z: position.z },
-    rotationY,
-    isMoving: false,
-    movementState: { ...movementState },
-    lastInputSeq: inputSeq,
-    lastProcessedClientTick: clientTick,
-    serverTick: BigInt(serverTick),
-    updatedAt: {} as PlayerTransform['updatedAt'],
-  } as PlayerTransform;
+    transform: {
+      identity: IDENTITY,
+      position: { x: position.x, y: position.y, z: position.z },
+      rotationY,
+      isMoving: false,
+      movementState: { ...movementState },
+      serverTick: BigInt(serverTick),
+      updatedAt: {} as PlayerTransform['updatedAt'],
+    } as PlayerTransform,
+    ack: {
+      identity: IDENTITY,
+      lastInputSeq: inputSeq,
+      lastProcessedClientTick: clientTick,
+      serverTick: BigInt(serverTick),
+    } as PlayerInputAck,
+  };
+}
+
+function transformFromPosition(args: {
+  clientTick: number;
+  inputSeq: number;
+  movementState: MovementState;
+  position: THREE.Vector3;
+  rotationY?: number;
+  serverTick: number;
+}): PlayerTransform {
+  return authorityFromPosition(args).transform;
+}
+
+function ackFromPosition(args: {
+  clientTick: number;
+  inputSeq: number;
+  movementState: MovementState;
+  position: THREE.Vector3;
+  rotationY?: number;
+  serverTick: number;
+}): PlayerInputAck {
+  return authorityFromPosition(args).ack;
 }
 
 class FakeServerState {
@@ -134,16 +177,19 @@ function runScenario(inputsByTick: (tick: number) => InputState, latencyTicks: n
   const server = new FakeServerState();
   const { runtime } = createRuntime();
   const metrics = createMetrics();
-  const snapshots: Array<{ deliverTick: number; transform: PlayerTransform }> = [
-    { deliverTick: 0, transform: transformFromState(server) },
+  const snapshots: Array<{ deliverTick: number; authority: AuthoritySnapshot }> = [
+    { deliverTick: 0, authority: authorityFromState(server) },
   ];
   const authoritativeByTick = new Map<number, THREE.Vector3>([[0, server.position.clone()]]);
   let latestTransform: PlayerTransform | undefined;
+  let latestInputAck: PlayerInputAck | undefined;
 
   for (let tick = 0; tick < 90; tick += 1) {
     const delivered = snapshots.filter(snapshot => snapshot.deliverTick === tick);
     if (delivered.length > 0) {
-      latestTransform = delivered[delivered.length - 1].transform;
+      const authority = delivered[delivered.length - 1].authority;
+      latestTransform = authority.transform;
+      latestInputAck = authority.ack;
     }
 
     const currentInput = inputsByTick(tick + 1);
@@ -153,6 +199,7 @@ function runScenario(inputsByTick: (tick: number) => InputState, latencyTicks: n
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
 
@@ -161,7 +208,7 @@ function runScenario(inputsByTick: (tick: number) => InputState, latencyTicks: n
     authoritativeByTick.set(server.serverTick, server.position.clone());
     snapshots.push({
       deliverTick: tick + latencyTicks + 1,
-      transform: transformFromState(server),
+      authority: authorityFromState(server),
     });
 
     const debug = runtime.getPredictionDebugState();
@@ -176,6 +223,7 @@ function runScenario(inputsByTick: (tick: number) => InputState, latencyTicks: n
 
 function replayFromAcknowledgement(
   latestTransform: PlayerTransform,
+  latestInputAck: PlayerInputAck,
   sentInputsByClientTick: Map<number, { input: InputState; rotationY: number }>,
   currentClientTick: number,
 ): THREE.Vector3 {
@@ -188,7 +236,7 @@ function replayFromAcknowledgement(
   let replayVerticalVelocity = latestTransform.movementState.isGrounded ? 0 : 0;
   let replayJumpWasPressed = false;
 
-  for (let clientTick = latestTransform.lastProcessedClientTick + 1; clientTick <= currentClientTick; clientTick += 1) {
+  for (let clientTick = latestInputAck.lastProcessedClientTick + 1; clientTick <= currentClientTick; clientTick += 1) {
     const pending = sentInputsByClientTick.get(clientTick);
     if (!pending) continue;
 
@@ -227,15 +275,18 @@ function runDelayedInputScenario({
   const metrics = createMetrics();
   const sentInputsByClientTick = new Map<number, { input: InputState; rotationY: number }>();
   const inputCommands: Array<{ deliverTick: number; input: InputState; rotationY: number }> = [];
-  const snapshots: Array<{ deliverTick: number; transform: PlayerTransform }> = [
-    { deliverTick: 0, transform: transformFromState(server) },
+  const snapshots: Array<{ deliverTick: number; authority: AuthoritySnapshot }> = [
+    { deliverTick: 0, authority: authorityFromState(server) },
   ];
   let latestTransform: PlayerTransform | undefined;
+  let latestInputAck: PlayerInputAck | undefined;
 
   for (let tick = 0; tick < ticks; tick += 1) {
     const deliveredSnapshots = snapshots.filter(snapshot => snapshot.deliverTick === tick);
     if (deliveredSnapshots.length > 0) {
-      latestTransform = deliveredSnapshots[deliveredSnapshots.length - 1].transform;
+      const authority = deliveredSnapshots[deliveredSnapshots.length - 1].authority;
+      latestTransform = authority.transform;
+      latestInputAck = authority.ack;
     }
 
     const currentInput = inputsByTick(tick + 1);
@@ -248,6 +299,7 @@ function runDelayedInputScenario({
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
     sentInputsByClientTick.set(currentInput.clientTick, {
@@ -255,16 +307,17 @@ function runDelayedInputScenario({
       rotationY,
     });
 
-    if (latestTransform) {
+    if (latestTransform && latestInputAck) {
       const expectedPosition = replayFromAcknowledgement(
         latestTransform,
+        latestInputAck,
         sentInputsByClientTick,
         currentInput.clientTick,
       );
       const debug = runtime.getPredictionDebugState();
       expect(debug.localPosition.distanceTo(expectedPosition)).toBeLessThan(RECONCILIATION_EPSILON_METERS);
-      expect(metrics.acknowledgedInputSeq).toBe(latestTransform.lastInputSeq);
-      expect(metrics.acknowledgedClientTick).toBe(latestTransform.lastProcessedClientTick);
+      expect(metrics.acknowledgedInputSeq).toBe(latestInputAck.lastInputSeq);
+      expect(metrics.acknowledgedClientTick).toBe(latestInputAck.lastProcessedClientTick);
       expect(metrics.latestServerTick).toBe(Number(latestTransform.serverTick));
       expect(metrics.localTick).toBe(debug.localTick);
     }
@@ -281,7 +334,7 @@ function runDelayedInputScenario({
     server.step();
     snapshots.push({
       deliverTick: tick + transformLatencyTicks + 1,
-      transform: transformFromState(server),
+      authority: authorityFromState(server),
     });
   }
 }
@@ -325,6 +378,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(),
       serverTick: 0,
     });
+    let latestInputAck = ackFromPosition({
+      clientTick: 0,
+      inputSeq: 0,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(),
+      serverTick: 0,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -332,6 +392,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
 
@@ -342,10 +403,20 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
 
     latestTransform = transformFromPosition({
+      clientTick: currentInput.clientTick,
+      inputSeq: currentInput.sequence + 1,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(-0.5, 0, 0),
+      serverTick: 1,
+    });
+
+
+    latestInputAck = ackFromPosition({
       clientTick: currentInput.clientTick,
       inputSeq: currentInput.sequence + 1,
       movementState: initialMovementState(),
@@ -358,6 +429,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
 
@@ -387,6 +459,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: startPosition,
       serverTick: 100,
     });
+    const initialTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: startPosition,
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -394,6 +473,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: initialTransform,
+      latestInputAck: initialTransformAck,
       metrics,
     });
 
@@ -404,6 +484,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 
@@ -425,6 +506,19 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: authoritativePosition,
       serverTick: 101,
     });
+    const ackTransformAck = ackFromPosition({
+      clientTick: 101,
+      inputSeq: 100,
+      movementState: {
+        isGrounded: false,
+        wasGrounded: true,
+        isAirborne: true,
+        sprintIntent: false,
+        sprintActive: false,
+      },
+      position: authoritativePosition,
+      serverTick: 101,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -432,6 +526,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: ackTransform,
+      latestInputAck: ackTransformAck,
       metrics,
     });
 
@@ -462,6 +557,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
         position: startPosition,
         serverTick: 200,
       }),
+      latestInputAck: ackFromPosition({
+        clientTick: 200,
+        inputSeq: 200,
+        movementState: initialMovementState(),
+        position: startPosition,
+        serverTick: 200,
+      }),
       metrics,
     });
 
@@ -474,6 +576,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
         isDead: false,
         jumpAnimationDurationMs: 500,
         latestTransform: undefined,
+      latestInputAck: undefined,
         metrics,
       });
     }
@@ -491,6 +594,19 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: transformFromPosition({
+        clientTick: currentInput.clientTick,
+        inputSeq: currentInput.sequence,
+        movementState: {
+          isGrounded: false,
+          wasGrounded: false,
+          isAirborne: true,
+          sprintIntent: false,
+          sprintActive: false,
+        },
+        position: replayPosition,
+        serverTick: 220,
+      }),
+      latestInputAck: ackFromPosition({
         clientTick: currentInput.clientTick,
         inputSeq: currentInput.sequence,
         movementState: {
@@ -526,6 +642,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: startPosition,
       serverTick: 100,
     });
+    const initialTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: startPosition,
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -533,6 +656,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: initialTransform,
+      latestInputAck: initialTransformAck,
       metrics,
     });
 
@@ -544,6 +668,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 
@@ -559,6 +684,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: transformFromPosition({
+        clientTick: 101,
+        inputSeq: 100,
+        movementState: initialMovementState(),
+        position: authoritativePosition,
+        serverTick: 101,
+      }),
+      latestInputAck: ackFromPosition({
         clientTick: 101,
         inputSeq: 100,
         movementState: initialMovementState(),
@@ -594,6 +726,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
         position: startPosition,
         serverTick: 100,
       }),
+      latestInputAck: ackFromPosition({
+        clientTick: 100,
+        inputSeq: 100,
+        movementState: initialMovementState(),
+        position: startPosition,
+        serverTick: 100,
+      }),
       metrics,
     });
 
@@ -603,6 +742,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 
@@ -616,6 +756,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: transformFromPosition({
+        clientTick: 101,
+        inputSeq: 100,
+        movementState: initialMovementState(),
+        position: authoritativePosition,
+        serverTick: 101,
+      }),
+      latestInputAck: ackFromPosition({
         clientTick: 101,
         inputSeq: 100,
         movementState: initialMovementState(),
@@ -644,6 +791,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: startPosition,
       serverTick: 100,
     });
+    const initialTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: startPosition,
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -651,6 +805,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: initialTransform,
+      latestInputAck: initialTransformAck,
       metrics,
     });
 
@@ -662,6 +817,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 
@@ -684,6 +840,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: transformFromPosition({
+        clientTick: 100,
+        inputSeq: 100,
+        movementState: airborneState,
+        position: newerServerPosition,
+        serverTick: 101,
+      }),
+      latestInputAck: ackFromPosition({
         clientTick: 100,
         inputSeq: 100,
         movementState: airborneState,
@@ -794,6 +957,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(),
       serverTick: 100,
     });
+    const initialTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(),
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -801,6 +971,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: initialTransform,
+      latestInputAck: initialTransformAck,
       metrics,
     });
 
@@ -812,6 +983,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 
@@ -832,6 +1004,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(),
       serverTick: 100,
     });
+    const initialTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(),
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -839,6 +1018,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: initialTransform,
+      latestInputAck: initialTransformAck,
       metrics,
     });
 
@@ -850,11 +1030,19 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 
     const predicted = runtime.getPredictionDebugState();
     const ackTransform = transformFromPosition({
+      clientTick: 151,
+      inputSeq: 101,
+      movementState: predicted.movementState ?? initialMovementState(),
+      position: predicted.localPosition,
+      serverTick: 101,
+    });
+    const ackTransformAck = ackFromPosition({
       clientTick: 151,
       inputSeq: 101,
       movementState: predicted.movementState ?? initialMovementState(),
@@ -868,6 +1056,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: ackTransform,
+      latestInputAck: ackTransformAck,
       metrics,
     });
 
@@ -888,6 +1077,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(3, 0, 4),
       serverTick: 100,
     });
+    const latestInputAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 120,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(3, 0, 4),
+      serverTick: 100,
+    });
 
     for (let frame = 0; frame < 600; frame += 1) {
       runtime.runFrame({
@@ -896,6 +1092,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
         isDead: true,
         jumpAnimationDurationMs: 500,
         latestTransform,
+        latestInputAck,
         metrics,
       });
     }
@@ -921,6 +1118,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(),
       serverTick: 100,
     });
+    const initialTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(),
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -928,6 +1132,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: initialTransform,
+      latestInputAck: initialTransformAck,
       metrics,
     });
 
@@ -938,11 +1143,19 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
     expect(runtime.getPredictionDebugState().predictedTickCount).toBeGreaterThan(0);
 
     const deathTransform = transformFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(10, 0, -2),
+      serverTick: 101,
+    });
+    const deathTransformAck = ackFromPosition({
       clientTick: 100,
       inputSeq: 100,
       movementState: initialMovementState(),
@@ -956,6 +1169,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: true,
       jumpAnimationDurationMs: 500,
       latestTransform: deathTransform,
+      latestInputAck: deathTransformAck,
       metrics,
     });
 
@@ -977,6 +1191,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(),
       serverTick: 100,
     });
+    const latestInputAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 100,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(),
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -984,6 +1205,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
 
@@ -994,6 +1216,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform,
+      latestInputAck,
       metrics,
     });
 
@@ -1014,6 +1237,13 @@ describe('LocalPlayerRuntime tick prediction', () => {
       position: new THREE.Vector3(1, 0, 1),
       serverTick: 100,
     });
+    const deathTransformAck = ackFromPosition({
+      clientTick: 100,
+      inputSeq: 120,
+      movementState: initialMovementState(),
+      position: new THREE.Vector3(1, 0, 1),
+      serverTick: 100,
+    });
 
     runtime.runFrame({
       currentInput,
@@ -1021,6 +1251,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: true,
       jumpAnimationDurationMs: 500,
       latestTransform: deathTransform,
+      latestInputAck: deathTransformAck,
       metrics,
     });
 
@@ -1030,6 +1261,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       isDead: false,
       jumpAnimationDurationMs: 500,
       latestTransform: undefined,
+      latestInputAck: undefined,
       metrics,
     });
 

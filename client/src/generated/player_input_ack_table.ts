@@ -9,22 +9,11 @@ import {
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
 } from "spacetimedb";
-import {
-  Vector3,
-  MovementState,
-} from "./types";
 
 
 export default __t.row({
   identity: __t.identity().primaryKey(),
-  get position() {
-    return Vector3;
-  },
-  rotationY: __t.f32().name("rotation_y"),
-  isMoving: __t.bool().name("is_moving"),
-  get movementState() {
-    return MovementState.name("movement_state");
-  },
+  lastInputSeq: __t.u32().name("last_input_seq"),
+  lastProcessedClientTick: __t.u32().name("last_processed_client_tick"),
   serverTick: __t.u64().name("server_tick"),
-  updatedAt: __t.timestamp().name("updated_at"),
 });

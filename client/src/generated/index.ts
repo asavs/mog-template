@@ -58,6 +58,7 @@ import PlayerActionStateRow from "./player_action_state_table";
 import PlayerAnimationRow from "./player_animation_table";
 import PlayerCharacterRow from "./player_character_table";
 import PlayerHealthRow from "./player_health_table";
+import PlayerInputAckRow from "./player_input_ack_table";
 import PlayerTransformRow from "./player_transform_table";
 import SpellEventRow from "./spell_event_table";
 
@@ -170,6 +171,17 @@ const tablesSchema = __schema({
       { name: 'player_health_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerHealthRow),
+  player_input_ack: __table({
+    name: 'player_input_ack',
+    indexes: [
+      { accessor: 'identity', name: 'player_input_ack_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'player_input_ack_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, PlayerInputAckRow),
   player_transform: __table({
     name: 'player_transform',
     indexes: [

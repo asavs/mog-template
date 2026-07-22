@@ -83,8 +83,9 @@ export function toSnapshot(transform: PlayerTransform, receivedAt = performance.
     rotationY: transform.rotationY,
     isMoving: transform.isMoving,
     movementState: { ...transform.movementState },
-    lastInputSeq: transform.lastInputSeq,
-    lastProcessedClientTick: transform.lastProcessedClientTick,
+    // Pose channel no longer carries acks (#16); remotes interpolate pose only.
+    lastInputSeq: 0,
+    lastProcessedClientTick: 0,
     serverTick: transform.serverTick,
   };
 }

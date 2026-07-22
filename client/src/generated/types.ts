@@ -217,6 +217,14 @@ export const PlayerSpellState = __t.object("PlayerSpellState", {
 });
 export type PlayerSpellState = __Infer<typeof PlayerSpellState>;
 
+export const PlayerInputAck = __t.object("PlayerInputAck", {
+  identity: __t.identity(),
+  lastInputSeq: __t.u32(),
+  lastProcessedClientTick: __t.u32(),
+  serverTick: __t.u64(),
+});
+export type PlayerInputAck = __Infer<typeof PlayerInputAck>;
+
 export const PlayerTransform = __t.object("PlayerTransform", {
   identity: __t.identity(),
   get position() {
@@ -227,8 +235,6 @@ export const PlayerTransform = __t.object("PlayerTransform", {
   get movementState() {
     return MovementState;
   },
-  lastInputSeq: __t.u32(),
-  lastProcessedClientTick: __t.u32(),
   serverTick: __t.u64(),
   updatedAt: __t.timestamp(),
 });

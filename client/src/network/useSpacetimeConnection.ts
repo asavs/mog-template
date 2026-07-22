@@ -19,6 +19,7 @@ const GAME_SUBSCRIPTIONS = [
   'SELECT * FROM player_animation',
   'SELECT * FROM player_character',
   'SELECT * FROM player_health',
+  'SELECT * FROM player_input_ack',
   'SELECT * FROM player_transform',
   'SELECT * FROM spell_event',
 ];

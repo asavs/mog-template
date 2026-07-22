@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, memo, type MutableRefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { InputState, PlayerData, PlayerTransform, Vector3 as GameVector3 } from '../generated/types';
+import type { InputState, PlayerData, PlayerInputAck, PlayerTransform, Vector3 as GameVector3 } from '../generated/types';
 import {
   type NetMetrics,
   type RenderTickClock,
@@ -58,6 +58,7 @@ export interface LocalPlayerProps extends SharedPlayerProps {
   currentInputRef: MutableRefObject<InputState>;
   rotationYRef: MutableRefObject<number>;
   latestTransformsRef: MutableRefObject<Map<string, PlayerTransform>>;
+  latestInputAcksRef: MutableRefObject<Map<string, PlayerInputAck>>;
   metricsRef: MutableRefObject<NetMetrics>;
 }
 
@@ -70,6 +71,7 @@ export type BasePlayerProps = SharedPlayerProps & {
   currentInputRef?: MutableRefObject<InputState>;
   groupRef: MutableRefObject<THREE.Group>;
   latestTransformsRef?: MutableRefObject<Map<string, PlayerTransform>>;
+  latestInputAcksRef?: MutableRefObject<Map<string, PlayerInputAck>>;
   metricsRef?: MutableRefObject<NetMetrics>;
   controlsRuntimeRef?: MutableRefObject<LocalPlayerControlsRuntime>;
   isLocalPlayer: boolean;
@@ -126,6 +128,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
   currentInputRef,
   localFrameRuntime,
   latestTransformsRef,
+  latestInputAcksRef,
   lightRef,
   metricsRef,
   actionRequestLockedUntilRef,
@@ -420,13 +423,14 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
     let movementAnimationDirection = movementAnimationDirectionRef.current;
 
     if (isLocalPlayer) {
-      if (!currentInputRef || !latestTransformsRef || !metricsRef) return;
+      if (!currentInputRef || !latestTransformsRef || !latestInputAcksRef || !metricsRef) return;
       const localFrame = localFrameRuntime?.runFrame({
         currentInput: currentInputRef.current,
         deltaSeconds: dt,
         isDead,
         jumpAnimationDurationMs: (animations[ANIMATIONS.JUMP]?.getClip()?.duration ?? 0.8) * 1000,
         latestTransform: latestTransformsRef.current.get(identityKey),
+        latestInputAck: latestInputAcksRef.current.get(identityKey),
         metrics: metricsRef.current,
       });
       if (!localFrame) return;

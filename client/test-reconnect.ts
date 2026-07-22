@@ -5,7 +5,7 @@ import {
   saveAuthToken,
   saveJoinPreferences,
 } from "./src/authStorage";
-import type { PlayerCharacter, PlayerData, PlayerHealth, PlayerTransform } from "./src/generated/types";
+import type { PlayerCharacter, PlayerData, PlayerHealth, PlayerInputAck, PlayerTransform } from "./src/generated/types";
 
 const STDB_URL = process.env.STDB_URL ?? "ws://127.0.0.1:3000";
 const STDB_DB_NAME = process.env.STDB_DB_NAME ?? "mog-game-v1";
@@ -67,11 +67,16 @@ function getTransform(conn: DbConnection, identity: Identity | undefined): Playe
   return Array.from(conn.db.player_transform.iter()).find(identityMatches(identity));
 }
 
+function getInputAck(conn: DbConnection, identity: Identity | undefined): PlayerInputAck | undefined {
+  return Array.from(conn.db.player_input_ack.iter()).find(identityMatches(identity));
+}
+
 async function subscribe(conn: DbConnection, queries = [
   "SELECT * FROM player",
   "SELECT * FROM player_health",
   "SELECT * FROM player_character",
   "SELECT * FROM player_transform",
+  "SELECT * FROM player_input_ack",
 ]) {
   await new Promise<void>((resolve) => {
     conn.subscriptionBuilder()
@@ -161,7 +166,8 @@ async function runTest() {
     });
     const movedTransform = await waitFor("movement before disconnect", () => {
       const transform = getTransform(conn1!, first.identity);
-      return transform && transform.lastInputSeq >= 1 ? transform : undefined;
+      const ack = getInputAck(conn1!, first.identity);
+      return transform && ack && ack.lastInputSeq >= 1 ? transform : undefined;
     });
     console.log(`Moved to z=${movedTransform.position.z.toFixed(3)} before disconnect`);
 
@@ -179,7 +185,8 @@ async function runTest() {
     });
     const settledTransform = await waitFor("settled movement before disconnect", () => {
       const transform = getTransform(conn1!, first.identity);
-      return transform && transform.lastInputSeq >= 2 ? transform : undefined;
+      const ack = getInputAck(conn1!, first.identity);
+      return transform && ack && ack.lastInputSeq >= 2 ? transform : undefined;
     });
     console.log(`Settled at z=${settledTransform.position.z.toFixed(3)} before disconnect`);
 

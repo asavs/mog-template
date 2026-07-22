@@ -1,6 +1,6 @@
 import { useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
-import type { InputState, MovementState, PlayerTransform } from '../generated/types';
+import type { InputState, MovementState, PlayerInputAck, PlayerTransform } from '../generated/types';
 import { sampleHeight, terrainHeightAt } from '../heightmap';
 import { createMovementState, isMoving, simulateMovementTick, type LocomotionState } from '../movement';
 import type { NetMetrics } from '../netcode';
@@ -54,6 +54,8 @@ type LocalPlayerFrameOptions = {
   lastReconciledSeqRef: MutableRefObject<number>;
   lastReconciledServerTickRef: MutableRefObject<PlayerTransform['serverTick'] | null>;
   latestTransform: PlayerTransform | undefined;
+  /** CSP acks from public `player_input_ack` (pose row is pose-only after #16). */
+  latestInputAck: PlayerInputAck | undefined;
   lightningAimDirectionRef: MutableRefObject<THREE.Vector3>;
   lightningAimPointRef: MutableRefObject<THREE.Vector3>;
   lightningHorizontalOffsetRef: MutableRefObject<THREE.Vector3>;
@@ -250,6 +252,7 @@ export class LocalPlayerRuntime {
     isDead,
     jumpAnimationDurationMs,
     latestTransform,
+    latestInputAck,
     metrics,
   }: {
     currentInput: InputState;
@@ -257,6 +260,7 @@ export class LocalPlayerRuntime {
     isDead: boolean;
     jumpAnimationDurationMs: number;
     latestTransform: PlayerTransform | undefined;
+    latestInputAck: PlayerInputAck | undefined;
     metrics: NetMetrics;
   }): LocalPlayerFrameResult {
     return runLocalPlayerFrame({
@@ -293,6 +297,7 @@ export class LocalPlayerRuntime {
       lastReconciledSeqRef: this.lastReconciledSeqRef,
       lastReconciledServerTickRef: this.lastReconciledServerTickRef,
       latestTransform,
+      latestInputAck,
       lightningAimDirectionRef: refValue(this.lightningAimDirection),
       lightningAimPointRef: refValue(this.lightningAimPoint),
       lightningHorizontalOffsetRef: refValue(this.lightningHorizontalOffset),
@@ -513,6 +518,7 @@ export function runLocalPlayerFrame({
   lastReconciledSeqRef,
   lastReconciledServerTickRef,
   latestTransform,
+  latestInputAck,
   lightningAimDirectionRef,
   lightningAimPointRef,
   lightningHorizontalOffsetRef,
@@ -570,6 +576,7 @@ export function runLocalPlayerFrame({
   }
 
   if (latestTransform && !initializedFromServerRef.current) {
+    const initAck = inputAckFields(latestInputAck);
     localPositionRef.current.set(
       latestTransform.position.x,
       latestTransform.position.y,
@@ -578,16 +585,16 @@ export function runLocalPlayerFrame({
     renderPositionRef.current.copy(localPositionRef.current);
     visualCorrectionOffsetRef.current.set(0, 0, 0);
     lastReconciledServerTickRef.current = latestTransform.serverTick;
-    lastReconciledClientTickRef.current = latestTransform.lastProcessedClientTick;
-    lastReconciledSeqRef.current = latestTransform.lastInputSeq;
-    metrics.lastSentClientTick = latestTransform.lastProcessedClientTick;
-    currentInputRef.current.sequence = Math.max(currentInputRef.current.sequence, latestTransform.lastInputSeq);
-    currentInputRef.current.clientTick = latestTransform.lastProcessedClientTick;
+    lastReconciledClientTickRef.current = initAck.lastProcessedClientTick;
+    lastReconciledSeqRef.current = initAck.lastInputSeq;
+    metrics.lastSentClientTick = initAck.lastProcessedClientTick;
+    currentInputRef.current.sequence = Math.max(currentInputRef.current.sequence, initAck.lastInputSeq);
+    currentInputRef.current.clientTick = initAck.lastProcessedClientTick;
     rotationYRef.current = latestTransform.rotationY;
     localRotationYRef.current = latestTransform.rotationY;
     localMovementStateRef.current = { ...latestTransform.movementState };
     localLocomotionStateRef.current = null;
-    localClientTickRef.current = latestTransform.lastProcessedClientTick;
+    localClientTickRef.current = initAck.lastProcessedClientTick;
     localTickRef.current = Number(latestTransform.serverTick);
     localVerticalVelocityRef.current = 0;
     localJumpWasPressedRef.current = false;
@@ -611,7 +618,7 @@ export function runLocalPlayerFrame({
         groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
         localClientTick: localClientTickRef.current,
         localTick: localTickRef.current,
-        acknowledgedClientTick: latestTransform.lastProcessedClientTick,
+        acknowledgedClientTick: initAck.lastProcessedClientTick,
         latestServerTick: Number(latestTransform.serverTick),
         verticalVelocity: localVerticalVelocityRef.current,
         jumpWasPressed: localJumpWasPressedRef.current,
@@ -628,6 +635,7 @@ export function runLocalPlayerFrame({
     if (latestTransform) {
       snapToServerTransform({
         latestTransform,
+        latestInputAck,
         currentInputRef,
         localPositionRef,
         localVerticalVelocityRef,
@@ -672,6 +680,7 @@ export function runLocalPlayerFrame({
   } else {
     reconcileLocalPrediction({
       latestTransform,
+      latestInputAck,
       lastReconciledClientTickRef,
       lastReconciledSeqRef,
       lastReconciledServerTickRef,
@@ -704,6 +713,7 @@ export function runLocalPlayerFrame({
       if (latestTransform) {
         snapToServerTransform({
           latestTransform,
+          latestInputAck,
           currentInputRef,
           localPositionRef,
           localVerticalVelocityRef,
@@ -996,8 +1006,19 @@ export function runLocalPlayerFrame({
   };
 }
 
+function inputAckFields(latestInputAck: PlayerInputAck | undefined): {
+  lastInputSeq: number;
+  lastProcessedClientTick: number;
+} {
+  return {
+    lastInputSeq: latestInputAck?.lastInputSeq ?? 0,
+    lastProcessedClientTick: latestInputAck?.lastProcessedClientTick ?? 0,
+  };
+}
+
 function reconcileLocalPrediction({
   latestTransform,
+  latestInputAck,
   lastReconciledClientTickRef,
   lastReconciledSeqRef,
   lastReconciledServerTickRef,
@@ -1017,6 +1038,7 @@ function reconcileLocalPrediction({
   jumpDebugFrame,
 }: {
   latestTransform: PlayerTransform | undefined;
+  latestInputAck: PlayerInputAck | undefined;
   lastReconciledClientTickRef: MutableRefObject<number>;
   lastReconciledSeqRef: MutableRefObject<number>;
   lastReconciledServerTickRef: MutableRefObject<PlayerTransform['serverTick'] | null>;
@@ -1038,8 +1060,8 @@ function reconcileLocalPrediction({
   if (!latestTransform) return;
 
   const lastReconciledServerTick = lastReconciledServerTickRef.current;
-  const acknowledgedInputSeq = latestTransform.lastInputSeq;
-  const acknowledgedClientTick = latestTransform.lastProcessedClientTick;
+  const { lastInputSeq: acknowledgedInputSeq, lastProcessedClientTick: acknowledgedClientTick } =
+    inputAckFields(latestInputAck);
   metrics.acknowledgedInputSeq = acknowledgedInputSeq;
   metrics.acknowledgedClientTick = acknowledgedClientTick;
   metrics.latestServerTick = Number(latestTransform.serverTick);
@@ -1214,7 +1236,7 @@ function reconcileLocalPrediction({
   metrics.tickAlignmentDrift = ticksAdvanced - droppedTickCount;
   metrics.visualCorrectionOffset = visualCorrectionOffsetRef.current.length();
   lastReconciledClientTickRef.current = acknowledgedClientTick;
-  lastReconciledSeqRef.current = latestTransform.lastInputSeq;
+  lastReconciledSeqRef.current = acknowledgedInputSeq;
   lastReconciledServerTickRef.current = latestTransform.serverTick;
   localClientTickRef.current = Math.max(localClientTickRef.current, acknowledgedClientTick);
 
@@ -1309,6 +1331,7 @@ function simulatePredictedTick({
 
 function snapToServerTransform({
   latestTransform,
+  latestInputAck,
   currentInputRef,
   localPositionRef,
   localVerticalVelocityRef,
@@ -1325,6 +1348,7 @@ function snapToServerTransform({
   jumpDebugFrame,
 }: {
   latestTransform: PlayerTransform;
+  latestInputAck: PlayerInputAck | undefined;
   currentInputRef: MutableRefObject<InputState>;
   localPositionRef: MutableRefObject<THREE.Vector3>;
   localVerticalVelocityRef: MutableRefObject<number>;
@@ -1340,6 +1364,7 @@ function snapToServerTransform({
   visualCorrectionOffsetRef: MutableRefObject<THREE.Vector3>;
   jumpDebugFrame?: JumpDebugFrame;
 }) {
+  const ack = inputAckFields(latestInputAck);
   localPositionRef.current.set(
     latestTransform.position.x,
     latestTransform.position.y,
@@ -1349,10 +1374,10 @@ function snapToServerTransform({
   localJumpWasPressedRef.current = false;
   localMovementStateRef.current = { ...latestTransform.movementState };
   localLocomotionStateRef.current = null;
-  metrics.lastSentClientTick = latestTransform.lastProcessedClientTick;
-  currentInputRef.current.clientTick = latestTransform.lastProcessedClientTick;
-  currentInputRef.current.sequence = Math.max(currentInputRef.current.sequence, latestTransform.lastInputSeq);
-  localClientTickRef.current = latestTransform.lastProcessedClientTick;
+  metrics.lastSentClientTick = ack.lastProcessedClientTick;
+  currentInputRef.current.clientTick = ack.lastProcessedClientTick;
+  currentInputRef.current.sequence = Math.max(currentInputRef.current.sequence, ack.lastInputSeq);
+  localClientTickRef.current = ack.lastProcessedClientTick;
   localTickRef.current = Number(latestTransform.serverTick);
   predictedTicksRef.current = [];
   previousPredictedTickPositionRef.current.copy(localPositionRef.current);
@@ -1377,7 +1402,7 @@ function snapToServerTransform({
       groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
       localClientTick: localClientTickRef.current,
       localTick: localTickRef.current,
-      acknowledgedClientTick: latestTransform.lastProcessedClientTick,
+      acknowledgedClientTick: ack.lastProcessedClientTick,
       latestServerTick: Number(latestTransform.serverTick),
       verticalVelocity: localVerticalVelocityRef.current,
       jumpWasPressed: localJumpWasPressedRef.current,

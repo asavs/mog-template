@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, type Dispatch, type MutableRefObjec
 import { useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows, Environment } from '@react-three/drei';
 import * as THREE from 'three';
-import type { InputState, PlayerTransform, Vector3 } from '../generated/types';
+import type { InputState, PlayerInputAck, PlayerTransform, Vector3 } from '../generated/types';
 import type { NetMetrics, RenderTickClock, TransformSnapshot } from '../netcode';
 import type { PlayerRuntimeState } from '../playerRuntime';
 import { publicAssetPath } from '../publicAssets';
@@ -27,6 +27,7 @@ export type GameWorldRuntimeRefs = {
   cosmeticFireballCastsRef: MutableRefObject<Map<string, PendingFireballCosmeticCast>>;
   inputRef: MutableRefObject<InputState>;
   latestTransformsRef: MutableRefObject<Map<string, PlayerTransform>>;
+  latestInputAcksRef: MutableRefObject<Map<string, PlayerInputAck>>;
   metricsRef: MutableRefObject<NetMetrics>;
   playerRuntimeRef: MutableRefObject<PlayerRuntimeState>;
   rotationYRef: MutableRefObject<number>;
@@ -68,6 +69,7 @@ export function GameWorld({
     cosmeticFireballCastsRef,
     inputRef,
     latestTransformsRef,
+    latestInputAcksRef,
     metricsRef,
     playerRuntimeRef,
     rotationYRef,
@@ -133,6 +135,7 @@ export function GameWorld({
           currentInputRef={inputRef}
           rotationYRef={rotationYRef}
           latestTransformsRef={latestTransformsRef}
+          latestInputAcksRef={latestInputAcksRef}
           metricsRef={metricsRef}
         />
       );
