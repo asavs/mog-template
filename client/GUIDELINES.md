@@ -38,6 +38,7 @@
 - Always use `THREE.Cache.enabled = true`.
 - Use loaders (`FBXLoader`, `GLTFLoader`) inside `useMemo` or `useEffect` to avoid reloading assets on every frame.
 - Offload heavy models to `public/models/`.
+- **Avatar / equipment:** catalog + assembler live in `src/avatar/`. Classes are loadout **presets** (body + gear + grants), not mesh-pack identities. Do not add per-class animation folders or `preloadAllCharacter*` of every pack — preload the selected preset only. New armor/weapons = catalog rows + GLBs. Doctrine: wiki `design/avatar-equipment.md`.
 
 ### 3. Component Hierarchy
 - Keep the 3D scene graph declarative inside `<Canvas>`.
