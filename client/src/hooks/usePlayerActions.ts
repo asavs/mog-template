@@ -102,7 +102,7 @@ export function prepareClientTickForSend({
  * Gate for reducer sends.
  * - Change-based sends always proceed (key up/down, rotation).
  * - Forced interval sends only while movement/jump is active, so pure idle
- *   does not mint new sequences that would rebroadcast player_transform acks.
+ *   does not mint new sequences that would rebroadcast player_input_ack rows.
  */
 export function shouldSendPlayerInput({
   force,

@@ -11,6 +11,7 @@ import type {
   PlayerCharacter,
   PlayerData,
   PlayerHealth,
+  PlayerInputAck,
   PlayerTransform,
   SpellEvent,
 } from '../generated/types';
@@ -54,6 +55,7 @@ type UseGameTableSyncOptions = {
   identityRef: MutableRefObject<Identity | null>;
   inputRef: MutableRefObject<InputState>;
   latestTransformsRef: MutableRefObject<Map<string, PlayerTransform>>;
+  latestInputAcksRef: MutableRefObject<Map<string, PlayerInputAck>>;
   metricsRef: MutableRefObject<NetMetrics>;
   playerRuntimeRef: MutableRefObject<PlayerRuntimeState>;
   resetInputForDeath: () => InputState;
@@ -141,6 +143,7 @@ export function useGameTableSync({
   identityRef,
   inputRef,
   latestTransformsRef,
+  latestInputAcksRef,
   metricsRef,
   playerRuntimeRef,
   resetInputForDeath,
@@ -180,9 +183,14 @@ export function useGameTableSync({
   const handleTransform = useCallback((transform: PlayerTransform) => {
     const key = transform.identity.toHexString();
     latestTransformsRef.current.set(key, transform);
+    // Pose-only channel: remotes rebuild snapshots here, never on pure-ack rows.
     pushSnapshot(snapshotBuffersRef.current, key, toSnapshot(transform), renderTickClockRef.current);
     metricsRef.current.transformReceiveCount += 1;
   }, [latestTransformsRef, metricsRef, renderTickClockRef, snapshotBuffersRef]);
+
+  const handleInputAck = useCallback((ack: PlayerInputAck) => {
+    latestInputAcksRef.current.set(ack.identity.toHexString(), ack);
+  }, [latestInputAcksRef]);
 
   const handlePlayerHealth = useCallback((health: PlayerHealth) => {
     upsertPlayerHealth(playerRuntimeRef.current, health);
@@ -211,6 +219,7 @@ export function useGameTableSync({
             return next;
           });
           latestTransformsRef.current.delete(key);
+          latestInputAcksRef.current.delete(key);
           snapshotBuffersRef.current.delete(key);
           removePlayerActionState(playerRuntimeRef.current, key);
           removePlayerAnimation(playerRuntimeRef.current, key);
@@ -404,12 +413,23 @@ export function useGameTableSync({
         },
       },
     } as TableSync<PlayerTransform>,
+    {
+      table: connection.db.player_input_ack,
+      handlers: {
+        onUpsert: handleInputAck,
+        onDelete: (ack: PlayerInputAck) => {
+          latestInputAcksRef.current.delete(ack.identity.toHexString());
+        },
+      },
+    } as TableSync<PlayerInputAck>,
   ] as TableSync<unknown>[], [
     combatSubscriptionReadyRef,
     fireballProjectilesRef,
+    handleInputAck,
     handlePlayerHealth,
     handleTransform,
     identityRef,
+    latestInputAcksRef,
     latestTransformsRef,
     playerRuntimeRef,
     scheduleEffectRemoval,

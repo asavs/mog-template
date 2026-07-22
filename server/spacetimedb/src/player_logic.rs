@@ -202,20 +202,17 @@ pub fn update_transform(
     transform.rotation_y = rotation_y;
     transform.is_moving = is_moving(input);
     transform.movement_state = next_movement_state;
-    transform.last_input_seq = input.sequence;
-    transform.last_processed_client_tick = input.client_tick;
 }
 
-/// Semantic fields that justify publishing a `player_transform` row update.
-/// Excludes `server_tick` / `updated_at` so idle ticks do not rebroadcast.
+/// Semantic pose fields that justify publishing a `player_transform` row update.
+/// Excludes `server_tick` / `updated_at` (idle rebroadcast) and input acks
+/// (those live on public `player_input_ack` — audit #16).
 #[derive(Clone, Debug)]
 pub struct TransformPoseSnapshot {
     pub position: Vector3,
     pub rotation_y: f32,
     pub is_moving: bool,
     pub movement_state: MovementState,
-    pub last_input_seq: u32,
-    pub last_processed_client_tick: u32,
 }
 
 impl From<&PlayerTransform> for TransformPoseSnapshot {
@@ -225,18 +222,16 @@ impl From<&PlayerTransform> for TransformPoseSnapshot {
             rotation_y: transform.rotation_y,
             is_moving: transform.is_moving,
             movement_state: transform.movement_state.clone(),
-            last_input_seq: transform.last_input_seq,
-            last_processed_client_tick: transform.last_processed_client_tick,
         }
     }
 }
 
-/// True when game-meaningful transform fields changed enough to justify a
+/// True when game-meaningful pose fields changed enough to justify a
 /// SpacetimeDB row update (and therefore a wire delta to subscribers).
 ///
 /// `server_tick` / `updated_at` alone must never force a publish — that is the
-/// idle rebroadcast bug. Acks are included so CSP reconciliation still moves
-/// when a new input was applied without a visible pose change.
+/// idle rebroadcast bug. Input acks are intentionally excluded; pure-ack
+/// updates go through `player_input_ack` so remotes do not rebuild pose snapshots.
 pub fn transform_needs_publish_from_snapshot(
     before: &TransformPoseSnapshot,
     after: &PlayerTransform,
@@ -252,8 +247,6 @@ pub fn pose_snapshot_needs_publish(
         || !rotations_near_equal(before.rotation_y, after.rotation_y)
         || before.is_moving != after.is_moving
         || before.movement_state != after.movement_state
-        || before.last_input_seq != after.last_input_seq
-        || before.last_processed_client_tick != after.last_processed_client_tick
 }
 
 fn positions_near_equal(a: &Vector3, b: &Vector3) -> bool {
@@ -293,8 +286,6 @@ mod tests {
             rotation_y: 0.0,
             is_moving: false,
             movement_state: MovementState::grounded(),
-            last_input_seq: 1,
-            last_processed_client_tick: 10,
         }
     }
 
@@ -355,14 +346,12 @@ mod tests {
     }
 
     #[test]
-    fn ack_change_needs_publish() {
+    fn pose_snapshot_ignores_identity_of_ack_channel() {
+        // Pure-ack changes live on player_input_ack; pose gate is pose-only.
+        // Two identical pose snapshots never need a transform publish.
         let before = idle_snapshot();
-        let after = snapshot(TransformPoseSnapshot {
-            last_input_seq: before.last_input_seq + 1,
-            last_processed_client_tick: before.last_processed_client_tick + 1,
-            ..idle_snapshot()
-        });
-        assert!(pose_snapshot_needs_publish(&before, &after));
+        let after = idle_snapshot();
+        assert!(!pose_snapshot_needs_publish(&before, &after));
     }
 
     #[test]

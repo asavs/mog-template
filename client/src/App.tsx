@@ -3,7 +3,7 @@ import { Canvas, advance } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Identity } from 'spacetimedb';
 import type { DbConnection } from './generated';
-import type { FireballProjectile, PlayerData, PlayerHealth, PlayerTransform } from './generated/types';
+import type { FireballProjectile, PlayerData, PlayerHealth, PlayerInputAck, PlayerTransform } from './generated/types';
 import {
   GameWorld,
   type GameWorldRuntimeRefs,
@@ -175,6 +175,7 @@ export default function App() {
   const { inputRef, resetInputForDeath } = useInputState();
   const rotationYRef = useRef(0);
   const latestTransformsRef = useRef<Map<string, PlayerTransform>>(new Map());
+  const latestInputAcksRef = useRef<Map<string, PlayerInputAck>>(new Map());
   const cosmeticFireballCastsRef = useRef<Map<string, PendingFireballCosmeticCast>>(new Map());
   const fireballProjectilesRef = useRef<Map<string, FireballProjectile>>(new Map());
   const spellCasterVisualOriginsRef = useRef<Map<string, SpellCasterVisualOrigin>>(new Map());
@@ -209,6 +210,7 @@ export default function App() {
     identityRef,
     inputRef,
     latestTransformsRef,
+    latestInputAcksRef,
     metricsRef,
     playerRuntimeRef,
     resetInputForDeath,
@@ -323,6 +325,7 @@ export default function App() {
     inputRef,
     cosmeticFireballCastsRef,
     latestTransformsRef,
+    latestInputAcksRef,
     metricsRef,
     playerRuntimeRef,
     rotationYRef,
@@ -333,6 +336,7 @@ export default function App() {
     cosmeticFireballCastsRef,
     inputRef,
     latestTransformsRef,
+    latestInputAcksRef,
     metricsRef,
     playerRuntimeRef,
     rotationYRef,

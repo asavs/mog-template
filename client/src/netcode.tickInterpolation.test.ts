@@ -28,8 +28,8 @@ function snapshot(serverTick: number, receivedAt: number, x = serverTick): Trans
     rotationY: serverTick * 0.01,
     isMoving: true,
     movementState: movementState(),
-    lastInputSeq: serverTick,
-    lastProcessedClientTick: serverTick,
+    lastInputSeq: 0,
+    lastProcessedClientTick: 0,
     serverTick: BigInt(serverTick),
   };
 }

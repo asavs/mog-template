@@ -201,18 +201,32 @@ InputState
   primary_fire
   updated_at
 
-Transform
+Transform (public pose channel)
   player_id
   x
   y
   z
   yaw
+  movement flags
   updated_at
+  // pose only — dirty on semantic pose change
+
+InputAck (public CSP ack channel)
+  player_id
+  last_input_seq
+  last_processed_client_tick
+  // separate row so pure-ack updates do not rebroadcast full pose
+  // to remote subscribers (SpacetimeDB sync is row-level)
 
 TickSchedule
   scheduled_id
   scheduled_at
 ```
+
+**Schema migration (template):** splitting pose from acks is an incompatible
+public-table change. Until real player persistence matters, republish with
+`--clear-database` (or wipe the preview/beta DB). Do not treat this as a live
+migration path for production data.
 
 Possible reducers:
 

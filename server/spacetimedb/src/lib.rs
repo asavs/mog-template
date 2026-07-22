@@ -228,6 +228,9 @@ impl PlayerJumpState {
     }
 }
 
+/// Public pose channel — dirty only on semantic pose/move-state change.
+/// CSP acks live on `player_input_ack` so pure-ack updates do not rebroadcast
+/// full transform rows to remote subscribers (audit #16).
 #[spacetimedb::table(accessor = player_transform, public)]
 pub struct PlayerTransform {
     #[primary_key]
@@ -236,11 +239,21 @@ pub struct PlayerTransform {
     pub rotation_y: f32,
     pub is_moving: bool,
     pub movement_state: MovementState,
+    pub server_tick: u64,
+    pub updated_at: Timestamp,
+}
+
+/// Public input-ack channel for owning-client prediction reconcile.
+/// Same primary key as pose, but independent row lifetime for SpacetimeDB
+/// row-level sync (update frequency and audience differ from pose).
+#[spacetimedb::table(accessor = player_input_ack, public)]
+pub struct PlayerInputAck {
+    #[primary_key]
+    pub identity: Identity,
     pub last_input_seq: u32,
     #[default(0)]
     pub last_processed_client_tick: u32,
     pub server_tick: u64,
-    pub updated_at: Timestamp,
 }
 
 #[spacetimedb::table(accessor = logged_out_player)]
@@ -397,6 +410,7 @@ pub fn leave_game(ctx: &ReducerContext) -> Result<(), String> {
 fn cleanup_player(ctx: &ReducerContext, identity: Identity) {
     if let Some(player) = ctx.db.player().identity().find(identity) {
         let transform = ctx.db.player_transform().identity().find(identity);
+        let input_ack = ctx.db.player_input_ack().identity().find(identity);
         let health = ctx.db.player_health().identity().find(identity);
         let combat_state = ctx.db.player_combat_state().identity().find(identity);
         let block_state = ctx.db.player_block_state().identity().find(identity);
@@ -409,11 +423,11 @@ fn cleanup_player(ctx: &ReducerContext, identity: Identity) {
                 .map(|row| row.position.clone())
                 .unwrap_or_else(Vector3::zero),
             rotation_y: transform.as_ref().map(|row| row.rotation_y).unwrap_or(0.0),
-            last_input_seq: transform
+            last_input_seq: input_ack
                 .as_ref()
                 .map(|row| row.last_input_seq)
                 .unwrap_or(0),
-            last_processed_client_tick: transform
+            last_processed_client_tick: input_ack
                 .as_ref()
                 .map(|row| row.last_processed_client_tick)
                 .unwrap_or(0),
@@ -463,6 +477,7 @@ fn cleanup_player(ctx: &ReducerContext, identity: Identity) {
         ctx.db.player_input().identity().delete(identity);
         ctx.db.player_jump_state().identity().delete(identity);
         ctx.db.player_transform().identity().delete(identity);
+        ctx.db.player_input_ack().identity().delete(identity);
         ctx.db.player_animation().identity().delete(identity);
         ctx.db.player_health().identity().delete(identity);
         ctx.db.player_action_state().identity().delete(identity);
@@ -660,18 +675,23 @@ pub fn join_game_as(
         .insert(PlayerJumpState::default_for_identity(identity));
 
     let restored_movement_state = idle_movement_state_for_position(&restored_position);
+    let join_server_tick = current_server_tick(ctx);
     let player_transform = PlayerTransform {
         identity,
         position: restored_position,
         rotation_y: restored_rotation_y,
         is_moving: false,
         movement_state: restored_movement_state,
-        last_input_seq: restored_last_input_seq,
-        last_processed_client_tick: restored_last_processed_client_tick,
-        server_tick: current_server_tick(ctx),
+        server_tick: join_server_tick,
         updated_at: ctx.timestamp,
     };
     ctx.db.player_transform().insert(player_transform);
+    ctx.db.player_input_ack().insert(PlayerInputAck {
+        identity,
+        last_input_seq: restored_last_input_seq,
+        last_processed_client_tick: restored_last_processed_client_tick,
+        server_tick: join_server_tick,
+    });
 
     let player_health = PlayerHealth {
         identity,
@@ -1166,13 +1186,20 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
             } else {
                 ctx.db.player_jump_state().insert(jump_state);
             }
-            // Semantic deltas only: skip row updates that would only bump
-            // server_tick / updated_at for idle players.
+            // Pose channel: semantic pose deltas only (no idle rebroadcast, no pure-ack).
             if player_logic::transform_needs_publish_from_snapshot(&before, &transform) {
                 transform.server_tick = server_tick;
                 transform.updated_at = ctx.timestamp;
                 ctx.db.player_transform().identity().update(transform);
             }
+            // Ack channel: own row so remotes do not receive full pose on ack-only ticks.
+            publish_input_ack_if_changed(
+                ctx,
+                player_input.identity,
+                player_input.last_input_seq,
+                player_input.last_processed_client_tick,
+                server_tick,
+            );
         }
     }
 
@@ -1184,6 +1211,37 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
     cleanup_old_combat_events(ctx, server_tick);
 
     Ok(())
+}
+
+/// Publish `player_input_ack` only when the owning client's reconcile watermark moved.
+/// Pure-ack updates must not touch `player_transform` (row-level sync would fan out pose).
+fn publish_input_ack_if_changed(
+    ctx: &ReducerContext,
+    identity: Identity,
+    last_input_seq: u32,
+    last_processed_client_tick: u32,
+    server_tick: u64,
+) {
+    if let Some(existing) = ctx.db.player_input_ack().identity().find(identity) {
+        if existing.last_input_seq == last_input_seq
+            && existing.last_processed_client_tick == last_processed_client_tick
+        {
+            return;
+        }
+        ctx.db.player_input_ack().identity().update(PlayerInputAck {
+            identity,
+            last_input_seq,
+            last_processed_client_tick,
+            server_tick,
+        });
+    } else {
+        ctx.db.player_input_ack().insert(PlayerInputAck {
+            identity,
+            last_input_seq,
+            last_processed_client_tick,
+            server_tick,
+        });
+    }
 }
 
 fn current_server_tick(ctx: &ReducerContext) -> u64 {
