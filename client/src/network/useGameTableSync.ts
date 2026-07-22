@@ -481,6 +481,7 @@ export function useGameTableSync({
     runtime.animations.clear();
     runtime.health.clear();
     latestTransformsRef.current.clear();
+    latestInputAcksRef.current.clear();
     snapshotBuffersRef.current.clear();
     renderTickClockRef.current.renderTick = 0;
     renderTickClockRef.current.latestKnownServerTick = null;
@@ -511,6 +512,7 @@ export function useGameTableSync({
     combatSubscriptionReadyRef,
     createTableSyncs,
     fireballProjectilesRef,
+    latestInputAcksRef,
     latestTransformsRef,
     playerRuntimeRef,
     setCombatFeedback,
