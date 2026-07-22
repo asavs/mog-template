@@ -171,7 +171,7 @@ export function useEquipmentCalibration({
 function getEquipmentCalibrationState(): EquipmentCalibrationState {
   window.__equipmentCalibrationDebug ??= {
     enabled: false,
-    selectedItem: 'sword',
+    selectedItem: 'sword_1h',
   };
   return window.__equipmentCalibrationDebug;
 }

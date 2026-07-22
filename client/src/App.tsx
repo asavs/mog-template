@@ -188,11 +188,7 @@ export default function App() {
 
   useEffect(() => installAudioUnlockHandlers(), []);
 
-  useEffect(() => {
-    void import('./components/playerModelLoader').then(({ preloadAllCharacterModelAssets }) => {
-      preloadAllCharacterModelAssets();
-    });
-  }, []);
+
 
   useEffect(() => {
     setGameAudioMuted(audioMuted);
@@ -261,6 +257,14 @@ export default function App() {
     forgetSavedConnection,
     setIsJoined,
   });
+
+  // Warm only the selected join class (not every character pack). Remotes load on demand.
+  useEffect(() => {
+    const presetId = joinPreferences.characterClass === 'paladin' ? 'paladin' : 'wizard';
+    void import('./components/playerModelLoader').then(({ preloadPresetAssets }) => {
+      void preloadPresetAssets(presetId);
+    });
+  }, [joinPreferences.characterClass]);
 
   const networkState = useMemo<NetworkState>(() => ({
     connected,

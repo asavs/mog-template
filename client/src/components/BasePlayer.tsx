@@ -22,7 +22,7 @@ import {
   selectTargetAnimation,
   triggerOneShotAnimation,
 } from './playerAnimation';
-import { ANIMATIONS, getCharacterConfig, type WizardSpell } from './characterConfig';
+import { ANIMATIONS, getCharacterPresentation, type WizardSpell } from './characterConfig';
 import { loadPlayerModelAssets } from './playerModelLoader';
 import {
   createLoopingLocalSound,
@@ -103,13 +103,13 @@ const MOVEMENT_ANIMATION_NAMES = {
   runRight: ANIMATIONS.RUN_RIGHT,
 };
 
-const FOOTSTEP_WALK_ANIMATIONS = new Set([
+const FOOTSTEP_WALK_ANIMATIONS: ReadonlySet<string> = new Set([
   ANIMATIONS.WALK,
   ANIMATIONS.WALK_BACK,
   ANIMATIONS.WALK_LEFT,
   ANIMATIONS.WALK_RIGHT,
 ]);
-const FOOTSTEP_RUN_ANIMATIONS = new Set([
+const FOOTSTEP_RUN_ANIMATIONS: ReadonlySet<string> = new Set([
   ANIMATIONS.RUN,
   ANIMATIONS.RUN_BACK,
   ANIMATIONS.RUN_LEFT,
@@ -136,7 +136,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
   spellCasterVisualOriginsRef,
 }) => {
   const identityKey = playerData.identity.toHexString();
-  const characterConfig = getCharacterConfig(characterClass);
+  const characterConfig = getCharacterPresentation(characterClass);
 
   const [modelLoaded, setModelLoaded] = useState(false);
   const [mixer, setMixer] = useState<THREE.AnimationMixer | null>(null);
@@ -184,7 +184,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
 
   const hasEquipment = useCallback((equipmentId: string) => (
     equipmentItemsRef.current.has(equipmentId) ||
-    Boolean(characterConfig.weaponAttachments?.some(attachment => attachment.id === equipmentId))
+    characterConfig.equipmentIds.includes(equipmentId)
   ), [characterConfig]);
 
   const isEquipmentVisible = useCallback((equipmentId: string) => (
@@ -333,7 +333,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
     lastHandledDrinkingSeqRef.current = null;
     return loadPlayerModelAssets({
       actionAnimationNames: ACTION_ANIMATION_NAMES,
-      characterConfig,
+      presetId: characterConfig.presetId,
       currentAnimationRef,
       desiredEquipmentVisibilityRef,
       equipmentItemsRef,
@@ -344,7 +344,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
       onModelLoaded: setModelLoaded,
       visualModelRef,
     });
-  }, [characterConfig, groupRef]);
+  }, [characterConfig.presetId, groupRef]);
 
   useFrame((_, delta) => {
     if (lightRef) {
