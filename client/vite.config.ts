@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process'
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -29,6 +30,10 @@ export default defineConfig(({ command }) => {
           ws: true,
         },
       },
+    },
+    test: {
+      // Collision heightmap is a binary asset; unit tests load it once from disk.
+      setupFiles: ['./heightmapTestSetup.ts'],
     },
   }
 })

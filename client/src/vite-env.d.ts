@@ -15,3 +15,6 @@ declare global {
 }
 
 export {};
+
+/// <reference types="vitest/config" />
+
