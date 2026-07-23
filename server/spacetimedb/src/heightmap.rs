@@ -10,8 +10,8 @@ pub const TERRAIN_MAX_WALKABLE_SLOPE_DEGREES: f32 = 70.0;
 
 const TERRAIN_MAX_WALKABLE_SLOPE: f32 = 2.74747742; // tan(70 degrees)
 
-/// Baked collision surface (HM01). Produced by `scripts/convert-heightmap-binary.mjs`
-/// or the terrain bake pipeline — not hand-edited.
+/// Baked collision surface (HM01). Produced by `scripts/bake-terrain-collision.mjs`
+/// (alias: `scripts/convert-heightmap-binary.mjs`) — not hand-edited.
 static HEIGHTMAP_BIN: &[u8] = include_bytes!("heightmap.bin");
 
 struct HeightmapData {

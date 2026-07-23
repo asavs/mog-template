@@ -41,8 +41,14 @@ function requireWalkable(): Uint8Array {
   return walkable;
 }
 
-/** Decode HM01 binary (see scripts/convert-heightmap-binary.mjs). */
+/**
+ * Decode HM01 binary (see scripts/bake-terrain-collision.mjs / heightmap-binary-format.mjs).
+ * Matches server bounds checks so truncated downloads fail cleanly.
+ */
 export function loadHeightmapFromArrayBuffer(buffer: ArrayBuffer): void {
+  if (buffer.byteLength < 32) {
+    throw new Error(`Heightmap buffer too short: ${buffer.byteLength} bytes`);
+  }
   const view = new DataView(buffer);
   const magic = String.fromCharCode(
     view.getUint8(0),
@@ -60,13 +66,19 @@ export function loadHeightmapFromArrayBuffer(buffer: ArrayBuffer): void {
 
   const count = size * size;
   const heightsOffset = 4 + 4 + 4 * 6;
+  const walkOffset = heightsOffset + count * 4;
+  const walkBytes = Math.ceil(count / 8);
+  if (buffer.byteLength < walkOffset + walkBytes) {
+    throw new Error(
+      `Heightmap buffer truncated: need ${walkOffset + walkBytes}, got ${buffer.byteLength}`,
+    );
+  }
+
   const nextHeights = new Float32Array(count);
   for (let i = 0; i < count; i += 1) {
     nextHeights[i] = view.getFloat32(heightsOffset + i * 4, true);
   }
 
-  const walkOffset = heightsOffset + count * 4;
-  const walkBytes = Math.ceil(count / 8);
   const nextWalkable = new Uint8Array(buffer, walkOffset, walkBytes);
 
   heights = nextHeights;
