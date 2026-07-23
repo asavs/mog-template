@@ -236,8 +236,14 @@ function uniqueGrants(parts: readonly (readonly AbilityId[])[]): AbilityId[] {
   return out;
 }
 
+/**
+ * Grants every humanoid PC has even with empty equipment.
+ * Keep aligned with server `capabilities_from_grants` baseline (loadout.rs).
+ */
+export const BASELINE_ABILITY_GRANTS: readonly AbilityId[] = ['drink_potion'];
+
 export function capabilitiesFromGrants(grants: readonly AbilityId[]): AvatarCapabilities {
-  const set = new Set(grants);
+  const set = new Set<AbilityId>([...BASELINE_ABILITY_GRANTS, ...grants]);
   const spells: WizardSpell[] = [];
   if (set.has('cast_fireball')) spells.push('fireball');
   if (set.has('cast_lightning')) spells.push('lightning');
@@ -247,6 +253,31 @@ export function capabilitiesFromGrants(grants: readonly AbilityId[]): AvatarCapa
     spells,
     drinkPotion: set.has('drink_potion'),
   };
+}
+
+/**
+ * Stable key for avatar assembly. Same key ⇒ skip dispose/rebuild (join race
+ * where preset fallback and seeded server rows resolve to the same loadout).
+ */
+export function presentationAssemblyKey(resolved: ResolvedAppearance): string {
+  const equipped = resolved.equipped
+    .map(item => `${item.slot}:${item.id}:${item.grantsOnly ? 'grantsOnly' : item.meshKey}`)
+    .sort()
+    .join(',');
+  const clips = resolved.clips
+    .map(clip => `${clip.actionKey}:${clip.meshKey}`)
+    .sort()
+    .join(',');
+  const grants = [...resolved.grants].sort().join(',');
+  return [
+    resolved.presetId ?? '',
+    resolved.body.id,
+    resolved.body.meshKey,
+    String(resolved.scale),
+    equipped,
+    grants,
+    clips,
+  ].join('|');
 }
 
 export function createAvatarCatalog(options?: {

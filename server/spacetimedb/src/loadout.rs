@@ -140,7 +140,8 @@ pub fn capabilities_from_grants(grant_list: &[&str]) -> Capabilities {
     let mut melee = false;
     let mut block = false;
     let mut cast = false;
-    let mut drink_potion = false;
+    // Baseline: all humanoid PCs can drink (matches client BASELINE_ABILITY_GRANTS).
+    let mut drink_potion = true;
     for grant in grant_list {
         match *grant {
             grants::MELEE_SLASH => melee = true,
@@ -181,10 +182,7 @@ pub fn capabilities_for_equipment_item_ids(item_ids: &[&str]) -> Capabilities {
             _ => {}
         }
     }
-    // Potion drinking is baseline for all humanoid PCs even if unequipped later.
-    if !grant_list.contains(&grants::DRINK_POTION) {
-        grant_list.push(grants::DRINK_POTION);
-    }
+    // drink_potion baseline is applied inside capabilities_from_grants.
     capabilities_from_grants(&grant_list)
 }
 
@@ -230,6 +228,15 @@ mod tests {
         assert!(only_slash.melee);
         assert!(!only_slash.block);
         assert!(!only_slash.cast);
+        // Baseline humanoid grant (client BASELINE_ABILITY_GRANTS).
+        assert!(only_slash.drink_potion);
+    }
+
+    #[test]
+    fn empty_equipment_still_allows_drink() {
+        let caps = capabilities_for_equipment_item_ids(&[]);
+        assert!(caps.drink_potion);
+        assert!(!caps.melee);
     }
 
     #[test]

@@ -27,9 +27,11 @@ export type {
 export {
   appearanceFromPreset,
   assetUrlsForAppearance,
+  BASELINE_ABILITY_GRANTS,
   capabilitiesFromGrants,
   createAvatarCatalog,
   defaultAvatarCatalog,
+  presentationAssemblyKey,
   presetIdFromLegacyClass,
   resolveFromServerState,
   resolvePreset,

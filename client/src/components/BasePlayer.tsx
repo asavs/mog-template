@@ -24,6 +24,7 @@ import {
 } from './playerAnimation';
 import { ANIMATIONS, getCharacterPresentationFromServer, type WizardSpell } from './characterConfig';
 import { loadPlayerModelAssets } from './playerModelLoader';
+import { presentationAssemblyKey } from '../avatar/catalog';
 import { useGameState } from '../state/useGameState';
 import {
   createLoopingLocalSound,
@@ -349,6 +350,10 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
     };
   }, [characterConfig, groupRef, isLocalPlayer]);
 
+  // Content key — not object identity. Join often resolves preset first, then
+  // identical seeded server rows; skip dispose/rebuild when the loadout is unchanged.
+  const assemblyKey = presentationAssemblyKey(characterConfig.resolved);
+
   useEffect(() => {
     lastHandledDrinkingSeqRef.current = null;
     return loadPlayerModelAssets({
@@ -365,8 +370,9 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
       onModelLoaded: setModelLoaded,
       visualModelRef,
     });
-    // Re-assemble when server appearance/equipment (or class fallback) changes.
-  }, [characterConfig, groupRef]);
+    // assemblyKey is the content gate; characterConfig is from the render that changed the key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-assemble on new object identity
+  }, [assemblyKey, groupRef]);
 
   useFrame((_, delta) => {
     if (lightRef) {

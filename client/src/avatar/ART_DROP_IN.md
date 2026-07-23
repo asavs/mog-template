@@ -65,6 +65,10 @@ Phase A keeps **two hand-aligned copies** of loadout ids:
 
 `client/src/avatar/loadoutParity.test.ts` compares the default catalog to the Phase A id sets mirrored from `loadout.rs`. If you change ids on either side, update the fixture in that test (and the other language file) so CI stays green.
 
+### Baseline grants
+
+`drink_potion` is a **baseline humanoid grant** on both sides (`BASELINE_ABILITY_GRANTS` in `catalog.ts`, `capabilities_from_grants` in `loadout.rs`). Empty equipment still allows drinking; do not remove only on one side.
+
 ## Suggested folder layout
 
 ```text

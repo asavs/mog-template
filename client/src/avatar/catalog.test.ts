@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   appearanceFromPreset,
   assetUrlsForAppearance,
+  BASELINE_ABILITY_GRANTS,
+  capabilitiesFromGrants,
   createAvatarCatalog,
   defaultAvatarCatalog,
+  presentationAssemblyKey,
   presetIdFromLegacyClass,
   resolveFromServerState,
   resolvePreset,
@@ -115,5 +118,47 @@ describe('avatar catalog', () => {
     expect(staff?.grantsOnly).toBe(true);
     // Body url may still be wizard2; gear must not re-list staff meshKey separately as attach.
     expect(staff && urls.filter(url => url === staff.url).length).toBeLessThanOrEqual(1);
+  });
+
+  it('applies drink_potion as a baseline grant (aligned with server)', () => {
+    expect(BASELINE_ABILITY_GRANTS).toContain('drink_potion');
+    const caps = capabilitiesFromGrants(['melee_slash']);
+    expect(caps.melee).toBe(true);
+    expect(caps.drinkPotion).toBe(true);
+    expect(caps.block).toBe(false);
+  });
+
+  it('uses a stable assembly key when preset and server seed match', () => {
+    const fromPreset = resolvePreset('paladin');
+    const fromServer = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+        { slot: 'utility_potion', itemId: 'potion' },
+      ],
+      legacyClass: 'paladin',
+    });
+    expect(presentationAssemblyKey(fromPreset)).toBe(presentationAssemblyKey(fromServer));
+  });
+
+  it('changes assembly key when presentation actually differs', () => {
+    const normal = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+      legacyClass: 'paladin',
+    });
+    const scaled = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1.15, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+      legacyClass: 'paladin',
+    });
+    expect(presentationAssemblyKey(normal)).not.toBe(presentationAssemblyKey(scaled));
   });
 });
