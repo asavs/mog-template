@@ -25,10 +25,19 @@
 #                          created FROM it and the bootstrap below self-skips via
 #                          its sentinel; otherwise falls back to stock debian-12
 #                          + full bootstrap. Baked by scripts/preview-bootstrap.sh.
+#   PREVIEW_USE_IAP        [false]  if true, pass --tunnel-through-iap on all
+#                          gcloud compute ssh/scp (useful when OS Login over
+#                          public IP flakes or firewall policy prefers IAP).
 #   PROJECT / GCP_PROJECT               GCP project id (required)
 #   WASM_PATH                           override wasm path (else auto-find)
 #   DIST_DIR               [client/dist]  built client bundle
 #   (PREVIEW_TTL_HOURS is consumed by the GC job in preview-down.yml, not here.)
+#
+# SSH / OS Login notes (PR feel-test deploys):
+#   Deploy SA needs roles/compute.osAdminLogin (or osLogin) + actAs on the VM's
+#   attached service account; instances must have enable-oslogin=true. IAM can
+#   lag several minutes. See docs/preview-ssh.md for the checklist and the
+#   Permission denied (publickey) failure mode.
 #
 # Manual runs from Windows: the heredoc-over-ssh publish step below (`gcloud
 # compute ssh ... --command=... <<'REMOTE'`) fails under Windows gcloud's
@@ -47,6 +56,7 @@ PREVIEW_MAX_CONCURRENT="${PREVIEW_MAX_CONCURRENT:-3}"
 ZONE="${ZONE:-us-central1-a}"
 PREVIEW_DB_NAME="${PREVIEW_DB_NAME:-mog-game-v1}"
 IMAGE_FAMILY="${IMAGE_FAMILY:-mog-preview}"
+PREVIEW_USE_IAP="${PREVIEW_USE_IAP:-false}"
 PROJECT="${PROJECT:-${GCP_PROJECT:?PROJECT (or GCP_PROJECT) is required}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,6 +84,103 @@ fi
 # for the single announce JSON blob at the end.
 gc() { gcloud --project="$PROJECT" "$@"; }
 log() { printf '[preview-up] %s\n' "$*" >&2; }
+
+# Shared flags for compute ssh/scp. Optional IAP for flaky public-IP OS Login.
+GC_REMOTE_FLAGS=(--zone="$ZONE" --quiet)
+if [ "$PREVIEW_USE_IAP" = "true" ]; then
+  GC_REMOTE_FLAGS+=(--tunnel-through-iap)
+  log "using IAP tunnel for ssh/scp (PREVIEW_USE_IAP=true)"
+fi
+
+diagnose_ssh_failure() {
+  log "--- SSH/SCP diagnostics ---"
+  log "instance=$INSTANCE zone=$ZONE project=$PROJECT iap=$PREVIEW_USE_IAP"
+  log "gcloud account: $(gcloud config get-value account 2>/dev/null || echo unknown)"
+  log "active accounts:"
+  gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | while read -r acc; do
+    log "  - $acc"
+  done || true
+  # One non-quiet probe so the real gcloud/OS Login message is visible in CI logs.
+  log "probe (ssh --command=true):"
+  gc compute ssh "$INSTANCE" --zone="$ZONE" ${PREVIEW_USE_IAP:+--tunnel-through-iap} \
+    --command=true 2>&1 | tail -30 | while IFS= read -r line; do log "  $line"; done || true
+  log "Checklist (docs/preview-ssh.md):"
+  log "  1) deploy SA has roles/compute.osAdminLogin (sudo) or osLogin"
+  log "  2) deploy SA has roles/iam.serviceAccountUser on the VM attached SA"
+  log "  3) instance metadata enable-oslogin=true (set at create)"
+  log "  4) IAM propagation can lag several minutes after role grants"
+  log "  5) try PREVIEW_USE_IAP=true if public-IP OS Login is flaky"
+}
+
+# Wait until SSH works; fail loudly if it never does (do not continue silently).
+wait_for_ssh() {
+  local max_attempts="${1:-36}" # default ~6 minutes at 10s
+  local attempt
+  log "waiting for SSH (up to ${max_attempts} attempts)..."
+  for attempt in $(seq 1 "$max_attempts"); do
+    if gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" --command=true >/dev/null 2>&1; then
+      log "SSH ready (attempt ${attempt}/${max_attempts})"
+      return 0
+    fi
+    log "SSH not ready (attempt ${attempt}/${max_attempts}); sleeping 10s"
+    sleep 10
+  done
+  log "ERROR: SSH never became ready for $INSTANCE"
+  diagnose_ssh_failure
+  return 1
+}
+
+# Retry an ssh command that must succeed.
+remote_ssh() {
+  local cmd="$1"
+  local max_attempts="${2:-8}"
+  local attempt
+  local rc
+  for attempt in $(seq 1 "$max_attempts"); do
+    if gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" --command="$cmd" >&2; then
+      return 0
+    fi
+    rc=$?
+    log "ssh failed rc=${rc} (attempt ${attempt}/${max_attempts}): ${cmd}"
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      sleep 15
+    fi
+  done
+  log "ERROR: ssh failed after ${max_attempts} attempts"
+  diagnose_ssh_failure
+  return 1
+}
+
+# Retry scp of one local path to a remote path on the instance.
+# Usage: remote_scp [--recurse] <local> <remote-path-on-instance>
+remote_scp() {
+  local recurse=()
+  if [ "${1:-}" = "--recurse" ]; then
+    recurse=(--recurse)
+    shift
+  fi
+  local local_path="${1:?remote_scp: local path required}"
+  local remote_path="${2:?remote_scp: remote path required}"
+  local max_attempts=8
+  local attempt
+  local rc
+  for attempt in $(seq 1 "$max_attempts"); do
+    if gc compute scp "${GC_REMOTE_FLAGS[@]}" "${recurse[@]}" \
+      "$local_path" "${INSTANCE}:${remote_path}" >&2; then
+      return 0
+    fi
+    rc=$?
+    log "scp failed rc=${rc} (attempt ${attempt}/${max_attempts}): $(basename "$local_path") -> ${INSTANCE}:${remote_path}"
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      # Re-probe SSH; OS Login can flap between successful hops.
+      gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" --command=true >/dev/null 2>&1 || true
+      sleep 15
+    fi
+  done
+  log "ERROR: scp failed after ${max_attempts} attempts for $local_path"
+  diagnose_ssh_failure
+  return 1
+}
 
 # ---------------------------------------------------------------- locate artifacts
 if [ -z "${WASM_PATH:-}" ]; then
@@ -138,35 +245,42 @@ else
     --labels="mog-preview=true,pr=${PR_NUMBER},last-deploy=$(date -u +%s)" \
     --metadata=enable-oslogin=true >&2
 
-  log "waiting for SSH..."
-  for _ in $(seq 1 30); do
-    gc compute ssh "$INSTANCE" --zone="$ZONE" --command=true --quiet >/dev/null 2>&1 && break
-    sleep 10
-  done
 fi
+
+# Always require a live SSH session before any scp (guest agent / OS Login can
+# lag after create, stop/start, or long idle). Fail here instead of mid-scp with
+# a bare Permission denied (publickey).
+wait_for_ssh 36
 
 # ---------------------------------------------------------------- bootstrap (skip if provisioned)
 log "staging + running preview-bootstrap.sh (self-skips if already provisioned)"
-gc compute scp --zone="$ZONE" --quiet \
-  "$SCRIPT_DIR/preview-bootstrap.sh" "$INSTANCE:/tmp/preview-bootstrap.sh" >&2
-gc compute ssh "$INSTANCE" --zone="$ZONE" --quiet \
-  --command="bash /tmp/preview-bootstrap.sh" >&2
+remote_scp "$SCRIPT_DIR/preview-bootstrap.sh" "/tmp/preview-bootstrap.sh"
+remote_ssh "bash /tmp/preview-bootstrap.sh"
 
 # ---------------------------------------------------------------- stage artifacts
+# Split multi-source recursive scp into sequential transfers. A single
+# `gcloud compute scp --recurse wasm dist host:dir/` has been observed to fail
+# with Permission denied (publickey) after an earlier hop succeeded (PR #38).
 STAGING="/tmp/deploy-${SHA}"
 log "staging artifacts to $STAGING"
-gc compute ssh "$INSTANCE" --zone="$ZONE" --quiet \
-  --command="rm -rf ${STAGING} && mkdir -p ${STAGING}" >&2
-gc compute scp --zone="$ZONE" --quiet --recurse \
-  "$WASM_PATH" "$DIST_DIR" "mog-pr-${PR_NUMBER}:${STAGING}/" >&2
+remote_ssh "rm -rf ${STAGING} && mkdir -p ${STAGING}"
+# Re-probe immediately before large transfers (OS Login can flap).
+remote_ssh "true" 4
+remote_scp "$WASM_PATH" "${STAGING}/$(basename "$WASM_PATH")"
+# Copy so remote path is $STAGING/dist (basename of DIST_DIR is normally "dist").
+remote_scp --recurse "$DIST_DIR" "${STAGING}/"
 
 # ---------------------------------------------------------------- apply on VM (publish + sync)
 # Runs on the VM. Publishes with a CLEARED world (--delete-data, decision E) and
 # ALWAYS pins --server to the loopback STDB: an unqualified publish targets
 # maincloud and 401s. Then rsyncs dist into the single web root.
 log "publishing $PREVIEW_DB_NAME (cleared world) + syncing client"
-gc compute ssh "$INSTANCE" --zone="$ZONE" --quiet \
-  --command="DB_NAME='${PREVIEW_DB_NAME}' SHA='${SHA}' bash -s" <<'REMOTE' >&2
+# Retry the outer SSH that carries the apply heredoc (same OS Login flakiness).
+APPLY_OK=false
+for apply_attempt in 1 2 3 4 5; do
+  if gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" \
+    --command="DB_NAME='${PREVIEW_DB_NAME}' SHA='${SHA}' bash -s" <<'REMOTE' >&2
+
 set -euo pipefail
 STAGING="/tmp/deploy-${SHA}"
 WEB_ROOT="/var/www/mog"
@@ -215,6 +329,18 @@ sudo chown -R www-data:www-data "$WEB_ROOT"
 rm -rf "$STAGING"
 echo "[preview-apply] done."
 REMOTE
+  then
+    APPLY_OK=true
+    break
+  fi
+  log "apply ssh failed (attempt ${apply_attempt}/5); retrying in 20s"
+  sleep 20
+done
+if [ "$APPLY_OK" != "true" ]; then
+  log "ERROR: apply step failed after retries"
+  diagnose_ssh_failure
+  exit 1
+fi
 
 # ---------------------------------------------------------------- record TTL marker
 # Stamp the deploy time as a numeric instance label so the scheduled GC job can

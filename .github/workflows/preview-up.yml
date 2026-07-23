@@ -66,6 +66,11 @@ jobs:
       # path); otherwise it falls back to debian-12 + full bootstrap. Bake with
       # scripts/preview-bootstrap.sh, then `gcloud compute images create`.
       IMAGE_FAMILY: ${{ vars.IMAGE_FAMILY || 'mog-preview' }}
+      # Optional IAP tunnel for gcloud compute ssh/scp when public-IP OS Login
+      # flakes (Permission denied publickey). Set repo var PREVIEW_USE_IAP=true
+      # after granting roles/iap.tunnelResourceAccessor + IAP firewall. See
+      # docs/preview-ssh.md.
+      PREVIEW_USE_IAP: ${{ vars.PREVIEW_USE_IAP || 'false' }}
 
     steps:
       # ---- cheap gates FIRST (resolve → fork guard → CI green), THEN build ----
