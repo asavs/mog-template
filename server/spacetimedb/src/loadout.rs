@@ -69,16 +69,12 @@ pub struct EquipmentSeed {
 }
 
 pub fn preset_appearance(preset_id: &str) -> AppearanceSeed {
-    let id = if PRESET_IDS.contains(&preset_id) {
-        // Keep a 'static loadout_preset string: map known ids.
-        match preset_id {
-            "paladin" => "paladin",
-            "wizard" => "wizard",
-            _ => DEFAULT_PRESET_ID,
-        }
-    } else {
-        DEFAULT_PRESET_ID
-    };
+    // Resolve to a 'static id from the generated PRESET_IDS table (no hand match arms).
+    let id = PRESET_IDS
+        .iter()
+        .copied()
+        .find(|p| *p == preset_id)
+        .unwrap_or(DEFAULT_PRESET_ID);
     AppearanceSeed {
         body_id: preset_body_id(id),
         scale: preset_scale(id),
@@ -101,8 +97,8 @@ pub fn capabilities_from_grants(grant_list: &[&str]) -> Capabilities {
     let mut melee = false;
     let mut block = false;
     let mut cast = false;
-    // Baseline: all humanoid PCs can drink (shared baselineGrants).
-    let mut drink_potion = BASELINE_GRANTS.contains(&grants::DRINK_POTION);
+    // Baseline humanoid grants from shared/avatar-loadout.json (generated BASELINE_GRANTS).
+    let mut drink_potion = BASELINE_GRANTS.iter().any(|g| *g == grants::DRINK_POTION);
     for grant in grant_list {
         match *grant {
             grants::MELEE_SLASH => melee = true,
@@ -111,10 +107,6 @@ pub fn capabilities_from_grants(grant_list: &[&str]) -> Capabilities {
             grants::DRINK_POTION => drink_potion = true,
             _ => {}
         }
-    }
-    // Any baseline grant listed as drink_potion forces drink.
-    if BASELINE_GRANTS.iter().any(|g| *g == grants::DRINK_POTION) {
-        drink_potion = true;
     }
     Capabilities {
         melee,

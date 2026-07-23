@@ -110,6 +110,11 @@ jobs:
         working-directory: client
         run: npm ci
 
+      # shared/avatar-loadout.json → generated TS/Rust. Fail if JSON changed without regenerating.
+      - name: Verify generated loadout files are up to date
+        working-directory: client
+        run: npm run gen:loadout:check
+
       - name: Build client
         working-directory: client
         run: npm run build
