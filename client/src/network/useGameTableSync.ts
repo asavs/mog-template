@@ -8,8 +8,10 @@ import type {
   InputState,
   PlayerActionState,
   PlayerAnimation,
+  PlayerAppearance,
   PlayerCharacter,
   PlayerData,
+  PlayerEquipment,
   PlayerHealth,
   PlayerInputAck,
   PlayerTransform,
@@ -65,12 +67,40 @@ type UseGameTableSyncOptions = {
   setHudHealth: Dispatch<SetStateAction<PlayerHealth | undefined>>;
   setIsJoined: Dispatch<SetStateAction<boolean>>;
   setPlayerClasses: Dispatch<SetStateAction<ReadonlyMap<string, string>>>;
+  setPlayerAppearances: Dispatch<SetStateAction<ReadonlyMap<string, PlayerAppearance>>>;
+  setPlayerEquipment: Dispatch<SetStateAction<ReadonlyMap<string, readonly PlayerEquipment[]>>>;
   setPlayers: Dispatch<SetStateAction<ReadonlyMap<string, PlayerData>>>;
   setSpellEffects: Dispatch<SetStateAction<ActiveSpellEffect[]>>;
   snapshotBuffersRef: MutableRefObject<Map<string, TransformSnapshot[]>>;
   renderTickClockRef: MutableRefObject<RenderTickClock>;
   spellSubscriptionReadyRef: MutableRefObject<boolean>;
 };
+
+function upsertEquipmentRow(
+  prev: ReadonlyMap<string, readonly PlayerEquipment[]>,
+  row: PlayerEquipment,
+): Map<string, readonly PlayerEquipment[]> {
+  const key = row.owner.toHexString();
+  const next = new Map(prev);
+  const existing = next.get(key) ?? [];
+  const without = existing.filter(item => item.id !== row.id);
+  next.set(key, [...without, row]);
+  return next;
+}
+
+function deleteEquipmentRow(
+  prev: ReadonlyMap<string, readonly PlayerEquipment[]>,
+  row: PlayerEquipment,
+): Map<string, readonly PlayerEquipment[]> {
+  const key = row.owner.toHexString();
+  const next = new Map(prev);
+  const existing = next.get(key);
+  if (!existing) return next;
+  const filtered = existing.filter(item => item.id !== row.id);
+  if (filtered.length === 0) next.delete(key);
+  else next.set(key, filtered);
+  return next;
+}
 
 type TableSubscription<Row> = {
   onInsert: (callback: (ctx: EventContext, row: Row) => void) => void;
@@ -153,6 +183,8 @@ export function useGameTableSync({
   setHudHealth,
   setIsJoined,
   setPlayerClasses,
+  setPlayerAppearances,
+  setPlayerEquipment,
   setPlayers,
   setSpellEffects,
   snapshotBuffersRef,
@@ -255,6 +287,45 @@ export function useGameTableSync({
         },
       },
     } as TableSync<PlayerCharacter>,
+    {
+      table: connection.db.player_appearance,
+      handlers: {
+        onInitialAll: (rows: PlayerAppearance[]) => {
+          setPlayerAppearances(new Map(rows.map(row => [row.identity.toHexString(), row])));
+        },
+        onUpsert: (row: PlayerAppearance) => {
+          setPlayerAppearances(prev => new Map(prev).set(row.identity.toHexString(), row));
+        },
+        onDelete: (row: PlayerAppearance) => {
+          setPlayerAppearances(prev => {
+            const next = new Map(prev);
+            next.delete(row.identity.toHexString());
+            return next;
+          });
+        },
+      },
+    } as TableSync<PlayerAppearance>,
+    {
+      table: connection.db.player_equipment,
+      handlers: {
+        onInitialAll: (rows: PlayerEquipment[]) => {
+          const map = new Map<string, PlayerEquipment[]>();
+          for (const row of rows) {
+            const key = row.owner.toHexString();
+            const list = map.get(key) ?? [];
+            list.push(row);
+            map.set(key, list);
+          }
+          setPlayerEquipment(map);
+        },
+        onUpsert: (row: PlayerEquipment) => {
+          setPlayerEquipment(prev => upsertEquipmentRow(prev, row));
+        },
+        onDelete: (row: PlayerEquipment) => {
+          setPlayerEquipment(prev => deleteEquipmentRow(prev, row));
+        },
+      },
+    } as TableSync<PlayerEquipment>,
     {
       table: connection.db.player_action_state,
       handlers: {

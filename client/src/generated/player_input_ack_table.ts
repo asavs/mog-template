@@ -10,7 +10,6 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-
 export default __t.row({
   identity: __t.identity().primaryKey(),
   lastInputSeq: __t.u32().name("last_input_seq"),

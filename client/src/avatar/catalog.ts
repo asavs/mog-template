@@ -404,6 +404,95 @@ export function resolvePreset(
   return catalog.resolve(appearance, { presetId });
 }
 
+const EQUIP_SLOTS = new Set<string>(SLOT_ORDER);
+
+export type NetworkAppearanceRow = {
+  bodyId: string;
+  scale: number;
+  loadoutPreset: string;
+};
+
+export type NetworkEquipmentRow = {
+  slot: string;
+  itemId: string;
+};
+
+/**
+ * Prefer authoritative appearance + equipment rows from SpacetimeDB.
+ * Falls back to loadout preset when rows are missing (join race / legacy).
+ */
+export function resolveFromServerState(options: {
+  appearance?: NetworkAppearanceRow | null;
+  equipment?: readonly NetworkEquipmentRow[] | null;
+  /** Legacy character_class / preset string when appearance is absent. */
+  legacyClass?: string | null;
+  catalog?: AvatarCatalog;
+}): ResolvedAppearance {
+  const catalog = options.catalog ?? defaultAvatarCatalog;
+  const appearance = options.appearance;
+  if (!appearance) {
+    return resolvePreset(presetIdFromLegacyClass(options.legacyClass), catalog);
+  }
+
+  const presetId = appearance.loadoutPreset || presetIdFromLegacyClass(options.legacyClass);
+  const slots: PlayerAppearance['slots'] = {};
+  const extraItemIds: ItemId[] = [];
+
+  for (const row of options.equipment ?? []) {
+    if (EQUIP_SLOTS.has(row.slot)) {
+      slots[row.slot as EquipSlot] = row.itemId;
+    } else {
+      // utility_potion and future non-slot attaches
+      extraItemIds.push(row.itemId);
+    }
+  }
+
+  // If equipment rows have not arrived yet, fall back to preset equipment.
+  const hasAnyGear = (options.equipment?.length ?? 0) > 0;
+  if (!hasAnyGear) {
+    return resolvePreset(presetId, catalog);
+  }
+
+  const base = catalog.resolve(
+    {
+      bodyId: appearance.bodyId,
+      scale: appearance.scale,
+      slots,
+    },
+    { presetId },
+  );
+
+  if (extraItemIds.length === 0) {
+    return base;
+  }
+
+  // Append utility items not covered by EquipSlot (server may store them under custom slots).
+  const seen = new Set(base.equipped.map(item => item.id));
+  const extraEquipped = [...base.equipped];
+  const grantLists: (readonly AbilityId[])[] = [base.grants];
+  for (const itemId of extraItemIds) {
+    if (seen.has(itemId)) continue;
+    const def = catalog.getItem(itemId);
+    if (!def) continue;
+    const socket = def.socketId ? catalog.getSocket(def.socketId) : undefined;
+    extraEquipped.push({
+      ...def,
+      url: catalog.urlForMeshKey(def.meshKey),
+      socket,
+    });
+    seen.add(itemId);
+    grantLists.push(def.grants);
+  }
+
+  const grants = uniqueGrants(grantLists);
+  return {
+    ...base,
+    equipped: extraEquipped,
+    grants,
+    capabilities: capabilitiesFromGrants(grants),
+  };
+}
+
 /** Asset URLs needed to present this resolved appearance (body, gear, clips). */
 export function assetUrlsForAppearance(resolved: ResolvedAppearance): string[] {
   const urls = new Set<string>();

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, memo, type MutableRefObject } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, memo, type MutableRefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { InputState, PlayerData, PlayerInputAck, PlayerTransform, Vector3 as GameVector3 } from '../generated/types';
@@ -22,8 +22,9 @@ import {
   selectTargetAnimation,
   triggerOneShotAnimation,
 } from './playerAnimation';
-import { ANIMATIONS, getCharacterPresentation, type WizardSpell } from './characterConfig';
+import { ANIMATIONS, getCharacterPresentationFromServer, type WizardSpell } from './characterConfig';
 import { loadPlayerModelAssets } from './playerModelLoader';
+import { useGameState } from '../state/useGameState';
 import {
   createLoopingLocalSound,
   createLoopingWorldSound,
@@ -136,7 +137,26 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
   spellCasterVisualOriginsRef,
 }) => {
   const identityKey = playerData.identity.toHexString();
-  const characterConfig = getCharacterPresentation(characterClass);
+  const { playerAppearances, playerEquipment } = useGameState();
+  const appearanceRow = playerAppearances.get(identityKey);
+  const equipmentRows = playerEquipment.get(identityKey);
+  const characterConfig = useMemo(
+    () => getCharacterPresentationFromServer({
+      legacyClass: characterClass,
+      appearance: appearanceRow
+        ? {
+            bodyId: appearanceRow.bodyId,
+            scale: appearanceRow.scale,
+            loadoutPreset: appearanceRow.loadoutPreset,
+          }
+        : null,
+      equipment: equipmentRows?.map(row => ({
+        slot: row.slot,
+        itemId: row.itemId,
+      })),
+    }),
+    [appearanceRow, characterClass, equipmentRows],
+  );
 
   const [modelLoaded, setModelLoaded] = useState(false);
   const [mixer, setMixer] = useState<THREE.AnimationMixer | null>(null);
@@ -333,6 +353,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
     lastHandledDrinkingSeqRef.current = null;
     return loadPlayerModelAssets({
       actionAnimationNames: ACTION_ANIMATION_NAMES,
+      resolved: characterConfig.resolved,
       presetId: characterConfig.presetId,
       currentAnimationRef,
       desiredEquipmentVisibilityRef,
@@ -344,7 +365,8 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
       onModelLoaded: setModelLoaded,
       visualModelRef,
     });
-  }, [characterConfig.presetId, groupRef]);
+    // Re-assemble when server appearance/equipment (or class fallback) changes.
+  }, [characterConfig, groupRef]);
 
   useFrame((_, delta) => {
     if (lightRef) {

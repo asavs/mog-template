@@ -31,8 +31,10 @@ export {
   createAvatarCatalog,
   defaultAvatarCatalog,
   presetIdFromLegacyClass,
+  resolveFromServerState,
   resolvePreset,
 } from './catalog';
+export type { NetworkAppearanceRow, NetworkEquipmentRow } from './catalog';
 
 export {
   assembleAvatar,

@@ -3,7 +3,15 @@ import { Canvas, advance } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Identity } from 'spacetimedb';
 import type { DbConnection } from './generated';
-import type { FireballProjectile, PlayerData, PlayerHealth, PlayerInputAck, PlayerTransform } from './generated/types';
+import type {
+  FireballProjectile,
+  PlayerAppearance,
+  PlayerData,
+  PlayerEquipment,
+  PlayerHealth,
+  PlayerInputAck,
+  PlayerTransform,
+} from './generated/types';
 import {
   GameWorld,
   type GameWorldRuntimeRefs,
@@ -161,6 +169,8 @@ function QaGameDebugBridge({
 export default function App() {
   const [players, setPlayers] = useState<ReadonlyMap<string, PlayerData>>(new Map());
   const [playerClasses, setPlayerClasses] = useState<ReadonlyMap<string, string>>(new Map());
+  const [playerAppearances, setPlayerAppearances] = useState<ReadonlyMap<string, PlayerAppearance>>(new Map());
+  const [playerEquipment, setPlayerEquipment] = useState<ReadonlyMap<string, readonly PlayerEquipment[]>>(new Map());
   const [spellEffects, setSpellEffects] = useState<ActiveSpellEffect[]>([]);
   const [combatFeedback, setCombatFeedback] = useState<ActiveCombatFeedback[]>([]);
   const [cosmeticFireballCastIds, setCosmeticFireballCastIds] = useState<string[]>([]);
@@ -216,6 +226,8 @@ export default function App() {
     setHudHealth,
     setIsJoined,
     setPlayerClasses,
+    setPlayerAppearances,
+    setPlayerEquipment,
     setPlayers,
     setSpellEffects,
     snapshotBuffersRef,
@@ -316,10 +328,14 @@ export default function App() {
   });
 
   const gameState = useMemo<GameState>(() => ({
+    playerAppearances,
+    playerEquipment,
     playerClasses,
     players,
     selectedWizardSpell,
   }), [
+    playerAppearances,
+    playerEquipment,
     playerClasses,
     players,
     selectedWizardSpell,

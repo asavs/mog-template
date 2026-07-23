@@ -26,8 +26,13 @@ export type LoadPlayerModelAssetOptions = {
     drinking: string;
     death: string;
   };
-  /** Loadout preset id (wizard/paladin) or any catalog preset. */
-  presetId: string;
+  /**
+   * Fully resolved catalog appearance (prefer server appearance/equipment).
+   * When omitted, `presetId` is used for legacy callers.
+   */
+  resolved?: ResolvedAppearance;
+  /** Loadout preset id fallback when `resolved` is not provided. */
+  presetId?: string;
   catalog?: AvatarCatalog;
   currentAnimationRef: MutableRefObject<string>;
   desiredEquipmentVisibilityRef: MutableRefObject<Map<string, boolean>>;
@@ -105,6 +110,7 @@ export function preloadAllCharacterModelAssets() {
 
 export function loadPlayerModelAssets({
   actionAnimationNames,
+  resolved: resolvedInput,
   presetId,
   catalog = defaultAvatarCatalog,
   currentAnimationRef,
@@ -136,13 +142,16 @@ export function loadPlayerModelAssets({
 
   let resolved: ResolvedAppearance;
   try {
-    resolved = resolvePreset(presetId, catalog);
+    resolved = resolvedInput
+      ?? resolvePreset(presetId ?? 'wizard', catalog);
   } catch (error) {
-    console.warn(`Failed to resolve avatar preset ${presetId}`, error);
+    console.warn(`Failed to resolve avatar (${presetId ?? 'resolved'})`, error);
     return () => {
       disposed = true;
     };
   }
+
+  const label = resolved.presetId ?? presetId ?? resolved.body.id;
 
   void assembleAvatar({
     resolved,
@@ -168,7 +177,7 @@ export function loadPlayerModelAssets({
     onAnimationsLoaded(assembled.animations);
   }).catch((error) => {
     if (!disposed) {
-      console.warn(`Failed to assemble avatar preset ${presetId}`, error);
+      console.warn(`Failed to assemble avatar ${label}`, error);
     }
   });
 

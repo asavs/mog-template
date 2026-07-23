@@ -5,6 +5,7 @@ import {
   createAvatarCatalog,
   defaultAvatarCatalog,
   presetIdFromLegacyClass,
+  resolveFromServerState,
   resolvePreset,
 } from './catalog';
 
@@ -58,5 +59,27 @@ describe('avatar catalog', () => {
     });
     const resolved = resolvePreset('wizard', catalog);
     expect(resolved.body.url).toBe('test://models/wizard2/wizard2.fbx');
+  });
+
+  it('prefers server appearance/equipment over legacy class alone', () => {
+    const resolved = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+        { slot: 'utility_potion', itemId: 'potion' },
+      ],
+      legacyClass: 'wizard',
+    });
+    expect(resolved.body.id).toBe('body_m');
+    expect(resolved.presetId).toBe('paladin');
+    expect(resolved.equipped.map(item => item.id).sort()).toEqual(['potion', 'shield', 'sword_1h']);
+    expect(resolved.capabilities.melee).toBe(true);
+  });
+
+  it('falls back to preset when appearance is missing', () => {
+    const resolved = resolveFromServerState({ legacyClass: 'paladin' });
+    expect(resolved.body.id).toBe('body_m');
+    expect(resolved.capabilities.melee).toBe(true);
   });
 });

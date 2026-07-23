@@ -9,7 +9,10 @@
 import {
   defaultAvatarCatalog,
   presetIdFromLegacyClass,
+  resolveFromServerState,
   resolvePreset,
+  type NetworkAppearanceRow,
+  type NetworkEquipmentRow,
 } from '../avatar/catalog';
 import type { AvatarCapabilities, ResolvedAppearance, WizardSpell } from '../avatar/types';
 
@@ -77,11 +80,9 @@ export function normalizeCharacterClass(
   return presetId === 'paladin' ? 'paladin' : 'wizard';
 }
 
-export function getCharacterPresentation(characterClass: string | undefined): CharacterPresentation {
-  const presetId = normalizeCharacterClass(characterClass);
-  const resolved = resolvePreset(presetId, defaultAvatarCatalog);
+export function presentationFromResolved(resolved: ResolvedAppearance): CharacterPresentation {
   return {
-    presetId,
+    presetId: resolved.presetId ?? 'wizard',
     resolved,
     yOffset: resolved.body.yOffset,
     targetHeight: resolved.body.referenceHeight * resolved.scale,
@@ -89,6 +90,29 @@ export function getCharacterPresentation(characterClass: string | undefined): Ch
     footstepSounds: resolved.body.footstepSounds,
     equipmentIds: resolved.equipped.map(item => item.id),
   };
+}
+
+export function getCharacterPresentation(characterClass: string | undefined): CharacterPresentation {
+  const presetId = normalizeCharacterClass(characterClass);
+  return presentationFromResolved(resolvePreset(presetId, defaultAvatarCatalog));
+}
+
+/**
+ * Prefer SpacetimeDB appearance + equipment; fall back to character_class preset.
+ */
+export function getCharacterPresentationFromServer(options: {
+  legacyClass?: string | null;
+  appearance?: NetworkAppearanceRow | null;
+  equipment?: readonly NetworkEquipmentRow[] | null;
+}): CharacterPresentation {
+  return presentationFromResolved(
+    resolveFromServerState({
+      appearance: options.appearance,
+      equipment: options.equipment,
+      legacyClass: options.legacyClass,
+      catalog: defaultAvatarCatalog,
+    }),
+  );
 }
 
 /** @deprecated Use getCharacterPresentation — name kept for call-site churn control. */

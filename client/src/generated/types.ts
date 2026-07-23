@@ -154,6 +154,14 @@ export const PlayerAnimation = __t.object("PlayerAnimation", {
 });
 export type PlayerAnimation = __Infer<typeof PlayerAnimation>;
 
+export const PlayerAppearance = __t.object("PlayerAppearance", {
+  identity: __t.identity(),
+  bodyId: __t.string(),
+  scale: __t.f32(),
+  loadoutPreset: __t.string(),
+});
+export type PlayerAppearance = __Infer<typeof PlayerAppearance>;
+
 export const PlayerBlockState = __t.object("PlayerBlockState", {
   identity: __t.identity(),
   blockUntilTick: __t.u64(),
@@ -166,22 +174,6 @@ export const PlayerCharacter = __t.object("PlayerCharacter", {
   characterClass: __t.string(),
 });
 export type PlayerCharacter = __Infer<typeof PlayerCharacter>;
-
-export const PlayerAppearance = __t.object("PlayerAppearance", {
-  identity: __t.identity(),
-  bodyId: __t.string(),
-  scale: __t.f32(),
-  loadoutPreset: __t.string(),
-});
-export type PlayerAppearance = __Infer<typeof PlayerAppearance>;
-
-export const PlayerEquipment = __t.object("PlayerEquipment", {
-  id: __t.u64(),
-  owner: __t.identity(),
-  slot: __t.string(),
-  itemId: __t.string(),
-});
-export type PlayerEquipment = __Infer<typeof PlayerEquipment>;
 
 export const PlayerCombatState = __t.object("PlayerCombatState", {
   identity: __t.identity(),
@@ -196,6 +188,14 @@ export const PlayerData = __t.object("PlayerData", {
   joinedAt: __t.timestamp(),
 });
 export type PlayerData = __Infer<typeof PlayerData>;
+
+export const PlayerEquipment = __t.object("PlayerEquipment", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  slot: __t.string(),
+  itemId: __t.string(),
+});
+export type PlayerEquipment = __Infer<typeof PlayerEquipment>;
 
 export const PlayerHealth = __t.object("PlayerHealth", {
   identity: __t.identity(),
@@ -219,6 +219,14 @@ export const PlayerInput = __t.object("PlayerInput", {
 });
 export type PlayerInput = __Infer<typeof PlayerInput>;
 
+export const PlayerInputAck = __t.object("PlayerInputAck", {
+  identity: __t.identity(),
+  lastInputSeq: __t.u32(),
+  lastProcessedClientTick: __t.u32(),
+  serverTick: __t.u64(),
+});
+export type PlayerInputAck = __Infer<typeof PlayerInputAck>;
+
 export const PlayerJumpState = __t.object("PlayerJumpState", {
   identity: __t.identity(),
   verticalVelocity: __t.f32(),
@@ -232,14 +240,6 @@ export const PlayerSpellState = __t.object("PlayerSpellState", {
   lastFireballTick: __t.u64(),
 });
 export type PlayerSpellState = __Infer<typeof PlayerSpellState>;
-
-export const PlayerInputAck = __t.object("PlayerInputAck", {
-  identity: __t.identity(),
-  lastInputSeq: __t.u32(),
-  lastProcessedClientTick: __t.u32(),
-  serverTick: __t.u64(),
-});
-export type PlayerInputAck = __Infer<typeof PlayerInputAck>;
 
 export const PlayerTransform = __t.object("PlayerTransform", {
   identity: __t.identity(),
@@ -280,3 +280,4 @@ export const Vector3 = __t.object("Vector3", {
   z: __t.f32(),
 });
 export type Vector3 = __Infer<typeof Vector3>;
+
