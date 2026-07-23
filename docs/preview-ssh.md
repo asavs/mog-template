@@ -89,6 +89,16 @@ If failures persist after IAM is correct, try enabling IAP tunnel in the workflo
 env (`PREVIEW_USE_IAP: 'true'`) and ensure the deploy SA has
 `roles/iap.tunnelResourceAccessor` plus a firewall rule allowing IAP to port 22.
 
+## Public-repo hygiene
+
+This repo is public. Prefer:
+
+- Placeholder project / SA names in docs (`PROJECT_ID`, not real numbers)
+- No long-lived IPs or full `sa_<digits>` identities in issues/PR comments
+- Preview announce URLs are fine (ephemeral); raw IPs in chat are optional noise
+
+CI salvage logs intentionally omit external IPs; use `gcloud compute instances describe`.
+
 ## Related
 
 - `scripts/preview-up.sh` — create/deploy/announce

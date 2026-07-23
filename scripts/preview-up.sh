@@ -146,15 +146,15 @@ salvage_or_delete_on_fail() {
   # Keep last-deploy so GC/TTL still applies; mark as failed for operators.
   gc compute instances add-labels "$INSTANCE" --zone="$ZONE" \
     --labels="deploy-failed=true,last-deploy=$(date -u +%s)" >&2 || true
-  local ip
-  ip=$(gc compute instances describe "$INSTANCE" --zone="$ZONE" \
-    --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || echo unknown)
   if [ "$PREVIEW_DELETE_ON_FAIL" = "true" ]; then
     log "PREVIEW_DELETE_ON_FAIL=true — deleting $INSTANCE to free the preview cap"
     gc compute instances delete "$INSTANCE" --zone="$ZONE" --quiet >&2 || true
     log "deleted $INSTANCE"
   else
-    log "SALVAGE: left $INSTANCE running (ip=${ip}) labeled deploy-failed=true"
+    # Do not print public IPs into CI logs (public repos). Operators can fetch:
+    #   gcloud compute instances describe $INSTANCE --zone=$ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+    log "SALVAGE: left $INSTANCE running, labeled deploy-failed=true (IP omitted from logs)"
+    log "  describe: gcloud compute instances describe $INSTANCE --zone=$ZONE --project=$PROJECT"
     log "  ssh: gcloud compute ssh $INSTANCE --zone=$ZONE --project=$PROJECT"
     log "  tear down: bash scripts/preview-down.sh $PR_NUMBER"
     log "  or set PREVIEW_DELETE_ON_FAIL=true to auto-delete on future failures"
