@@ -3,7 +3,7 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { publicAssetPath } from '../publicAssets';
 
-const TERRAIN_PATH = publicAssetPath('models/terrain/dark-fantasy-map-2.glb');
+const TERRAIN_PATH = publicAssetPath('models/terrain/dark-fantasy-map-lower-poly.glb');
 const TERRAIN_Y_OFFSET = 0;
 const TERRAIN_TARGET_SIZE = 3148.07;
 

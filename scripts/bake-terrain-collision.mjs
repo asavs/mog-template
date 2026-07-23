@@ -3,7 +3,7 @@ import path from 'node:path';
 import { encodeHeightmapBinary, writeHeightmapMeta } from './heightmap-binary-format.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const GLB_PATH = path.join(ROOT, 'client/public/models/terrain/dark-fantasy-map-2.glb');
+const GLB_PATH = path.join(ROOT, 'client/public/models/terrain/dark-fantasy-map-lower-poly.glb');
 /** Client runtime binary (static web root). */
 const CLIENT_BIN_OUT = path.join(ROOT, 'client/public/models/terrain/heightmap.bin');
 /** Embedded by SpacetimeDB module via include_bytes!. */

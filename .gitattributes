@@ -3,3 +3,4 @@
 *.bat text eol=crlf
 client/public/models/terrain/dark-fantasy-map.glb filter=lfs diff=lfs merge=lfs -text
 client/public/models/terrain/dark-fantasy-map-2.glb filter=lfs diff=lfs merge=lfs -text
+client/public/models/terrain/dark-fantasy-map-lower-poly.glb filter=lfs diff=lfs merge=lfs -text
