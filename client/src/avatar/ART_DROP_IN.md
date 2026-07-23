@@ -42,10 +42,12 @@ New armor/weapons should be **catalog rows + files** — no engine PR if ids/slo
 | Layer | File |
 |---|---|
 | Canonical authority | `shared/avatar-loadout.json` |
-| Generated (do not hand-edit) | `client/src/avatar/loadoutAuthority.generated.ts` |
+| Generated (do not hand-edit) | `client/src/avatar/loadoutAuthority.generated.ts` — data **and** TS string unions (`ItemId`, `BodyId`, `AbilityId`, `LoadoutPresetId`) |
 | Generated (do not hand-edit) | `server/spacetimedb/src/loadout_authority.generated.rs` |
 | Client presentation (meshes, clips, sockets) | `client/src/avatar/catalog.ts` |
 | Server capability helpers | `server/spacetimedb/src/loadout.rs` (reads generated authority) |
+
+Wire/DB still carry plain strings; use `isItemId` / `isLoadoutPresetId` (etc.) at network boundaries. Prefer the generated unions inside client code.
 
 Regenerate after editing the JSON:
 

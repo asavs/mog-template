@@ -1,6 +1,13 @@
 import { publicAssetPath } from '../publicAssets';
 import { SOCKET_BONE_CANDIDATES } from './rig';
-import { LOADOUT_AUTHORITY, LOADOUT_DERIVED } from './loadoutAuthority.generated';
+import {
+  DEFAULT_PRESET_ID,
+  LOADOUT_AUTHORITY,
+  LOADOUT_DERIVED,
+  isBodyId,
+  isItemId,
+  isLoadoutPresetId,
+} from './loadoutAuthority.generated';
 import type {
   AbilityId,
   AvatarCapabilities,
@@ -12,6 +19,7 @@ import type {
   ItemDef,
   ItemId,
   LoadoutPreset,
+  LoadoutPresetId,
   PlayerAppearance,
   ResolvedAppearance,
   ResolvedClip,
@@ -74,13 +82,16 @@ const BODY_PRESENTATION: Record<string, Omit<BodyDef, 'id'>> = {
 function buildBodiesFromAuthority(): Record<string, BodyDef> {
   const out: Record<string, BodyDef> = {};
   for (const id of Object.keys(LOADOUT_AUTHORITY.bodies)) {
+    if (!isBodyId(id)) {
+      throw new Error(`Authority body key is not a known BodyId: ${id}`);
+    }
     const presentation = BODY_PRESENTATION[id];
     if (!presentation) {
       throw new Error(
         `Missing BODY_PRESENTATION for authority body "${id}" — add meshKey in catalog.ts`,
       );
     }
-    out[id] = { id: id as BodyId, ...presentation };
+    out[id] = { id, ...presentation };
   }
   return out;
 }
@@ -127,6 +138,9 @@ const ITEM_PRESENTATION: Record<
 function buildItemsFromAuthority(): Record<string, ItemDef> {
   const out: Record<string, ItemDef> = {};
   for (const [id, auth] of Object.entries(LOADOUT_AUTHORITY.items)) {
+    if (!isItemId(id)) {
+      throw new Error(`Authority item key is not a known ItemId: ${id}`);
+    }
     const presentation = ITEM_PRESENTATION[id];
     if (!presentation) {
       throw new Error(
@@ -210,15 +224,21 @@ const PRESET_CLIPS: Record<string, () => ClipSource[]> = {
 function buildPresetsFromAuthority(): Record<string, LoadoutPreset> {
   const out: Record<string, LoadoutPreset> = {};
   for (const [id, auth] of Object.entries(LOADOUT_AUTHORITY.presets)) {
+    if (!isLoadoutPresetId(id)) {
+      throw new Error(`Authority preset key is not a known LoadoutPresetId: ${id}`);
+    }
     const clipsFn = PRESET_CLIPS[id];
     if (!clipsFn) {
       throw new Error(`Missing PRESET_CLIPS for authority preset "${id}"`);
+    }
+    if (!isBodyId(auth.bodyId)) {
+      throw new Error(`Authority preset "${id}" has unknown bodyId: ${auth.bodyId}`);
     }
     out[id] = {
       id,
       label: auth.label,
       appearance: {
-        bodyId: auth.bodyId as BodyId,
+        bodyId: auth.bodyId,
         scale: auth.scale,
         slots: { ...(auth.slots as Partial<Record<EquipSlot, ItemId>>) },
       },
@@ -402,6 +422,7 @@ export function createAvatarCatalog(options?: {
         url: urlForMeshKey(clip.meshKey),
       }));
 
+      const resolvedPresetId = resolveOptions?.presetId;
       return {
         body: { ...body, url: urlForMeshKey(body.meshKey) },
         scale: appearance.scale,
@@ -409,7 +430,10 @@ export function createAvatarCatalog(options?: {
         grants,
         capabilities: capabilitiesFromGrants(grants),
         clips,
-        presetId: resolveOptions?.presetId,
+        presetId:
+          resolvedPresetId && isLoadoutPresetId(resolvedPresetId)
+            ? resolvedPresetId
+            : undefined,
       };
     },
   };
@@ -424,17 +448,19 @@ export const defaultAvatarCatalog: AvatarCatalog = createAvatarCatalog();
  * Map legacy join class strings onto loadout preset ids.
  * Table lives in shared/avatar-loadout.json → legacyClassToPreset.
  */
-export function presetIdFromLegacyClass(characterClass: string | null | undefined): string {
+export function presetIdFromLegacyClass(
+  characterClass: string | null | undefined,
+): LoadoutPresetId {
   const key = (characterClass ?? '').trim().toLowerCase();
   const mapped =
     LOADOUT_AUTHORITY.legacyClassToPreset[
       key as keyof typeof LOADOUT_AUTHORITY.legacyClassToPreset
     ];
-  return mapped ?? LOADOUT_AUTHORITY.defaultPresetId;
+  return (mapped ?? DEFAULT_PRESET_ID) as LoadoutPresetId;
 }
 
 export function appearanceFromPreset(
-  presetId: string,
+  presetId: LoadoutPresetId | string,
   catalog: AvatarCatalog = defaultAvatarCatalog,
 ): PlayerAppearance {
   const preset = catalog.getPreset(presetId);
@@ -450,11 +476,13 @@ export function appearanceFromPreset(
 }
 
 export function resolvePreset(
-  presetId: string,
+  presetId: LoadoutPresetId | string,
   catalog: AvatarCatalog = defaultAvatarCatalog,
 ): ResolvedAppearance {
   const appearance = appearanceFromPreset(presetId, catalog);
-  return catalog.resolve(appearance, { presetId });
+  return catalog.resolve(appearance, {
+    presetId: isLoadoutPresetId(presetId) ? presetId : presetIdFromLegacyClass(presetId),
+  });
 }
 
 const EQUIP_SLOTS = new Set<string>(SLOT_ORDER);
@@ -484,9 +512,9 @@ export function resolveFromServerState(options: {
 }): ResolvedAppearance {
   const catalog = options.catalog ?? defaultAvatarCatalog;
 
-  const fallbackPresetId = (): string => {
+  const fallbackPresetId = (): LoadoutPresetId => {
     const fromAppearance = options.appearance?.loadoutPreset?.trim();
-    if (fromAppearance && catalog.getPreset(fromAppearance)) {
+    if (fromAppearance && isLoadoutPresetId(fromAppearance) && catalog.getPreset(fromAppearance)) {
       return fromAppearance;
     }
     return presetIdFromLegacyClass(options.legacyClass ?? fromAppearance);
@@ -499,11 +527,17 @@ export function resolveFromServerState(options: {
     }
 
     const rawPresetId = appearance.loadoutPreset || presetIdFromLegacyClass(options.legacyClass);
-    const presetId = catalog.getPreset(rawPresetId) ? rawPresetId : fallbackPresetId();
+    const presetId: LoadoutPresetId = isLoadoutPresetId(rawPresetId)
+      ? rawPresetId
+      : fallbackPresetId();
     const slots: PlayerAppearance['slots'] = {};
     const extraItemIds: ItemId[] = [];
 
     for (const row of options.equipment ?? []) {
+      if (!isItemId(row.itemId)) {
+        // Unknown item from a newer server build — fail the whole resolve into fallback.
+        throw new Error(`Unknown itemId from server: ${row.itemId}`);
+      }
       if (EQUIP_SLOTS.has(row.slot)) {
         slots[row.slot as EquipSlot] = row.itemId;
       } else {
@@ -516,6 +550,10 @@ export function resolveFromServerState(options: {
     const hasAnyGear = (options.equipment?.length ?? 0) > 0;
     if (!hasAnyGear) {
       return resolvePreset(presetId, catalog);
+    }
+
+    if (!isBodyId(appearance.bodyId)) {
+      throw new Error(`Unknown bodyId from server: ${appearance.bodyId}`);
     }
 
     const base = catalog.resolve(
