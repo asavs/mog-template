@@ -71,6 +71,8 @@ Maps to issues #51 (Rust unit tests with mocks — partly addressed by the headl
 
 **`preview-up.yml`** — triggers on `pull_request_review` (state: approved) plus `workflow_dispatch`. Cheap gates run first (PR open, not draft, trusted approver association or allowlisted bot, **fork PRs rejected**, CI green on head SHA); only then does it build the client + WASM and call `scripts/preview-up.sh` to create-or-reuse `mog-pr-<N>`, publish the module (to the DB name the built client connects to, `mog-game-v1`) with a cleared world, and upsert the announce comment. `preview-down.yml` handles teardown (PR close, manual dispatch) and the scheduled TTL/orphan GC.
 
+SSH to the preview VM uses OS Login as the deploy service account. If deploy fails with `Permission denied (publickey)`, see [`preview-ssh.md`](preview-ssh.md) (IAM checklist, retries, optional IAP).
+
 **`prod-deploy.yml`** — triggers on push to master, but is **gated on `vars.PROD_DEPLOY_ENABLED == 'true'`** and skipped by default. It builds the root bundle with `npm run build`, publishes to `mog-game-v1`, and syncs the prod web root via `scripts/apply-artifacts.sh`. See `prod-enable.md` to turn it on.
 
 Build-then-apply order (compile and bundle first, publish and swap only if the build succeeded) keeps the skew-safe property from #16.
