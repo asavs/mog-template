@@ -1,6 +1,7 @@
 mod collision;
 mod common;
 mod heightmap;
+mod loadout;
 mod locomotion;
 mod player_logic;
 
@@ -733,41 +734,13 @@ pub fn join_game_as(
 }
 
 fn normalize_character_class(character_class: String) -> Result<String, String> {
-    match character_class.trim().to_ascii_lowercase().as_str() {
-        "paladin" | "pally" => Ok("paladin".to_string()),
-        "wizard" | "wizard2" => Ok("wizard".to_string()),
-        _ => Err("Unsupported character class".to_string()),
-    }
+    loadout::normalize_preset_id(&character_class)
 }
 
-struct ClassCapabilities {
-    melee: bool,
-    block: bool,
-    cast: bool,
-    drink_potion: bool,
-}
-
-// Data-driven capability lookup (#149). Stored rows may still carry legacy class
-// strings until players rejoin, so normalize first; un-normalizable values fall
-// back to the default class (wizard).
-fn class_capabilities(class: &str) -> ClassCapabilities {
-    let normalized =
-        normalize_character_class(class.to_string()).unwrap_or_else(|_| "wizard".to_string());
-    match normalized.as_str() {
-        "wizard" => ClassCapabilities {
-            melee: false,
-            block: false,
-            cast: true,
-            drink_potion: true,
-        },
-        // "paladin" and any normalized default.
-        _ => ClassCapabilities {
-            melee: true,
-            block: true,
-            cast: false,
-            drink_potion: true,
-        },
-    }
+// Grant-derived capabilities (loadout presets). Stored rows may still carry legacy
+// class strings until players rejoin — normalize first; bad values fall back to wizard.
+fn class_capabilities(class: &str) -> loadout::Capabilities {
+    loadout::capabilities_for_class(class)
 }
 
 #[spacetimedb::reducer]
