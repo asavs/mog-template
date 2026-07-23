@@ -20,8 +20,11 @@ On the deploy SA (e.g. `github-actions-deploy@PROJECT.iam.gserviceaccount.com`):
 | Role | Why |
 |---|---|
 | `roles/compute.osAdminLogin` | Passwordless SSH **and** sudo (apply step uses sudo) |
-| `roles/compute.viewer` | Describe instances / list |
+| `roles/compute.viewer` | Describe instances / list; also enough for `compute project-info describe` (project number) |
 | `roles/iam.serviceAccountUser` on the **VM's attached** SA | `gcloud compute ssh` actAs that SA |
+
+Do **not** rely on Resource Manager (`projects describe`) or `get-iam-policy` in the deploy
+script — those need permissions outside this least-privilege set.
 
 By default GCE VMs use the project Compute Engine default SA
 (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`). Grant:

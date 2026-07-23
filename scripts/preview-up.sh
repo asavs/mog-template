@@ -93,11 +93,21 @@ gc() { gcloud --project="$PROJECT" "$@"; }
 log() { printf '[preview-up] %s\n' "$*" >&2; }
 
 # Default VM attached SA = project Compute Engine default (actAs target for OS Login).
-# Treat empty string (workflow vars default '') as unset.
-PROJECT_NUMBER=$(gc projects describe "$PROJECT" --format='value(projectNumber)')
-DEFAULT_VM_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+# Use Compute API (roles/compute.viewer), NOT Resource Manager projects.describe
+# which needs resourcemanager.projects.get and is NOT in the documented deploy SA roles.
+# Treat empty PREVIEW_VM_SA (workflow vars default '') as unset.
+PROJECT_NUMBER=$(gc compute project-info describe --format='value(name)' 2>/dev/null || true)
+# Some gcloud versions expose numeric id as `name`, others as `id` — try both.
+if [ -z "$PROJECT_NUMBER" ]; then
+  PROJECT_NUMBER=$(gc compute project-info describe --format='value(id)' 2>/dev/null || true)
+fi
 if [ -z "${PREVIEW_VM_SA:-}" ]; then
-  PREVIEW_VM_SA="$DEFAULT_VM_SA"
+  if [ -n "$PROJECT_NUMBER" ]; then
+    PREVIEW_VM_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+  else
+    log "WARNING: could not resolve project number via compute project-info; VM SA will use GCE default (omit --service-account)"
+    PREVIEW_VM_SA=""
+  fi
 fi
 
 instance_exists() { gc compute instances describe "$INSTANCE" --zone="$ZONE" >/dev/null 2>&1; }
@@ -156,23 +166,11 @@ log_deploy_principal() {
   local principal
   principal=$(gcloud config get-value account 2>/dev/null || echo unknown)
   log "deploy principal (gcloud account): $principal"
-  log "preview VM attached SA (actAs target): $PREVIEW_VM_SA"
-  # Soft check: does the VM SA policy mention this principal as serviceAccountUser?
-  # Best-effort — missing permission to get-iam-policy must not abort deploy.
-  if [[ "$principal" == *.iam.gserviceaccount.com ]]; then
-    if gc iam service-accounts get-iam-policy "$PREVIEW_VM_SA" \
-      --flatten='bindings[].members' \
-      --filter="bindings.role:roles/iam.serviceAccountUser AND bindings.members:serviceAccount:${principal}" \
-      --format='value(bindings.role)' 2>/dev/null | grep -q serviceAccountUser; then
-      log "IAM soft-check: $principal has serviceAccountUser on $PREVIEW_VM_SA"
-    else
-      log "WARNING: soft-check did not see serviceAccountUser for $principal on $PREVIEW_VM_SA"
-      log "  (grant roles/iam.serviceAccountUser on the VM SA — docs/preview-ssh.md)"
-      log "  if the binding exists, ignore: get-iam-policy filter can lag or lack permission"
-    fi
-  else
-    log "deploy principal is not a service account email; skipping actAs soft-check"
-  fi
+  log "preview VM attached SA (actAs target): ${PREVIEW_VM_SA:-GCE default}"
+  # Soft actAs check is intentionally NOT done via get-iam-policy: that API needs
+  # iam.serviceAccounts.getIamPolicy, which is outside the documented deploy SA
+  # roles (compute.viewer / osAdminLogin / serviceAccountUser only). Operators
+  # verify actAs via docs/preview-ssh.md; a failed soft-check must never abort.
 }
 
 diagnose_ssh_failure() {
@@ -346,17 +344,22 @@ else
   # such a create-then-fail VM would leak forever unless its PR happens to
   # close. Stamping the label here closes that GC gap; the refresh after a
   # real publish (below) still overwrites it with the true last-deploy time.
-  # Attach PREVIEW_VM_SA explicitly so actAs IAM is unambiguous (matches
-  # docs/preview-ssh.md + setup-deploy-infra.sh). Scopes needed for OS Login
-  # guest agent + any GCP APIs the image may call.
-  log "attaching VM service account: $PREVIEW_VM_SA"
+  # Attach PREVIEW_VM_SA explicitly when known so actAs IAM is unambiguous
+  # (docs/preview-ssh.md + setup-deploy-infra.sh). Omit flags if unresolved —
+  # GCE still attaches the project default compute SA.
+  CREATE_SA_ARGS=()
+  if [ -n "$PREVIEW_VM_SA" ]; then
+    log "attaching VM service account: $PREVIEW_VM_SA"
+    CREATE_SA_ARGS=(--service-account="$PREVIEW_VM_SA" --scopes=https://www.googleapis.com/auth/cloud-platform)
+  else
+    log "creating VM with GCE default service account (PREVIEW_VM_SA unset)"
+  fi
   gc compute instances create "$INSTANCE" --zone="$ZONE" \
     --machine-type="$MACHINE_TYPE" \
     "${IMAGE_ARGS[@]}" \
     --boot-disk-size=10GB --boot-disk-type=pd-standard \
     --tags=http-server \
-    --service-account="$PREVIEW_VM_SA" \
-    --scopes=https://www.googleapis.com/auth/cloud-platform \
+    "${CREATE_SA_ARGS[@]}" \
     --labels="mog-preview=true,pr=${PR_NUMBER},last-deploy=$(date -u +%s)" \
     --metadata=enable-oslogin=true >&2
   CREATED_THIS_RUN=true
