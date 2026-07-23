@@ -27,13 +27,19 @@ Do **not** rely on Resource Manager (`projects describe`) or `get-iam-policy` in
 script — those need permissions outside this least-privilege set.
 
 By default GCE VMs use the project Compute Engine default SA
-(`PROJECT_NUMBER-compute@developer.gserviceaccount.com`). Grant:
+(`PROJECT_NUMBER-compute@developer.gserviceaccount.com`).  
+`preview-up.sh` leaves that default alone unless you set **`PREVIEW_VM_SA`** to a
+real SA email (never auto-derived — wrong project-number lookups break `instances.create`).
+
+Grant actAs on whichever SA is actually attached:
 
 ```bash
 gcloud projects add-iam-policy-binding PROJECT_ID \
   --member="serviceAccount:github-actions-deploy@PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/compute.osAdminLogin"
 
+# Resolve the real default compute SA email in your project (numeric PROJECT_NUMBER):
+#   gcloud iam service-accounts list --filter='displayName:Compute Engine default'
 gcloud iam service-accounts add-iam-policy-binding \
   PROJECT_NUMBER-compute@developer.gserviceaccount.com \
   --project=PROJECT_ID \
@@ -67,7 +73,7 @@ Common causes:
 | Re-probe before large artifact SCP | after mkdir, before wasm/dist |
 | Clearer errors | principal, zone, instance, **last 5 probe snippets**, live probe |
 | Optional IAP tunnel | `PREVIEW_USE_IAP=true` |
-| Explicit VM service account | `PREVIEW_VM_SA` (default: project compute SA); soft `serviceAccountUser` check |
+| Explicit VM service account | optional `PREVIEW_VM_SA` (unset = GCE default SA; do not auto-invent the email) |
 | Fail after create | label `deploy-failed=true` + salvage SSH/tear-down hints; or `PREVIEW_DELETE_ON_FAIL=true` to delete |
 
 Also: waits until SSH succeeds and **exits non-zero** if it never becomes ready

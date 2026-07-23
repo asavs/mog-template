@@ -92,22 +92,17 @@ fi
 gc() { gcloud --project="$PROJECT" "$@"; }
 log() { printf '[preview-up] %s\n' "$*" >&2; }
 
-# Default VM attached SA = project Compute Engine default (actAs target for OS Login).
-# Use Compute API (roles/compute.viewer), NOT Resource Manager projects.describe
-# which needs resourcemanager.projects.get and is NOT in the documented deploy SA roles.
+# VM attached SA (actAs target for gcloud compute ssh).
+# Default: OMIT --service-account so GCE attaches the project default compute SA
+# (same as pre-hardening behavior; that path successfully created mog-pr-* VMs).
 #
-# compute project-info fields (do not swap these):
-#   id   = numeric project number  (e.g. 123456789012)  ← required for default SA email
-#   name = string project id       (e.g. my-gcp-project) ← NOT valid in the SA email
-# Treat empty PREVIEW_VM_SA (workflow vars default '') as unset.
-PROJECT_NUMBER=$(gc compute project-info describe --format='value(id)' 2>/dev/null || true)
+# Do NOT auto-build PROJECT_NUMBER-compute@… from `compute project-info describe`:
+# field semantics vary by gcloud version and a wrong number yields
+# "serviceAccount was not found" at instances.create (seen on PR #39 CI).
+# Set PREVIEW_VM_SA explicitly (repo var) when you want a non-default SA.
+# Treat empty string (workflow vars default '') as unset.
 if [ -z "${PREVIEW_VM_SA:-}" ]; then
-  if [[ "$PROJECT_NUMBER" =~ ^[0-9]+$ ]]; then
-    PREVIEW_VM_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-  else
-    log "WARNING: could not resolve numeric project number via compute project-info (got '${PROJECT_NUMBER:-empty}'); VM SA will use GCE default (omit --service-account)"
-    PREVIEW_VM_SA=""
-  fi
+  PREVIEW_VM_SA=""
 fi
 
 instance_exists() { gc compute instances describe "$INSTANCE" --zone="$ZONE" >/dev/null 2>&1; }
