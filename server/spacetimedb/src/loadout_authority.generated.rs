@@ -44,7 +44,7 @@ pub fn preset_grants(preset_id: &str) -> &'static [&'static str] {
     match preset_id {
         "paladin" => &["block", "drink_potion", "melee_slash"],
         "wizard" => &["cast_fireball", "cast_lightning", "drink_potion"],
-        _ => preset_grants("wizard"),
+        _ => &["cast_fireball", "cast_lightning", "drink_potion"],
     }
 }
 

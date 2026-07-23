@@ -110,12 +110,14 @@ function generateRust(data) {
   lines.push('}');
   lines.push('');
 
+  const defaultPreset = data.defaultPresetId;
   lines.push('pub fn preset_grants(preset_id: &str) -> &\'static [&\'static str] {');
   lines.push('    match preset_id {');
   for (const id of presetIds) {
     lines.push(`        "${id}" => ${rustStringSlice(presetGrantList(data, id))},`);
   }
-  lines.push(`        _ => preset_grants("${data.defaultPresetId}"),`);
+  // Non-recursive fallback (same slice as default preset).
+  lines.push(`        _ => ${rustStringSlice(presetGrantList(data, defaultPreset))},`);
   lines.push('    }');
   lines.push('}');
   lines.push('');
@@ -125,7 +127,7 @@ function generateRust(data) {
   for (const id of presetIds) {
     lines.push(`        "${id}" => "${data.presets[id].bodyId}",`);
   }
-  lines.push(`        _ => "${data.presets[data.defaultPresetId].bodyId}",`);
+  lines.push(`        _ => "${data.presets[defaultPreset].bodyId}",`);
   lines.push('    }');
   lines.push('}');
   lines.push('');
@@ -135,7 +137,7 @@ function generateRust(data) {
   for (const id of presetIds) {
     lines.push(`        "${id}" => ${Number(data.presets[id].scale).toFixed(1)},`);
   }
-  lines.push(`        _ => ${Number(data.presets[data.defaultPresetId].scale).toFixed(1)},`);
+  lines.push(`        _ => ${Number(data.presets[defaultPreset].scale).toFixed(1)},`);
   lines.push('    }');
   lines.push('}');
   lines.push('');
@@ -157,7 +159,7 @@ function generateRust(data) {
   for (const id of presetIds) {
     lines.push(`        "${id}" => PRESET_EQUIPMENT_${id.toUpperCase()},`);
   }
-  lines.push(`        _ => PRESET_EQUIPMENT_${data.defaultPresetId.toUpperCase()},`);
+  lines.push(`        _ => PRESET_EQUIPMENT_${defaultPreset.toUpperCase()},`);
   lines.push('    }');
   lines.push('}');
   lines.push('');

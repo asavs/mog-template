@@ -54,23 +54,38 @@ const SOCKETS: Record<string, SocketBinding> = {
   },
 };
 
-const BODIES: Record<string, BodyDef> = {
+/** Presentation mesh fields keyed by authority body id. */
+const BODY_PRESENTATION: Record<string, Omit<BodyDef, 'id'>> = {
   // Transitional: full character FBX acts as "body" until modular meshes exist.
   body_m: {
-    id: 'body_m',
     meshKey: 'models/paladin/paladin.fbx',
     referenceHeight: 2.0,
     yOffset: 0.85,
     footstepSounds: SHARED_FOOTSTEPS,
   },
   body_f: {
-    id: 'body_f',
     meshKey: 'models/wizard2/wizard2.fbx',
     referenceHeight: 2.0,
     yOffset: 0.85,
     footstepSounds: SHARED_FOOTSTEPS,
   },
 };
+
+function buildBodiesFromAuthority(): Record<string, BodyDef> {
+  const out: Record<string, BodyDef> = {};
+  for (const id of Object.keys(LOADOUT_AUTHORITY.bodies)) {
+    const presentation = BODY_PRESENTATION[id];
+    if (!presentation) {
+      throw new Error(
+        `Missing BODY_PRESENTATION for authority body "${id}" — add meshKey in catalog.ts`,
+      );
+    }
+    out[id] = { id: id as BodyId, ...presentation };
+  }
+  return out;
+}
+
+const BODIES: Record<string, BodyDef> = buildBodiesFromAuthority();
 
 /** Presentation-only fields keyed by authority item id. */
 const ITEM_PRESENTATION: Record<
@@ -220,7 +235,7 @@ const PRESETS: Record<string, LoadoutPreset> = buildPresetsFromAuthority();
 const UTILITY_ITEMS_BY_PRESET: Record<string, readonly ItemId[]> = Object.fromEntries(
   Object.entries(LOADOUT_DERIVED.utilityItemsByPreset).map(([presetId, items]) => [
     presetId,
-    [...items] as ItemId[],
+    items as readonly ItemId[],
   ]),
 );
 

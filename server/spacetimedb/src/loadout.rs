@@ -16,6 +16,7 @@ pub use authority::{
 };
 
 /// Ability grant id constants (stable string aliases for call sites / tests).
+/// String values must match `shared/avatar-loadout.json` (codegen does not emit these aliases).
 pub mod grants {
     pub const MELEE_SLASH: &str = "melee_slash";
     pub const BLOCK: &str = "block";
@@ -31,6 +32,7 @@ pub mod slots {
 }
 
 /// Item id constants (stable string aliases for call sites / tests).
+/// String values must match `shared/avatar-loadout.json`.
 pub mod items {
     pub const SWORD_1H: &str = "sword_1h";
     pub const SHIELD: &str = "shield";
@@ -38,7 +40,7 @@ pub mod items {
     pub const POTION: &str = "potion";
 }
 
-/// Body mesh ids.
+/// Body mesh ids (string values must match `shared/avatar-loadout.json`).
 pub mod bodies {
     pub const BODY_M: &str = "body_m";
     pub const BODY_F: &str = "body_f";
@@ -68,13 +70,17 @@ pub struct EquipmentSeed {
     pub item_id: &'static str,
 }
 
-pub fn preset_appearance(preset_id: &str) -> AppearanceSeed {
-    // Resolve to a 'static id from the generated PRESET_IDS table (no hand match arms).
-    let id = PRESET_IDS
+/// Intern `preset_id` to a `'static` string from the generated table, or default.
+fn intern_preset_id(preset_id: &str) -> &'static str {
+    PRESET_IDS
         .iter()
         .copied()
-        .find(|p| *p == preset_id)
-        .unwrap_or(DEFAULT_PRESET_ID);
+        .find(|&id| id == preset_id)
+        .unwrap_or(DEFAULT_PRESET_ID)
+}
+
+pub fn preset_appearance(preset_id: &str) -> AppearanceSeed {
+    let id = intern_preset_id(preset_id);
     AppearanceSeed {
         body_id: preset_body_id(id),
         scale: preset_scale(id),
@@ -83,14 +89,12 @@ pub fn preset_appearance(preset_id: &str) -> AppearanceSeed {
 }
 
 /// Starting equipment for a preset (including utility attaches like potion).
-pub fn preset_equipment(preset_id: &str) -> Vec<EquipmentSeed> {
+pub fn preset_equipment(preset_id: &str) -> impl Iterator<Item = EquipmentSeed> {
+    // pairs are `Copy` (`&'static str` tuples); destructure by value, not `&&str`.
     preset_equipment_pairs(preset_id)
         .iter()
-        .map(|(slot, item_id)| EquipmentSeed {
-            slot,
-            item_id,
-        })
-        .collect()
+        .copied()
+        .map(|(slot, item_id)| EquipmentSeed { slot, item_id })
 }
 
 pub fn capabilities_from_grants(grant_list: &[&str]) -> Capabilities {
@@ -98,7 +102,7 @@ pub fn capabilities_from_grants(grant_list: &[&str]) -> Capabilities {
     let mut block = false;
     let mut cast = false;
     // Baseline humanoid grants from shared/avatar-loadout.json (generated BASELINE_GRANTS).
-    let mut drink_potion = BASELINE_GRANTS.iter().any(|g| *g == grants::DRINK_POTION);
+    let mut drink_potion = BASELINE_GRANTS.contains(&grants::DRINK_POTION);
     for grant in grant_list {
         match *grant {
             grants::MELEE_SLASH => melee = true,
@@ -125,12 +129,10 @@ pub fn capabilities_for_class(class: &str) -> Capabilities {
 
 /// Derive capabilities from equipped item ids (+ baseline grants).
 pub fn capabilities_for_equipment_item_ids(item_ids: &[&str]) -> Capabilities {
-    let mut grant_list: Vec<&str> = Vec::new();
-    for item_id in item_ids {
-        for grant in item_grants(item_id) {
-            grant_list.push(*grant);
-        }
-    }
+    let grant_list: Vec<&str> = item_ids
+        .iter()
+        .flat_map(|item_id| item_grants(item_id).iter().copied())
+        .collect();
     capabilities_from_grants(&grant_list)
 }
 
@@ -191,15 +193,14 @@ mod tests {
         let paladin = preset_appearance("paladin");
         assert_eq!(paladin.body_id, bodies::BODY_M);
         assert_eq!(paladin.loadout_preset, "paladin");
-        let paladin_gear = preset_equipment("paladin");
+        let paladin_gear: Vec<_> = preset_equipment("paladin").collect();
         assert!(paladin_gear.iter().any(|e| e.item_id == items::SWORD_1H));
         assert!(paladin_gear.iter().any(|e| e.item_id == items::SHIELD));
         assert!(paladin_gear.iter().any(|e| e.item_id == items::POTION));
 
         let wizard = preset_appearance("wizard");
         assert_eq!(wizard.body_id, bodies::BODY_F);
-        let wizard_gear = preset_equipment("wizard");
-        assert!(wizard_gear.iter().any(|e| e.item_id == items::STAFF));
+        assert!(preset_equipment("wizard").any(|e| e.item_id == items::STAFF));
     }
 
     #[test]
