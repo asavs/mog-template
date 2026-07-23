@@ -1,10 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { encodeHeightmapBinary, writeHeightmapMeta } from './heightmap-binary-format.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const GLB_PATH = path.join(ROOT, 'client/public/models/terrain/dark-fantasy-map-2.glb');
-const CLIENT_OUT = path.join(ROOT, 'client/src/heightmap.ts');
-const SERVER_OUT = path.join(ROOT, 'server/spacetimedb/src/heightmap.rs');
+/** Client runtime binary (static web root). */
+const CLIENT_BIN_OUT = path.join(ROOT, 'client/public/models/terrain/heightmap.bin');
+/** Embedded by SpacetimeDB module via include_bytes!. */
+const SERVER_BIN_OUT = path.join(ROOT, 'server/spacetimedb/src/heightmap.bin');
+/** Thin TS bounds for the client loader — not the giant sample grid. */
+const CLIENT_META_OUT = path.join(ROOT, 'client/src/heightmapMeta.ts');
 
 const TERRAIN_TARGET_SIZE = 3148.07;
 const HEIGHTMAP_SIZE = 513;
@@ -504,166 +509,33 @@ function clamp(value, min, max) {
 }
 
 function formatNumber(value) {
-  return value.toFixed(2);
+  return Number(value.toFixed(2));
 }
 
-function formatArray(heights, indent) {
-  const lines = [];
-  for (let i = 0; i < heights.length; i += 8) {
-    const values = [];
-    for (let j = i; j < Math.min(i + 8, heights.length); j += 1) {
-      values.push(formatNumber(heights[j]));
-    }
-    lines.push(`${indent}${values.join(',')},`);
-  }
-  return lines.join('\n');
-}
-
-function formatMask(mask, indent) {
-  const lines = [];
-  for (let i = 0; i < mask.length; i += 128) {
-    lines.push(`${indent}'${mask.slice(i, i + 128)}'`);
-  }
-  return lines.join(' +\n');
-}
-
-function formatRustMask(mask, indent) {
-  const lines = [];
-  for (let i = 0; i < mask.length; i += 128) {
-    lines.push(`${indent}"${mask.slice(i, i + 128)}",`);
-  }
-  return `concat!(\n${lines.join('\n')}\n)`;
-}
-
-function writeClient({ heights, walkable, bounds }) {
-  const content = `import * as THREE from 'three';\n\n`
-    + `export const HEIGHTMAP_SIZE = ${HEIGHTMAP_SIZE};\n`
-    + `export const HEIGHTMAP_MIN_X = ${formatNumber(bounds.minX)};\n`
-    + `export const HEIGHTMAP_MAX_X = ${formatNumber(bounds.maxX)};\n`
-    + `export const HEIGHTMAP_MIN_Z = ${formatNumber(bounds.minZ)};\n`
-    + `export const HEIGHTMAP_MAX_Z = ${formatNumber(bounds.maxZ)};\n`
-    + `export const TERRAIN_MAX_WALKABLE_SLOPE_DEGREES = ${MAX_WALKABLE_SLOPE_DEGREES};\n\n`
-    + `const TERRAIN_MAX_WALKABLE_SLOPE = Math.tan(THREE.MathUtils.degToRad(TERRAIN_MAX_WALKABLE_SLOPE_DEGREES));\n\n`
-    + `// Baked simplified static terrain collision surface from dark-fantasy-map-2.glb.\n`
-    + `const HEIGHTS = [\n${formatArray(heights, '  ')}\n];\n\n`
-    + `const WALKABLE_MASK =\n${formatMask(walkable, '  ')};\n\n`
-    + `export function terrainHeightAt(position: THREE.Vector3): number {\n`
-    + `  return sampleHeight(position.x, position.z);\n`
-    + `}\n\n`
-    + `export function sampleHeight(x: number, z: number): number {\n`
-    + `  const u = THREE.MathUtils.clamp((x - HEIGHTMAP_MIN_X) / (HEIGHTMAP_MAX_X - HEIGHTMAP_MIN_X), 0, 1);\n`
-    + `  const v = THREE.MathUtils.clamp((z - HEIGHTMAP_MIN_Z) / (HEIGHTMAP_MAX_Z - HEIGHTMAP_MIN_Z), 0, 1);\n`
-    + `  const gx = u * (HEIGHTMAP_SIZE - 1);\n`
-    + `  const gz = v * (HEIGHTMAP_SIZE - 1);\n`
-    + `  const x0 = Math.floor(gx);\n`
-    + `  const z0 = Math.floor(gz);\n`
-    + `  const x1 = Math.min(x0 + 1, HEIGHTMAP_SIZE - 1);\n`
-    + `  const z1 = Math.min(z0 + 1, HEIGHTMAP_SIZE - 1);\n`
-    + `  const tx = gx - x0;\n`
-    + `  const tz = gz - z0;\n`
-    + `  const h00 = heightAtIndex(x0, z0);\n`
-    + `  const h10 = heightAtIndex(x1, z0);\n`
-    + `  const h01 = heightAtIndex(x0, z1);\n`
-    + `  const h11 = heightAtIndex(x1, z1);\n`
-    + `  const h0 = THREE.MathUtils.lerp(h00, h10, tx);\n`
-    + `  const h1 = THREE.MathUtils.lerp(h01, h11, tx);\n`
-    + `  return THREE.MathUtils.lerp(h0, h1, tz);\n`
-    + `}\n\n`
-    + `export function isTerrainWalkableAt(x: number, z: number): boolean {\n`
-    + `  const u = THREE.MathUtils.clamp((x - HEIGHTMAP_MIN_X) / (HEIGHTMAP_MAX_X - HEIGHTMAP_MIN_X), 0, 1);\n`
-    + `  const v = THREE.MathUtils.clamp((z - HEIGHTMAP_MIN_Z) / (HEIGHTMAP_MAX_Z - HEIGHTMAP_MIN_Z), 0, 1);\n`
-    + `  const gridX = Math.round(u * (HEIGHTMAP_SIZE - 1));\n`
-    + `  const gridZ = Math.round(v * (HEIGHTMAP_SIZE - 1));\n`
-    + `  return WALKABLE_MASK.charCodeAt(gridZ * HEIGHTMAP_SIZE + gridX) === 49 && terrainSlopeAt(x, z) <= TERRAIN_MAX_WALKABLE_SLOPE;\n`
-    + `}\n\n`
-    + `export function terrainSlopeAt(x: number, z: number): number {\n`
-    + `  const cellX = (HEIGHTMAP_MAX_X - HEIGHTMAP_MIN_X) / (HEIGHTMAP_SIZE - 1);\n`
-    + `  const cellZ = (HEIGHTMAP_MAX_Z - HEIGHTMAP_MIN_Z) / (HEIGHTMAP_SIZE - 1);\n`
-    + `  const left = sampleHeight(x - cellX, z);\n`
-    + `  const right = sampleHeight(x + cellX, z);\n`
-    + `  const down = sampleHeight(x, z - cellZ);\n`
-    + `  const up = sampleHeight(x, z + cellZ);\n`
-    + `  const dhdx = (right - left) / (cellX * 2);\n`
-    + `  const dhdz = (up - down) / (cellZ * 2);\n`
-    + `  return Math.hypot(dhdx, dhdz);\n`
-    + `}\n\n`
-    + `function heightAtIndex(x: number, z: number): number {\n`
-    + `  return HEIGHTS[z * HEIGHTMAP_SIZE + x];\n`
-    + `}\n`;
-
-  fs.writeFileSync(CLIENT_OUT, content);
-}
-
-function writeServer({ heights, walkable, bounds }) {
-  const content = `use crate::common::Vector3;\n\n`
-    + `pub const HEIGHTMAP_SIZE: usize = ${HEIGHTMAP_SIZE};\n`
-    + `pub const HEIGHTMAP_MIN_X: f32 = ${formatNumber(bounds.minX)};\n`
-    + `pub const HEIGHTMAP_MAX_X: f32 = ${formatNumber(bounds.maxX)};\n`
-    + `pub const HEIGHTMAP_MIN_Z: f32 = ${formatNumber(bounds.minZ)};\n`
-    + `pub const HEIGHTMAP_MAX_Z: f32 = ${formatNumber(bounds.maxZ)};\n`
-    + `pub const TERRAIN_MAX_WALKABLE_SLOPE_DEGREES: f32 = ${MAX_WALKABLE_SLOPE_DEGREES}.0;\n\n`
-    + `const TERRAIN_MAX_WALKABLE_SLOPE: f32 = ${MAX_WALKABLE_SLOPE.toFixed(8)}; // tan(${MAX_WALKABLE_SLOPE_DEGREES} degrees)\n\n`
-    + `// Baked simplified static terrain collision surface from dark-fantasy-map-2.glb.\n`
-    + `const HEIGHTS: [f32; HEIGHTMAP_SIZE * HEIGHTMAP_SIZE] = [\n${formatArray(heights, '    ')}\n];\n\n`
-    + `const WALKABLE_MASK: &str = ${formatRustMask(walkable, '    ')};\n\n`
-    + `pub fn terrain_height_at(position: &Vector3) -> f32 {\n`
-    + `    sample_height(position.x, position.z)\n`
-    + `}\n\n`
-    + `pub fn sample_height(x: f32, z: f32) -> f32 {\n`
-    + `    let u = ((x - HEIGHTMAP_MIN_X) / (HEIGHTMAP_MAX_X - HEIGHTMAP_MIN_X)).clamp(0.0, 1.0);\n`
-    + `    let v = ((z - HEIGHTMAP_MIN_Z) / (HEIGHTMAP_MAX_Z - HEIGHTMAP_MIN_Z)).clamp(0.0, 1.0);\n`
-    + `    let gx = u * (HEIGHTMAP_SIZE as f32 - 1.0);\n`
-    + `    let gz = v * (HEIGHTMAP_SIZE as f32 - 1.0);\n`
-    + `    let x0 = gx.floor() as usize;\n`
-    + `    let z0 = gz.floor() as usize;\n`
-    + `    let x1 = (x0 + 1).min(HEIGHTMAP_SIZE - 1);\n`
-    + `    let z1 = (z0 + 1).min(HEIGHTMAP_SIZE - 1);\n`
-    + `    let tx = gx - x0 as f32;\n`
-    + `    let tz = gz - z0 as f32;\n`
-    + `    let h00 = height_at_index(x0, z0);\n`
-    + `    let h10 = height_at_index(x1, z0);\n`
-    + `    let h01 = height_at_index(x0, z1);\n`
-    + `    let h11 = height_at_index(x1, z1);\n`
-    + `    let h0 = h00 + (h10 - h00) * tx;\n`
-    + `    let h1 = h01 + (h11 - h01) * tx;\n`
-    + `    h0 + (h1 - h0) * tz\n`
-    + `}\n\n`
-    + `pub fn is_terrain_walkable_at(x: f32, z: f32) -> bool {\n`
-    + `    let u = ((x - HEIGHTMAP_MIN_X) / (HEIGHTMAP_MAX_X - HEIGHTMAP_MIN_X)).clamp(0.0, 1.0);\n`
-    + `    let v = ((z - HEIGHTMAP_MIN_Z) / (HEIGHTMAP_MAX_Z - HEIGHTMAP_MIN_Z)).clamp(0.0, 1.0);\n`
-    + `    let grid_x = (u * (HEIGHTMAP_SIZE as f32 - 1.0)).round() as usize;\n`
-    + `    let grid_z = (v * (HEIGHTMAP_SIZE as f32 - 1.0)).round() as usize;\n`
-    + `    let index = grid_z * HEIGHTMAP_SIZE + grid_x;\n`
-    + `    WALKABLE_MASK.as_bytes()[index] == b'1' && terrain_slope_at(x, z) <= TERRAIN_MAX_WALKABLE_SLOPE\n`
-    + `}\n\n`
-    + `pub fn terrain_slope_at(x: f32, z: f32) -> f32 {\n`
-    + `    let cell_x = (HEIGHTMAP_MAX_X - HEIGHTMAP_MIN_X) / (HEIGHTMAP_SIZE as f32 - 1.0);\n`
-    + `    let cell_z = (HEIGHTMAP_MAX_Z - HEIGHTMAP_MIN_Z) / (HEIGHTMAP_SIZE as f32 - 1.0);\n`
-    + `    let left = sample_height(x - cell_x, z);\n`
-    + `    let right = sample_height(x + cell_x, z);\n`
-    + `    let down = sample_height(x, z - cell_z);\n`
-    + `    let up = sample_height(x, z + cell_z);\n`
-    + `    let dhdx = (right - left) / (cell_x * 2.0);\n`
-    + `    let dhdz = (up - down) / (cell_z * 2.0);\n`
-    + `    (dhdx * dhdx + dhdz * dhdz).sqrt()\n`
-    + `}\n\n`
-    + `fn height_at_index(x: usize, z: usize) -> f32 {\n`
-    + `    HEIGHTS[z * HEIGHTMAP_SIZE + x]\n`
-    + `}\n\n`
-    + `#[cfg(test)]\n`
-    + `mod tests {\n`
-    + `    use super::*;\n\n`
-    + `    #[test]\n`
-    + `    fn samples_inside_generated_range() {\n`
-    + `        let h = sample_height(0.0, 0.0);\n`
-    + `        assert!(h >= 0.0);\n`
-    + `    }\n`
-    + `}\n`;
-
-  fs.writeFileSync(SERVER_OUT, content);
+/**
+ * Write HM01 bins + client meta. Does **not** touch heightmap.ts / heightmap.rs
+ * loaders — those stay as hand-maintained thin wrappers around the binary.
+ */
+function writeBinaryOutputs({ heights, walkable, bounds, stats }) {
+  const data = {
+    size: HEIGHTMAP_SIZE,
+    minX: formatNumber(bounds.minX),
+    maxX: formatNumber(bounds.maxX),
+    minZ: formatNumber(bounds.minZ),
+    maxZ: formatNumber(bounds.maxZ),
+    minH: formatNumber(stats.minHeight),
+    maxH: formatNumber(stats.maxHeight),
+    heights,
+    mask: walkable,
+  };
+  const bin = encodeHeightmapBinary(data);
+  fs.mkdirSync(path.dirname(CLIENT_BIN_OUT), { recursive: true });
+  fs.writeFileSync(CLIENT_BIN_OUT, bin);
+  fs.writeFileSync(SERVER_BIN_OUT, bin);
+  writeHeightmapMeta(CLIENT_META_OUT, data, MAX_WALKABLE_SLOPE_DEGREES);
+  return { bytes: bin.length, clientBin: CLIENT_BIN_OUT, serverBin: SERVER_BIN_OUT, meta: CLIENT_META_OUT };
 }
 
 const result = buildHeightmap();
-writeClient(result);
-writeServer(result);
-console.log(JSON.stringify(result.stats, null, 2));
+const written = writeBinaryOutputs(result);
+console.log(JSON.stringify({ ...result.stats, ...written }, null, 2));

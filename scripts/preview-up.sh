@@ -8,27 +8,28 @@
 # gcloud + prebuilt artifacts. This script does NOT build anything — it consumes
 # a prebuilt WASM and client dist (like apply-artifacts.sh).
 #
-# Config knobs (env vars; defaults match the preview-VM factory plan v1 §11).
-# In CI these are sourced from repo `vars.*` with these same fallbacks:
-#   MACHINE_TYPE           [e2-micro]   VM shape (fallback e2-small if micro OOMs)
-#   PREVIEW_MAX_CONCURRENT [3]          hard cap on live preview VMs project-wide
-#   ZONE                   [us-central1-a]
-#   PREVIEW_DB_NAME        [mog-game-v1]  MUST match the DB name the built client
-#                          connects to. The caller (preview-up.yml) builds the
-#                          client with VITE_STDB_DB_NAME="$PREVIEW_DB_NAME",
-#                          which client/src/environment.ts reads (falling back
-#                          to 'mog-game-v1' when unset), so this one knob
-#                          governs both the publish target here and the
-#                          client's connection target.
-#   IMAGE_FAMILY           [mog-preview]  golden-image family (plan §9). If an
-#                          image exists in this family (in PROJECT), the VM is
-#                          created FROM it and the bootstrap below self-skips via
-#                          its sentinel; otherwise falls back to stock debian-12
-#                          + full bootstrap. Baked by scripts/preview-bootstrap.sh.
-#   PROJECT / GCP_PROJECT               GCP project id (required)
-#   WASM_PATH                           override wasm path (else auto-find)
-#   DIST_DIR               [client/dist]  built client bundle
-#   (PREVIEW_TTL_HOURS is consumed by the GC job in preview-down.yml, not here.)
+# Config (who provides what — see docs/preview-ssh.md):
+#
+#   GitHub Secrets (identity — set once by setup-deploy-infra.sh):
+#     GCP_PROJECT, GCP_SERVICE_ACCOUNT, GCP_WORKLOAD_IDENTITY_PROVIDER
+#     → workflow maps GCP_PROJECT into PROJECT for this script
+#
+#   GitHub Variables (knobs — not secret; optional overrides):
+#     MACHINE_TYPE [e2-micro]   PREVIEW_MAX_CONCURRENT [3]   ZONE [us-central1-a]
+#     PREVIEW_DB_NAME [mog-game-v1]   IMAGE_FAMILY [mog-preview]
+#     PREVIEW_USE_IAP [false]   PREVIEW_DELETE_ON_FAIL [false]
+#     PREVIEW_VM_SA   [unset]  only if the VM must use a non-default attached SA
+#
+#   GCE platform default:
+#     When PREVIEW_VM_SA is unset, omit --service-account so GCE attaches the
+#     project default compute SA (idiomatic; do not invent the email in bash).
+#
+#   Local-only overrides:
+#     WASM_PATH, DIST_DIR [client/dist]
+#     PREVIEW_TTL_HOURS is for preview-down.yml GC, not this script.
+#
+# SSH / OS Login: deploy SA needs osAdminLogin + actAs on the VM SA;
+# enable-oslogin=true on the instance. See docs/preview-ssh.md.
 #
 # Manual runs from Windows: the heredoc-over-ssh publish step below (`gcloud
 # compute ssh ... --command=... <<'REMOTE'`) fails under Windows gcloud's
@@ -47,6 +48,8 @@ PREVIEW_MAX_CONCURRENT="${PREVIEW_MAX_CONCURRENT:-3}"
 ZONE="${ZONE:-us-central1-a}"
 PREVIEW_DB_NAME="${PREVIEW_DB_NAME:-mog-game-v1}"
 IMAGE_FAMILY="${IMAGE_FAMILY:-mog-preview}"
+PREVIEW_USE_IAP="${PREVIEW_USE_IAP:-false}"
+PREVIEW_DELETE_ON_FAIL="${PREVIEW_DELETE_ON_FAIL:-false}"
 PROJECT="${PROJECT:-${GCP_PROJECT:?PROJECT (or GCP_PROJECT) is required}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,6 +78,190 @@ fi
 gc() { gcloud --project="$PROJECT" "$@"; }
 log() { printf '[preview-up] %s\n' "$*" >&2; }
 
+# Optional override only. Empty/unset → GCE default compute SA (no flag).
+PREVIEW_VM_SA="${PREVIEW_VM_SA:-}"
+
+instance_exists() { gc compute instances describe "$INSTANCE" --zone="$ZONE" >/dev/null 2>&1; }
+
+# Shared flags for compute ssh/scp. Optional IAP for flaky public-IP OS Login.
+GC_REMOTE_FLAGS=(--zone="$ZONE" --quiet)
+if [ "$PREVIEW_USE_IAP" = "true" ]; then
+  GC_REMOTE_FLAGS+=(--tunnel-through-iap)
+  log "using IAP tunnel for ssh/scp (PREVIEW_USE_IAP=true)"
+fi
+
+# Ring buffer of recent probe failure snippets (last 5) for diagnose_ssh_failure.
+PROBE_FAIL_LOG=()
+record_probe_failure() {
+  local snippet="$1"
+  PROBE_FAIL_LOG+=("$snippet")
+  if [ "${#PROBE_FAIL_LOG[@]}" -gt 5 ]; then
+    PROBE_FAIL_LOG=("${PROBE_FAIL_LOG[@]: -5}")
+  fi
+}
+
+# Track whether we own remote work so fail-path can salvage / tear down.
+CREATED_THIS_RUN=false
+DEPLOY_SUCCEEDED=false
+
+salvage_or_delete_on_fail() {
+  local rc=$?
+  # Successful path sets DEPLOY_SUCCEEDED before announce; trap still fires.
+  if [ "$DEPLOY_SUCCEEDED" = "true" ] || [ "$rc" -eq 0 ]; then
+    return 0
+  fi
+  if ! instance_exists 2>/dev/null; then
+    return 0
+  fi
+  log "--- deploy failed (rc=${rc}); post-fail VM handling ---"
+  # Keep last-deploy so GC/TTL still applies; mark as failed for operators.
+  gc compute instances add-labels "$INSTANCE" --zone="$ZONE" \
+    --labels="deploy-failed=true,last-deploy=$(date -u +%s)" >&2 || true
+  if [ "$PREVIEW_DELETE_ON_FAIL" = "true" ]; then
+    log "PREVIEW_DELETE_ON_FAIL=true — deleting $INSTANCE to free the preview cap"
+    gc compute instances delete "$INSTANCE" --zone="$ZONE" --quiet >&2 || true
+    log "deleted $INSTANCE"
+  else
+    # Do not print public IPs into CI logs (public repos). Operators can fetch:
+    #   gcloud compute instances describe $INSTANCE --zone=$ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+    log "SALVAGE: left $INSTANCE running, labeled deploy-failed=true (IP omitted from logs)"
+    log "  describe: gcloud compute instances describe $INSTANCE --zone=$ZONE --project=$PROJECT"
+    log "  ssh: gcloud compute ssh $INSTANCE --zone=$ZONE --project=$PROJECT"
+    log "  tear down: bash scripts/preview-down.sh $PR_NUMBER"
+    log "  or set PREVIEW_DELETE_ON_FAIL=true to auto-delete on future failures"
+  fi
+}
+trap salvage_or_delete_on_fail EXIT
+
+log_deploy_principal() {
+  local principal
+  principal=$(gcloud config get-value account 2>/dev/null || echo unknown)
+  log "who: deploy principal=$principal  project=$PROJECT"
+  if [ -n "$PREVIEW_VM_SA" ]; then
+    log "vm SA: $PREVIEW_VM_SA (explicit PREVIEW_VM_SA)"
+  else
+    log "vm SA: GCE project default (PREVIEW_VM_SA unset — idiomatic)"
+  fi
+}
+
+diagnose_ssh_failure() {
+  log "--- SSH/SCP diagnostics ---"
+  log "instance=$INSTANCE zone=$ZONE project=$PROJECT iap=$PREVIEW_USE_IAP"
+  log "vm_sa=$PREVIEW_VM_SA"
+  log "gcloud account: $(gcloud config get-value account 2>/dev/null || echo unknown)"
+  log "active accounts:"
+  gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | while read -r acc; do
+    log "  - $acc"
+  done || true
+  if [ "${#PROBE_FAIL_LOG[@]}" -gt 0 ]; then
+    log "last ${#PROBE_FAIL_LOG[@]} probe failure snippet(s):"
+    local i
+    for i in "${!PROBE_FAIL_LOG[@]}"; do
+      log "  [$((i + 1))] ${PROBE_FAIL_LOG[$i]}"
+    done
+  else
+    log "no captured probe failure snippets (failures were silent redirects)"
+  fi
+  # One non-quiet probe so the real gcloud/OS Login message is visible in CI logs.
+  # Use an explicit =true check — do NOT use ${VAR:+flag} here: VAR is always set
+  # (default "false"), and :+ would treat the non-empty string "false" as truthy.
+  log "probe (ssh --command=true, not quiet):"
+  DIAG_SSH_FLAGS=(--zone="$ZONE")
+  if [ "$PREVIEW_USE_IAP" = "true" ]; then
+    DIAG_SSH_FLAGS+=(--tunnel-through-iap)
+  fi
+  gc compute ssh "$INSTANCE" "${DIAG_SSH_FLAGS[@]}" \
+    --command=true 2>&1 | tail -30 | while IFS= read -r line; do log "  $line"; done || true
+  log "Checklist (docs/preview-ssh.md):"
+  log "  1) deploy SA has roles/compute.osAdminLogin (sudo) or osLogin"
+  log "  2) deploy SA has roles/iam.serviceAccountUser on VM SA ($PREVIEW_VM_SA)"
+  log "  3) instance metadata enable-oslogin=true (set at create)"
+  log "  4) IAM propagation can lag several minutes after role grants"
+  log "  5) try PREVIEW_USE_IAP=true if public-IP OS Login is flaky"
+}
+
+# Wait until SSH works; fail loudly if it never does (do not continue silently).
+wait_for_ssh() {
+  local max_attempts="${1:-36}" # default ~6 minutes at 10s
+  local attempt
+  local err
+  log "waiting for SSH (up to ${max_attempts} attempts)..."
+  for attempt in $(seq 1 "$max_attempts"); do
+    err=$(gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" --command=true 2>&1) && {
+      log "SSH ready (attempt ${attempt}/${max_attempts})"
+      return 0
+    }
+    # Keep a short single-line snippet for the last-5 ring buffer.
+    record_probe_failure "attempt=${attempt} $(echo "$err" | tr '\n' ' ' | tail -c 240)"
+    log "SSH not ready (attempt ${attempt}/${max_attempts}); sleeping 10s"
+    sleep 10
+  done
+  log "ERROR: SSH never became ready for $INSTANCE"
+  diagnose_ssh_failure
+  return 1
+}
+
+# Retry an ssh command that must succeed.
+remote_ssh() {
+  local cmd="$1"
+  local max_attempts="${2:-8}"
+  local attempt
+  local rc
+  local err
+  for attempt in $(seq 1 "$max_attempts"); do
+    if err=$(gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" --command="$cmd" 2>&1); then
+      # Echo remote stdout/stderr to our stderr for CI logs.
+      printf '%s\n' "$err" >&2
+      return 0
+    fi
+    rc=$?
+    record_probe_failure "ssh cmd attempt=${attempt} rc=${rc} $(echo "$err" | tr '\n' ' ' | tail -c 200)"
+    log "ssh failed rc=${rc} (attempt ${attempt}/${max_attempts}): ${cmd}"
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      sleep 15
+    fi
+  done
+  log "ERROR: ssh failed after ${max_attempts} attempts"
+  diagnose_ssh_failure
+  return 1
+}
+
+# Retry scp of one local path to a remote path on the instance.
+# Usage: remote_scp [--recurse] <local> <remote-path-on-instance>
+remote_scp() {
+  local recurse=()
+  if [ "${1:-}" = "--recurse" ]; then
+    recurse=(--recurse)
+    shift
+  fi
+  local local_path="${1:?remote_scp: local path required}"
+  local remote_path="${2:?remote_scp: remote path required}"
+  local max_attempts=8
+  local attempt
+  local rc
+  local err
+  for attempt in $(seq 1 "$max_attempts"); do
+    if err=$(gc compute scp "${GC_REMOTE_FLAGS[@]}" "${recurse[@]}" \
+      "$local_path" "${INSTANCE}:${remote_path}" 2>&1); then
+      printf '%s\n' "$err" >&2
+      return 0
+    fi
+    rc=$?
+    record_probe_failure "scp attempt=${attempt} rc=${rc} $(echo "$err" | tr '\n' ' ' | tail -c 200)"
+    log "scp failed rc=${rc} (attempt ${attempt}/${max_attempts}): $(basename "$local_path") -> ${INSTANCE}:${remote_path}"
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      # Re-probe SSH; OS Login can flap between successful hops.
+      gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" --command=true >/dev/null 2>&1 || true
+      sleep 15
+    fi
+  done
+  log "ERROR: scp failed after ${max_attempts} attempts for $local_path"
+  diagnose_ssh_failure
+  return 1
+}
+
+log_deploy_principal
+
 # ---------------------------------------------------------------- locate artifacts
 if [ -z "${WASM_PATH:-}" ]; then
   WASM_PATH=$(find "$REPO_ROOT/server/spacetimedb/target/wasm32-unknown-unknown/release" \
@@ -91,8 +278,6 @@ fi
 log "artifacts: wasm=$(basename "$WASM_PATH") dist=$DIST_DIR"
 
 # ---------------------------------------------------------------- create-or-reuse
-instance_exists() { gc compute instances describe "$INSTANCE" --zone="$ZONE" >/dev/null 2>&1; }
-
 if instance_exists; then
   log "reusing existing instance $INSTANCE"
 else
@@ -130,43 +315,62 @@ else
   # such a create-then-fail VM would leak forever unless its PR happens to
   # close. Stamping the label here closes that GC gap; the refresh after a
   # real publish (below) still overwrites it with the true last-deploy time.
+  # Attach PREVIEW_VM_SA explicitly when known so actAs IAM is unambiguous
+  # (docs/preview-ssh.md + setup-deploy-infra.sh). Omit flags if unresolved —
+  # GCE still attaches the project default compute SA.
+  CREATE_SA_ARGS=()
+  if [ -n "$PREVIEW_VM_SA" ]; then
+    log "attaching VM service account: $PREVIEW_VM_SA"
+    CREATE_SA_ARGS=(--service-account="$PREVIEW_VM_SA" --scopes=https://www.googleapis.com/auth/cloud-platform)
+  else
+    log "creating VM with GCE default service account (PREVIEW_VM_SA unset)"
+  fi
   gc compute instances create "$INSTANCE" --zone="$ZONE" \
     --machine-type="$MACHINE_TYPE" \
     "${IMAGE_ARGS[@]}" \
     --boot-disk-size=10GB --boot-disk-type=pd-standard \
     --tags=http-server \
+    "${CREATE_SA_ARGS[@]}" \
     --labels="mog-preview=true,pr=${PR_NUMBER},last-deploy=$(date -u +%s)" \
     --metadata=enable-oslogin=true >&2
+  CREATED_THIS_RUN=true
 
-  log "waiting for SSH..."
-  for _ in $(seq 1 30); do
-    gc compute ssh "$INSTANCE" --zone="$ZONE" --command=true --quiet >/dev/null 2>&1 && break
-    sleep 10
-  done
 fi
+
+# Always require a live SSH session before any scp (guest agent / OS Login can
+# lag after create, stop/start, or long idle). Fail here instead of mid-scp with
+# a bare Permission denied (publickey).
+wait_for_ssh 36
 
 # ---------------------------------------------------------------- bootstrap (skip if provisioned)
 log "staging + running preview-bootstrap.sh (self-skips if already provisioned)"
-gc compute scp --zone="$ZONE" --quiet \
-  "$SCRIPT_DIR/preview-bootstrap.sh" "$INSTANCE:/tmp/preview-bootstrap.sh" >&2
-gc compute ssh "$INSTANCE" --zone="$ZONE" --quiet \
-  --command="bash /tmp/preview-bootstrap.sh" >&2
+remote_scp "$SCRIPT_DIR/preview-bootstrap.sh" "/tmp/preview-bootstrap.sh"
+remote_ssh "bash /tmp/preview-bootstrap.sh"
 
 # ---------------------------------------------------------------- stage artifacts
+# Split multi-source recursive scp into sequential transfers. A single
+# `gcloud compute scp --recurse wasm dist host:dir/` has been observed to fail
+# with Permission denied (publickey) after an earlier hop succeeded (PR #38).
 STAGING="/tmp/deploy-${SHA}"
 log "staging artifacts to $STAGING"
-gc compute ssh "$INSTANCE" --zone="$ZONE" --quiet \
-  --command="rm -rf ${STAGING} && mkdir -p ${STAGING}" >&2
-gc compute scp --zone="$ZONE" --quiet --recurse \
-  "$WASM_PATH" "$DIST_DIR" "mog-pr-${PR_NUMBER}:${STAGING}/" >&2
+remote_ssh "rm -rf ${STAGING} && mkdir -p ${STAGING}"
+# Re-probe immediately before large transfers (OS Login can flap).
+remote_ssh "true" 4
+remote_scp "$WASM_PATH" "${STAGING}/$(basename "$WASM_PATH")"
+# Copy so remote path is $STAGING/dist (basename of DIST_DIR is normally "dist").
+remote_scp --recurse "$DIST_DIR" "${STAGING}/"
 
 # ---------------------------------------------------------------- apply on VM (publish + sync)
 # Runs on the VM. Publishes with a CLEARED world (--delete-data, decision E) and
 # ALWAYS pins --server to the loopback STDB: an unqualified publish targets
 # maincloud and 401s. Then rsyncs dist into the single web root.
 log "publishing $PREVIEW_DB_NAME (cleared world) + syncing client"
-gc compute ssh "$INSTANCE" --zone="$ZONE" --quiet \
-  --command="DB_NAME='${PREVIEW_DB_NAME}' SHA='${SHA}' bash -s" <<'REMOTE' >&2
+# Retry the outer SSH that carries the apply heredoc (same OS Login flakiness).
+APPLY_OK=false
+for apply_attempt in 1 2 3 4 5; do
+  if gc compute ssh "$INSTANCE" "${GC_REMOTE_FLAGS[@]}" \
+    --command="DB_NAME='${PREVIEW_DB_NAME}' SHA='${SHA}' bash -s" <<'REMOTE' >&2
+
 set -euo pipefail
 STAGING="/tmp/deploy-${SHA}"
 WEB_ROOT="/var/www/mog"
@@ -212,9 +416,28 @@ sudo mkdir -p "$WEB_ROOT"
 sudo rsync -a --checksum --no-times --delete "${EXCLUDES[@]}" "$STAGING/dist/" "$WEB_ROOT/"
 sudo chown -R www-data:www-data "$WEB_ROOT"
 
-rm -rf "$STAGING"
+# Do NOT delete $STAGING here: if SSH drops after this point, outer retries would
+# find an empty staging dir and fail forever. Local cleanup runs after success.
 echo "[preview-apply] done."
 REMOTE
+  then
+    APPLY_OK=true
+    break
+  fi
+  log "apply ssh failed (attempt ${apply_attempt}/5); re-staging artifacts then retrying in 20s"
+  # Re-upload in case a partial remote apply wiped or corrupted staging mid-flight.
+  remote_ssh "mkdir -p ${STAGING}" 3 || true
+  remote_scp "$WASM_PATH" "${STAGING}/$(basename "$WASM_PATH")" || true
+  remote_scp --recurse "$DIST_DIR" "${STAGING}/" || true
+  sleep 20
+done
+if [ "$APPLY_OK" != "true" ]; then
+  log "ERROR: apply step failed after retries"
+  diagnose_ssh_failure
+  exit 1
+fi
+# Safe to drop staging only after a fully successful apply hop.
+remote_ssh "rm -rf ${STAGING}" 3 || true
 
 # ---------------------------------------------------------------- record TTL marker
 # Stamp the deploy time as a numeric instance label so the scheduled GC job can
@@ -232,6 +455,10 @@ DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 log "preview live: http://${IP}/"
 
+# Clear failed marker if a previous attempt labeled this VM.
+gc compute instances remove-labels "$INSTANCE" --zone="$ZONE" \
+  --labels=deploy-failed >&2 2>/dev/null || true
+
 # Machine-readable announce (plan §8.2 — EXACT fields). Emitted between markers
 # on stdout so callers (the workflow) can extract it unambiguously.
 cat <<JSON
@@ -246,3 +473,5 @@ MOG_PREVIEW_ANNOUNCE_BEGIN
 }
 MOG_PREVIEW_ANNOUNCE_END
 JSON
+
+DEPLOY_SUCCEEDED=true
