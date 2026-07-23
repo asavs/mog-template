@@ -86,3 +86,15 @@ client/public/models/
 - Per-class walk/run FBX folders  
 - Full unique mesh per armor combination  
 - Mixamo specifically (any retarget-to-mog pipeline is fine)
+
+## Continuity / backlog
+
+| | |
+|---|---|
+| Doctrine | Wiki `design/avatar-equipment.md` (mog `.wiki`) |
+| Phase A implementation | Public PR [#38](https://github.com/asavs/mog-template/pull/38) |
+| Pay transitional debt | Epic [#45](https://github.com/asavs/mog-template/issues/45) (blockers, pay order, child issues) |
+| Expected looks today | Placeholder monomeshes: `body_f` ← wizard2 FBX, `body_m` ← paladin FBX; not finished class fantasy |
+| Not avatar’s job | General multiplayer lag / net feel (see #74 and netcode issues) |
+
+Cold start: read wiki doctrine → this file → epic #45 → PR #38.
