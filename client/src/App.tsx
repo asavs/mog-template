@@ -21,6 +21,7 @@ import { CombatFeedbackEffect, type ActiveCombatFeedback } from './components/Co
 import { FireballProjectileEffects, LightningEffectPreloader, LightningStrikeEffects } from './components/SpellEffects';
 import type { WizardSpell } from './components/BasePlayer';
 import { getCharacterCapabilities } from './components/characterConfig';
+import { presetIdFromLegacyClass } from './avatar/catalog';
 import type { PendingFireballCosmeticCast } from './components/fireballVisuals';
 import type { SpellCasterVisualOrigin } from './components/spellVisualOrigins';
 import {
@@ -272,7 +273,7 @@ export default function App() {
 
   // Warm only the selected join class (not every character pack). Remotes load on demand.
   useEffect(() => {
-    const presetId = joinPreferences.characterClass === 'paladin' ? 'paladin' : 'wizard';
+    const presetId = presetIdFromLegacyClass(joinPreferences.characterClass);
     void import('./components/playerModelLoader').then(({ preloadPresetAssets }) => {
       void preloadPresetAssets(presetId);
     });

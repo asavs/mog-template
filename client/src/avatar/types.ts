@@ -81,6 +81,11 @@ export type ItemDef = {
   rotation?: Vec3;
   scale?: number;
   visibleByDefault?: boolean;
+  /**
+   * Grants-only placeholder: no mesh attach and no asset fetch.
+   * Use until a real meshKey exists (e.g. transitional staff).
+   */
+  grantsOnly?: boolean;
 };
 
 export type BodyDef = {

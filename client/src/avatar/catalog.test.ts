@@ -82,4 +82,38 @@ describe('avatar catalog', () => {
     expect(resolved.body.id).toBe('body_m');
     expect(resolved.capabilities.melee).toBe(true);
   });
+
+  it('falls back to preset when server rows reference unknown catalog ids', () => {
+    const resolved = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_that_does_not_exist' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+      legacyClass: 'paladin',
+    });
+    // Must not throw (React render path). Unknown item → full preset fallback.
+    expect(resolved.body.id).toBe('body_m');
+    expect(resolved.equipped.map(item => item.id).sort()).toEqual(['potion', 'shield', 'sword_1h']);
+    expect(resolved.capabilities.melee).toBe(true);
+  });
+
+  it('falls back to preset when server bodyId is unknown', () => {
+    const resolved = resolveFromServerState({
+      appearance: { bodyId: 'body_from_the_future', scale: 1, loadoutPreset: 'wizard' },
+      equipment: [{ slot: 'main_hand', itemId: 'staff' }],
+      legacyClass: 'wizard',
+    });
+    expect(resolved.body.id).toBe('body_f');
+    expect(resolved.capabilities.spells).toEqual(['fireball', 'lightning']);
+  });
+
+  it('skips grantsOnly items in asset url lists', () => {
+    const urls = assetUrlsForAppearance(resolvePreset('wizard'));
+    // Staff is grantsOnly — must not pull a second body-pack URL as "gear".
+    const staff = resolvePreset('wizard').equipped.find(item => item.id === 'staff');
+    expect(staff?.grantsOnly).toBe(true);
+    // Body url may still be wizard2; gear must not re-list staff meshKey separately as attach.
+    expect(staff && urls.filter(url => url === staff.url).length).toBeLessThanOrEqual(1);
+  });
 });

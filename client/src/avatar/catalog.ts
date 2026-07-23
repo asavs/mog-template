@@ -80,9 +80,7 @@ const ITEMS: Record<string, ItemDef> = {
     socketId: 'right_hand',
     objectNames: ['Baked one handed sword', 'One handed sword'],
     grants: ['melee_slash'],
-    position: [0, 0.1, 0.07],
-    rotation: [1.05, 0.4708, 4.3],
-    scale: 1.85,
+    // TRS comes from SOCKETS.right_hand (single source; item overrides only when needed).
   },
   shield: {
     id: 'shield',
@@ -92,18 +90,17 @@ const ITEMS: Record<string, ItemDef> = {
     socketId: 'left_hand',
     objectNames: ['Baked shield 1', 'Shield 1'],
     grants: ['block'],
-    position: [0.01, 0.21, -0.08],
-    rotation: [4.45, 3.3792, -0.3],
-    scale: 0.57,
+    // TRS comes from SOCKETS.left_hand.
   },
   staff: {
     id: 'staff',
     slot: 'main_hand',
-    // Placeholder: no isolated staff mesh yet; grants only until art exists.
+    // Placeholder: no isolated staff mesh yet; grants only until art exists (#64).
     meshKey: 'models/wizard2/wizard2.fbx',
     attach: 'socket',
     socketId: 'right_hand',
     grants: ['cast_fireball', 'cast_lightning'],
+    grantsOnly: true,
     visibleByDefault: false,
   },
   potion: {
@@ -419,7 +416,8 @@ export type NetworkEquipmentRow = {
 
 /**
  * Prefer authoritative appearance + equipment rows from SpacetimeDB.
- * Falls back to loadout preset when rows are missing (join race / legacy).
+ * Falls back to loadout preset when rows are missing (join race / legacy),
+ * or when server ids are unknown to this client build (catalog drift).
  */
 export function resolveFromServerState(options: {
   appearance?: NetworkAppearanceRow | null;
@@ -429,68 +427,88 @@ export function resolveFromServerState(options: {
   catalog?: AvatarCatalog;
 }): ResolvedAppearance {
   const catalog = options.catalog ?? defaultAvatarCatalog;
-  const appearance = options.appearance;
-  if (!appearance) {
-    return resolvePreset(presetIdFromLegacyClass(options.legacyClass), catalog);
-  }
 
-  const presetId = appearance.loadoutPreset || presetIdFromLegacyClass(options.legacyClass);
-  const slots: PlayerAppearance['slots'] = {};
-  const extraItemIds: ItemId[] = [];
-
-  for (const row of options.equipment ?? []) {
-    if (EQUIP_SLOTS.has(row.slot)) {
-      slots[row.slot as EquipSlot] = row.itemId;
-    } else {
-      // utility_potion and future non-slot attaches
-      extraItemIds.push(row.itemId);
+  const fallbackPresetId = (): string => {
+    const fromAppearance = options.appearance?.loadoutPreset?.trim();
+    if (fromAppearance && catalog.getPreset(fromAppearance)) {
+      return fromAppearance;
     }
-  }
-
-  // If equipment rows have not arrived yet, fall back to preset equipment.
-  const hasAnyGear = (options.equipment?.length ?? 0) > 0;
-  if (!hasAnyGear) {
-    return resolvePreset(presetId, catalog);
-  }
-
-  const base = catalog.resolve(
-    {
-      bodyId: appearance.bodyId,
-      scale: appearance.scale,
-      slots,
-    },
-    { presetId },
-  );
-
-  if (extraItemIds.length === 0) {
-    return base;
-  }
-
-  // Append utility items not covered by EquipSlot (server may store them under custom slots).
-  const seen = new Set(base.equipped.map(item => item.id));
-  const extraEquipped = [...base.equipped];
-  const grantLists: (readonly AbilityId[])[] = [base.grants];
-  for (const itemId of extraItemIds) {
-    if (seen.has(itemId)) continue;
-    const def = catalog.getItem(itemId);
-    if (!def) continue;
-    const socket = def.socketId ? catalog.getSocket(def.socketId) : undefined;
-    extraEquipped.push({
-      ...def,
-      url: catalog.urlForMeshKey(def.meshKey),
-      socket,
-    });
-    seen.add(itemId);
-    grantLists.push(def.grants);
-  }
-
-  const grants = uniqueGrants(grantLists);
-  return {
-    ...base,
-    equipped: extraEquipped,
-    grants,
-    capabilities: capabilitiesFromGrants(grants),
+    return presetIdFromLegacyClass(options.legacyClass ?? fromAppearance);
   };
+
+  try {
+    const appearance = options.appearance;
+    if (!appearance) {
+      return resolvePreset(fallbackPresetId(), catalog);
+    }
+
+    const rawPresetId = appearance.loadoutPreset || presetIdFromLegacyClass(options.legacyClass);
+    const presetId = catalog.getPreset(rawPresetId) ? rawPresetId : fallbackPresetId();
+    const slots: PlayerAppearance['slots'] = {};
+    const extraItemIds: ItemId[] = [];
+
+    for (const row of options.equipment ?? []) {
+      if (EQUIP_SLOTS.has(row.slot)) {
+        slots[row.slot as EquipSlot] = row.itemId;
+      } else {
+        // utility_potion and future non-slot attaches
+        extraItemIds.push(row.itemId);
+      }
+    }
+
+    // If equipment rows have not arrived yet, fall back to preset equipment.
+    const hasAnyGear = (options.equipment?.length ?? 0) > 0;
+    if (!hasAnyGear) {
+      return resolvePreset(presetId, catalog);
+    }
+
+    const base = catalog.resolve(
+      {
+        bodyId: appearance.bodyId,
+        scale: appearance.scale,
+        slots,
+      },
+      { presetId },
+    );
+
+    if (extraItemIds.length === 0) {
+      return base;
+    }
+
+    // Append utility items not covered by EquipSlot (server may store them under custom slots).
+    const seen = new Set(base.equipped.map(item => item.id));
+    const extraEquipped = [...base.equipped];
+    const grantLists: (readonly AbilityId[])[] = [base.grants];
+    for (const itemId of extraItemIds) {
+      if (seen.has(itemId)) continue;
+      const def = catalog.getItem(itemId);
+      if (!def) continue;
+      const socket = def.socketId ? catalog.getSocket(def.socketId) : undefined;
+      extraEquipped.push({
+        ...def,
+        url: catalog.urlForMeshKey(def.meshKey),
+        socket,
+      });
+      seen.add(itemId);
+      grantLists.push(def.grants);
+    }
+
+    const grants = uniqueGrants(grantLists);
+    return {
+      ...base,
+      equipped: extraEquipped,
+      grants,
+      capabilities: capabilitiesFromGrants(grants),
+    };
+  } catch (error) {
+    // Unknown bodyId / itemId / slot mismatch must not throw during React render
+    // (stale client vs redeployed server). Same doctrine as missing-row fallback.
+    console.warn(
+      '[avatar] server appearance/equipment resolve failed; falling back to loadout preset',
+      error,
+    );
+    return resolvePreset(fallbackPresetId(), catalog);
+  }
 }
 
 /** Asset URLs needed to present this resolved appearance (body, gear, clips). */
@@ -498,8 +516,8 @@ export function assetUrlsForAppearance(resolved: ResolvedAppearance): string[] {
   const urls = new Set<string>();
   urls.add(resolved.body.url);
   for (const item of resolved.equipped) {
-    if (item.visibleByDefault === false && item.id === 'staff') {
-      // Staff is grants-only placeholder on the body mesh — skip duplicate body fetch.
+    if (item.grantsOnly) {
+      // No mesh to fetch (grants-only placeholder).
       continue;
     }
     urls.add(item.url);

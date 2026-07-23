@@ -70,10 +70,8 @@ export async function assembleAvatar(options: AssembleAvatarOptions): Promise<As
   await Promise.all(
     resolved.equipped.map(async (item) => {
       if (item.attach !== 'socket' || !item.socket) return;
-      // Grants-only placeholder (staff reuses body mesh) — nothing to attach.
-      if (item.id === 'staff' && item.visibleByDefault === false && item.url === resolved.body.url) {
-        return;
-      }
+      // Grants-only placeholder — no mesh attach (see ItemDef.grantsOnly).
+      if (item.grantsOnly) return;
 
       try {
         const assetRoot = await loaders.loadModel(item.url);
@@ -193,9 +191,6 @@ export async function preloadResolvedAppearance(
   const unique = [...new Set(urls)];
   await Promise.all(
     unique.map(async (url) => {
-      if (url.toLowerCase().endsWith('.fbx') && !isLikelyModelOnlyUrl(url, resolved)) {
-        // Clips and models both use FBX; try animations for clip urls, model for body/gear.
-      }
       const isClip = resolved.clips.some(clip => clip.url === url);
       if (isClip) {
         await loaders.loadAnimations(url);
@@ -206,10 +201,6 @@ export async function preloadResolvedAppearance(
   ).catch(error => {
     console.warn('Failed to preload avatar assets', error);
   });
-}
-
-function isLikelyModelOnlyUrl(url: string, resolved: ResolvedAppearance): boolean {
-  return url === resolved.body.url || resolved.equipped.some(item => item.url === url);
 }
 
 export function normalizeModelScale(model: THREE.Object3D, targetHeight: number) {
