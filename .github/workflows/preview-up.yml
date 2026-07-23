@@ -71,6 +71,12 @@ jobs:
       # after granting roles/iap.tunnelResourceAccessor + IAP firewall. See
       # docs/preview-ssh.md.
       PREVIEW_USE_IAP: ${{ vars.PREVIEW_USE_IAP || 'false' }}
+      # VM attached SA (actAs target). Empty → preview-up.sh uses project default
+      # compute SA. Override with vars.PREVIEW_VM_SA if previews use a custom SA.
+      PREVIEW_VM_SA: ${{ vars.PREVIEW_VM_SA || '' }}
+      # If true, delete the VM when deploy fails (frees cap). Default false leaves
+      # it labeled deploy-failed=true for salvage (docs/preview-ssh.md).
+      PREVIEW_DELETE_ON_FAIL: ${{ vars.PREVIEW_DELETE_ON_FAIL || 'false' }}
 
     steps:
       # ---- cheap gates FIRST (resolve → fork guard → CI green), THEN build ----

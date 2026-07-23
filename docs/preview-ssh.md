@@ -58,13 +58,18 @@ Common causes:
 
 ### What the script does now
 
-- Waits until SSH succeeds and **exits non-zero** if it never becomes ready
-  (previously a failed wait could fall through silently).
-- Retries `ssh` and `scp` with backoff.
-- Re-probes SSH before large artifact transfers.
-- Uploads wasm and `dist/` as **separate** scp operations.
-- Prints diagnostics (account, instance, probe output, checklist) on failure.
-- Optional `PREVIEW_USE_IAP=true` → `--tunnel-through-iap` on all remote hops.
+| Behavior | Env / note |
+|---|---|
+| Retry `ssh` / `scp` (not only a single `ssh true`) | built-in backoff |
+| Re-probe before large artifact SCP | after mkdir, before wasm/dist |
+| Clearer errors | principal, zone, instance, **last 5 probe snippets**, live probe |
+| Optional IAP tunnel | `PREVIEW_USE_IAP=true` |
+| Explicit VM service account | `PREVIEW_VM_SA` (default: project compute SA); soft `serviceAccountUser` check |
+| Fail after create | label `deploy-failed=true` + salvage SSH/tear-down hints; or `PREVIEW_DELETE_ON_FAIL=true` to delete |
+
+Also: waits until SSH succeeds and **exits non-zero** if it never becomes ready
+(previously a failed wait could fall through silently). Uploads wasm and `dist/`
+as **separate** scp operations (avoids multi-source recursive flake).
 
 ### Ops recovery
 
