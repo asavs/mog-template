@@ -194,8 +194,14 @@ diagnose_ssh_failure() {
     log "no captured probe failure snippets (failures were silent redirects)"
   fi
   # One non-quiet probe so the real gcloud/OS Login message is visible in CI logs.
+  # Use an explicit =true check — do NOT use ${VAR:+flag} here: VAR is always set
+  # (default "false"), and :+ would treat the non-empty string "false" as truthy.
   log "probe (ssh --command=true, not quiet):"
-  gc compute ssh "$INSTANCE" --zone="$ZONE" ${PREVIEW_USE_IAP:+--tunnel-through-iap} \
+  DIAG_SSH_FLAGS=(--zone="$ZONE")
+  if [ "$PREVIEW_USE_IAP" = "true" ]; then
+    DIAG_SSH_FLAGS+=(--tunnel-through-iap)
+  fi
+  gc compute ssh "$INSTANCE" "${DIAG_SSH_FLAGS[@]}" \
     --command=true 2>&1 | tail -30 | while IFS= read -r line; do log "  $line"; done || true
   log "Checklist (docs/preview-ssh.md):"
   log "  1) deploy SA has roles/compute.osAdminLogin (sudo) or osLogin"
@@ -436,14 +442,19 @@ sudo mkdir -p "$WEB_ROOT"
 sudo rsync -a --checksum --no-times --delete "${EXCLUDES[@]}" "$STAGING/dist/" "$WEB_ROOT/"
 sudo chown -R www-data:www-data "$WEB_ROOT"
 
-rm -rf "$STAGING"
+# Do NOT delete $STAGING here: if SSH drops after this point, outer retries would
+# find an empty staging dir and fail forever. Local cleanup runs after success.
 echo "[preview-apply] done."
 REMOTE
   then
     APPLY_OK=true
     break
   fi
-  log "apply ssh failed (attempt ${apply_attempt}/5); retrying in 20s"
+  log "apply ssh failed (attempt ${apply_attempt}/5); re-staging artifacts then retrying in 20s"
+  # Re-upload in case a partial remote apply wiped or corrupted staging mid-flight.
+  remote_ssh "mkdir -p ${STAGING}" 3 || true
+  remote_scp "$WASM_PATH" "${STAGING}/$(basename "$WASM_PATH")" || true
+  remote_scp --recurse "$DIST_DIR" "${STAGING}/" || true
   sleep 20
 done
 if [ "$APPLY_OK" != "true" ]; then
@@ -451,6 +462,8 @@ if [ "$APPLY_OK" != "true" ]; then
   diagnose_ssh_failure
   exit 1
 fi
+# Safe to drop staging only after a fully successful apply hop.
+remote_ssh "rm -rf ${STAGING}" 3 || true
 
 # ---------------------------------------------------------------- record TTL marker
 # Stamp the deploy time as a numeric instance label so the scheduled GC job can
