@@ -3,7 +3,12 @@
 //! Mirrors the client avatar catalog contract (`client/src/avatar/`):
 //! classes are **preset ids**, capabilities come from **grants**, not mesh packs.
 //! Keep grant / item / body ids aligned with the TypeScript catalog by convention
-//! until a shared data file exists.
+//! until a shared data file exists (issue #46).
+//!
+//! When changing id strings, also update:
+//! - `client/src/avatar/catalog.ts`
+//! - `client/src/avatar/loadoutParity.ts` (`SERVER_LOADOUT_IDS`)
+//! See `client/src/avatar/ART_DROP_IN.md` → "Id conventions".
 
 /// Normalize legacy join strings onto a loadout preset id.
 pub fn normalize_preset_id(character_class: &str) -> Result<String, String> {
@@ -249,5 +254,62 @@ mod tests {
         assert_eq!(from_items.melee, from_preset.melee);
         assert_eq!(from_items.block, from_preset.block);
         assert_eq!(from_items.cast, from_preset.cast);
+    }
+
+    /// Phase A dual-catalog guardrail (issue #47).
+    /// String literals must match `client/src/avatar/loadoutParity.ts` → SERVER_LOADOUT_IDS
+    /// and the live client catalog. Update both languages in the same PR.
+    #[test]
+    fn loadout_id_strings_match_client_parity_fixture() {
+        assert_eq!(grants::MELEE_SLASH, "melee_slash");
+        assert_eq!(grants::BLOCK, "block");
+        assert_eq!(grants::CAST_FIREBALL, "cast_fireball");
+        assert_eq!(grants::CAST_LIGHTNING, "cast_lightning");
+        assert_eq!(grants::DRINK_POTION, "drink_potion");
+
+        assert_eq!(items::SWORD_1H, "sword_1h");
+        assert_eq!(items::SHIELD, "shield");
+        assert_eq!(items::STAFF, "staff");
+        assert_eq!(items::POTION, "potion");
+
+        assert_eq!(bodies::BODY_M, "body_m");
+        assert_eq!(bodies::BODY_F, "body_f");
+
+        assert_eq!(slots::MAIN_HAND, "main_hand");
+        assert_eq!(slots::OFF_HAND, "off_hand");
+
+        let paladin = preset_appearance("paladin");
+        assert_eq!(paladin.body_id, "body_m");
+        assert_eq!(paladin.loadout_preset, "paladin");
+        let wizard = preset_appearance("wizard");
+        assert_eq!(wizard.body_id, "body_f");
+        assert_eq!(wizard.loadout_preset, "wizard");
+
+        let paladin_grants = preset_grants("paladin");
+        assert!(paladin_grants.contains(&"melee_slash"));
+        assert!(paladin_grants.contains(&"block"));
+        assert!(paladin_grants.contains(&"drink_potion"));
+        assert!(!paladin_grants.contains(&"cast_fireball"));
+
+        let wizard_grants = preset_grants("wizard");
+        assert!(wizard_grants.contains(&"cast_fireball"));
+        assert!(wizard_grants.contains(&"cast_lightning"));
+        assert!(wizard_grants.contains(&"drink_potion"));
+        assert!(!wizard_grants.contains(&"melee_slash"));
+
+        let paladin_items: Vec<&str> = preset_equipment("paladin")
+            .iter()
+            .map(|e| e.item_id)
+            .collect();
+        assert!(paladin_items.contains(&"sword_1h"));
+        assert!(paladin_items.contains(&"shield"));
+        assert!(paladin_items.contains(&"potion"));
+
+        let wizard_items: Vec<&str> = preset_equipment("wizard")
+            .iter()
+            .map(|e| e.item_id)
+            .collect();
+        assert!(wizard_items.contains(&"staff"));
+        assert!(wizard_items.contains(&"potion"));
     }
 }

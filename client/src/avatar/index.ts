@@ -37,6 +37,11 @@ export {
 export type { NetworkAppearanceRow, NetworkEquipmentRow } from './catalog';
 
 export {
+  SERVER_LOADOUT_IDS,
+  collectCatalogLoadoutIds,
+} from './loadoutParity';
+
+export {
   assembleAvatar,
   findObjectByNames,
   normalizeModelScale,
