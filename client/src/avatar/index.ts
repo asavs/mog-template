@@ -40,3 +40,11 @@ export {
   normalizeModelScale,
   preloadResolvedAppearance,
 } from './assembleAvatar';
+
+export {
+  boneNameCandidates,
+  MOG_BONES,
+  RIG_ID,
+  SOCKET_BONE_CANDIDATES,
+} from './rig';
+export type { MogBoneId } from './rig';

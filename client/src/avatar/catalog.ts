@@ -1,4 +1,5 @@
 import { publicAssetPath } from '../publicAssets';
+import { SOCKET_BONE_CANDIDATES } from './rig';
 import type {
   AbilityId,
   AvatarCapabilities,
@@ -25,6 +26,9 @@ import type {
  * meshKeys still point at today's disposable FBX/GLB pile so presets resolve
  * without new art. Phase B swaps meshKeys for modular body/armor/weapon GLBs
  * and a shared animation library — types stay the same.
+ *
+ * Rig contract: `mog_humanoid` (see rig.ts). Not Mixamo-locked; Mixamo names
+ * are transitional aliases only.
  */
 
 const SHARED_FOOTSTEPS = {
@@ -35,14 +39,14 @@ const SHARED_FOOTSTEPS = {
 const SOCKETS: Record<string, SocketBinding> = {
   right_hand: {
     id: 'right_hand',
-    boneNames: ['mixamorigRightHand', 'mixamorig:RightHand', 'RightHand'],
+    boneNames: SOCKET_BONE_CANDIDATES.right_hand,
     position: [0, 0.1, 0.07],
     rotation: [1.05, 0.4708, 4.3],
     scale: 1.85,
   },
   left_hand: {
     id: 'left_hand',
-    boneNames: ['mixamorigLeftHand', 'mixamorig:LeftHand', 'LeftHand'],
+    boneNames: SOCKET_BONE_CANDIDATES.left_hand,
     position: [0.01, 0.21, -0.08],
     rotation: [4.45, 3.3792, -0.3],
     scale: 0.57,

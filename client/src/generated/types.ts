@@ -167,6 +167,22 @@ export const PlayerCharacter = __t.object("PlayerCharacter", {
 });
 export type PlayerCharacter = __Infer<typeof PlayerCharacter>;
 
+export const PlayerAppearance = __t.object("PlayerAppearance", {
+  identity: __t.identity(),
+  bodyId: __t.string(),
+  scale: __t.f32(),
+  loadoutPreset: __t.string(),
+});
+export type PlayerAppearance = __Infer<typeof PlayerAppearance>;
+
+export const PlayerEquipment = __t.object("PlayerEquipment", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  slot: __t.string(),
+  itemId: __t.string(),
+});
+export type PlayerEquipment = __Infer<typeof PlayerEquipment>;
+
 export const PlayerCombatState = __t.object("PlayerCombatState", {
   identity: __t.identity(),
   lastSlashTick: __t.u64(),

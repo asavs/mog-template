@@ -57,6 +57,8 @@ import PlayerRow from "./player_table";
 import PlayerActionStateRow from "./player_action_state_table";
 import PlayerAnimationRow from "./player_animation_table";
 import PlayerCharacterRow from "./player_character_table";
+import PlayerAppearanceRow from "./player_appearance_table";
+import PlayerEquipmentRow from "./player_equipment_table";
 import PlayerHealthRow from "./player_health_table";
 import PlayerInputAckRow from "./player_input_ack_table";
 import PlayerTransformRow from "./player_transform_table";
@@ -160,6 +162,31 @@ const tablesSchema = __schema({
       { name: 'player_character_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerCharacterRow),
+  player_appearance: __table({
+    name: 'player_appearance',
+    indexes: [
+      { accessor: 'identity', name: 'player_appearance_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'player_appearance_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, PlayerAppearanceRow),
+  player_equipment: __table({
+    name: 'player_equipment',
+    indexes: [
+      { accessor: 'id', name: 'player_equipment_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'owner', name: 'player_equipment_owner_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+      ] },
+    ],
+    constraints: [
+      { name: 'player_equipment_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PlayerEquipmentRow),
   player_health: __table({
     name: 'player_health',
     indexes: [

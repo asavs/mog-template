@@ -18,6 +18,8 @@ const GAME_SUBSCRIPTIONS = [
   'SELECT * FROM player_action_state',
   'SELECT * FROM player_animation',
   'SELECT * FROM player_character',
+  'SELECT * FROM player_appearance',
+  'SELECT * FROM player_equipment',
   'SELECT * FROM player_health',
   'SELECT * FROM player_input_ack',
   'SELECT * FROM player_transform',
