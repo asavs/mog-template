@@ -3,7 +3,15 @@ import { Canvas, advance } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Identity } from 'spacetimedb';
 import type { DbConnection } from './generated';
-import type { FireballProjectile, PlayerData, PlayerHealth, PlayerInputAck, PlayerTransform } from './generated/types';
+import type {
+  FireballProjectile,
+  PlayerAppearance,
+  PlayerData,
+  PlayerEquipment,
+  PlayerHealth,
+  PlayerInputAck,
+  PlayerTransform,
+} from './generated/types';
 import {
   GameWorld,
   type GameWorldRuntimeRefs,
@@ -13,6 +21,7 @@ import { CombatFeedbackEffect, type ActiveCombatFeedback } from './components/Co
 import { FireballProjectileEffects, LightningEffectPreloader, LightningStrikeEffects } from './components/SpellEffects';
 import type { WizardSpell } from './components/BasePlayer';
 import { getCharacterCapabilities } from './components/characterConfig';
+import { presetIdFromLegacyClass } from './avatar/catalog';
 import type { PendingFireballCosmeticCast } from './components/fireballVisuals';
 import type { SpellCasterVisualOrigin } from './components/spellVisualOrigins';
 import {
@@ -161,6 +170,8 @@ function QaGameDebugBridge({
 export default function App() {
   const [players, setPlayers] = useState<ReadonlyMap<string, PlayerData>>(new Map());
   const [playerClasses, setPlayerClasses] = useState<ReadonlyMap<string, string>>(new Map());
+  const [playerAppearances, setPlayerAppearances] = useState<ReadonlyMap<string, PlayerAppearance>>(new Map());
+  const [playerEquipment, setPlayerEquipment] = useState<ReadonlyMap<string, readonly PlayerEquipment[]>>(new Map());
   const [spellEffects, setSpellEffects] = useState<ActiveSpellEffect[]>([]);
   const [combatFeedback, setCombatFeedback] = useState<ActiveCombatFeedback[]>([]);
   const [cosmeticFireballCastIds, setCosmeticFireballCastIds] = useState<string[]>([]);
@@ -188,11 +199,7 @@ export default function App() {
 
   useEffect(() => installAudioUnlockHandlers(), []);
 
-  useEffect(() => {
-    void import('./components/playerModelLoader').then(({ preloadAllCharacterModelAssets }) => {
-      preloadAllCharacterModelAssets();
-    });
-  }, []);
+
 
   useEffect(() => {
     setGameAudioMuted(audioMuted);
@@ -220,6 +227,8 @@ export default function App() {
     setHudHealth,
     setIsJoined,
     setPlayerClasses,
+    setPlayerAppearances,
+    setPlayerEquipment,
     setPlayers,
     setSpellEffects,
     snapshotBuffersRef,
@@ -261,6 +270,14 @@ export default function App() {
     forgetSavedConnection,
     setIsJoined,
   });
+
+  // Warm only the selected join class (not every character pack). Remotes load on demand.
+  useEffect(() => {
+    const presetId = presetIdFromLegacyClass(joinPreferences.characterClass);
+    void import('./components/playerModelLoader').then(({ preloadPresetAssets }) => {
+      void preloadPresetAssets(presetId);
+    });
+  }, [joinPreferences.characterClass]);
 
   const networkState = useMemo<NetworkState>(() => ({
     connected,
@@ -312,10 +329,14 @@ export default function App() {
   });
 
   const gameState = useMemo<GameState>(() => ({
+    playerAppearances,
+    playerEquipment,
     playerClasses,
     players,
     selectedWizardSpell,
   }), [
+    playerAppearances,
+    playerEquipment,
     playerClasses,
     players,
     selectedWizardSpell,

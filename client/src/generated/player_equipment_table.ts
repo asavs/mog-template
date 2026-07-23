@@ -11,8 +11,8 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  identity: __t.identity().primaryKey(),
-  lastInputSeq: __t.u32().name("last_input_seq"),
-  lastProcessedClientTick: __t.u32().name("last_processed_client_tick"),
-  serverTick: __t.u64().name("server_tick"),
+  id: __t.u64().primaryKey(),
+  owner: __t.identity(),
+  slot: __t.string(),
+  itemId: __t.string().name("item_id"),
 });

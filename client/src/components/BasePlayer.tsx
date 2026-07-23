@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, memo, type MutableRefObject } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, memo, type MutableRefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { InputState, PlayerData, PlayerInputAck, PlayerTransform, Vector3 as GameVector3 } from '../generated/types';
@@ -22,8 +22,10 @@ import {
   selectTargetAnimation,
   triggerOneShotAnimation,
 } from './playerAnimation';
-import { ANIMATIONS, getCharacterConfig, type WizardSpell } from './characterConfig';
+import { ANIMATIONS, getCharacterPresentationFromServer, type WizardSpell } from './characterConfig';
 import { loadPlayerModelAssets } from './playerModelLoader';
+import { presentationAssemblyKey } from '../avatar/catalog';
+import { useGameState } from '../state/useGameState';
 import {
   createLoopingLocalSound,
   createLoopingWorldSound,
@@ -103,13 +105,13 @@ const MOVEMENT_ANIMATION_NAMES = {
   runRight: ANIMATIONS.RUN_RIGHT,
 };
 
-const FOOTSTEP_WALK_ANIMATIONS = new Set([
+const FOOTSTEP_WALK_ANIMATIONS: ReadonlySet<string> = new Set([
   ANIMATIONS.WALK,
   ANIMATIONS.WALK_BACK,
   ANIMATIONS.WALK_LEFT,
   ANIMATIONS.WALK_RIGHT,
 ]);
-const FOOTSTEP_RUN_ANIMATIONS = new Set([
+const FOOTSTEP_RUN_ANIMATIONS: ReadonlySet<string> = new Set([
   ANIMATIONS.RUN,
   ANIMATIONS.RUN_BACK,
   ANIMATIONS.RUN_LEFT,
@@ -136,7 +138,26 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
   spellCasterVisualOriginsRef,
 }) => {
   const identityKey = playerData.identity.toHexString();
-  const characterConfig = getCharacterConfig(characterClass);
+  const { playerAppearances, playerEquipment } = useGameState();
+  const appearanceRow = playerAppearances.get(identityKey);
+  const equipmentRows = playerEquipment.get(identityKey);
+  const characterConfig = useMemo(
+    () => getCharacterPresentationFromServer({
+      legacyClass: characterClass,
+      appearance: appearanceRow
+        ? {
+            bodyId: appearanceRow.bodyId,
+            scale: appearanceRow.scale,
+            loadoutPreset: appearanceRow.loadoutPreset,
+          }
+        : null,
+      equipment: equipmentRows?.map(row => ({
+        slot: row.slot,
+        itemId: row.itemId,
+      })),
+    }),
+    [appearanceRow, characterClass, equipmentRows],
+  );
 
   const [modelLoaded, setModelLoaded] = useState(false);
   const [mixer, setMixer] = useState<THREE.AnimationMixer | null>(null);
@@ -184,7 +205,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
 
   const hasEquipment = useCallback((equipmentId: string) => (
     equipmentItemsRef.current.has(equipmentId) ||
-    Boolean(characterConfig.weaponAttachments?.some(attachment => attachment.id === equipmentId))
+    characterConfig.equipmentIds.includes(equipmentId)
   ), [characterConfig]);
 
   const isEquipmentVisible = useCallback((equipmentId: string) => (
@@ -329,11 +350,16 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
     };
   }, [characterConfig, groupRef, isLocalPlayer]);
 
+  // Content key — not object identity. Join often resolves preset first, then
+  // identical seeded server rows; skip dispose/rebuild when the loadout is unchanged.
+  const assemblyKey = presentationAssemblyKey(characterConfig.resolved);
+
   useEffect(() => {
     lastHandledDrinkingSeqRef.current = null;
     return loadPlayerModelAssets({
       actionAnimationNames: ACTION_ANIMATION_NAMES,
-      characterConfig,
+      resolved: characterConfig.resolved,
+      presetId: characterConfig.presetId,
       currentAnimationRef,
       desiredEquipmentVisibilityRef,
       equipmentItemsRef,
@@ -344,7 +370,9 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
       onModelLoaded: setModelLoaded,
       visualModelRef,
     });
-  }, [characterConfig, groupRef]);
+    // assemblyKey is the content gate; characterConfig is from the render that changed the key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-assemble on new object identity
+  }, [assemblyKey, groupRef]);
 
   useFrame((_, delta) => {
     if (lightRef) {

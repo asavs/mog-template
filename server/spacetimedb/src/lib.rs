@@ -1,6 +1,7 @@
 mod collision;
 mod common;
 mod heightmap;
+mod loadout;
 mod locomotion;
 mod player_logic;
 
@@ -57,7 +58,31 @@ pub struct PlayerData {
 pub struct PlayerCharacter {
     #[primary_key]
     pub identity: Identity,
+    /// Loadout preset id (`wizard` / `paladin`). Legacy name kept for bindings stability.
     pub character_class: String,
+}
+
+/// Authoritative appearance for remotes and the local player (public for paper-doll).
+/// Seeded from loadout preset on join; later reducers can change body/scale without class forks.
+#[spacetimedb::table(accessor = player_appearance, public)]
+pub struct PlayerAppearance {
+    #[primary_key]
+    pub identity: Identity,
+    pub body_id: String,
+    pub scale: f32,
+    pub loadout_preset: String,
+}
+
+/// Equipped item ids by slot. Presentation loads meshes from the client catalog by `item_id`.
+#[spacetimedb::table(accessor = player_equipment, public)]
+pub struct PlayerEquipment {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub owner: Identity,
+    pub slot: String,
+    pub item_id: String,
 }
 
 #[spacetimedb::table(accessor = player_animation, public)]
@@ -482,6 +507,7 @@ fn cleanup_player(ctx: &ReducerContext, identity: Identity) {
         ctx.db.player_health().identity().delete(identity);
         ctx.db.player_action_state().identity().delete(identity);
         ctx.db.player_combat_state().identity().delete(identity);
+        clear_player_loadout(ctx, identity);
         let pending_slashes: Vec<PendingSlashAttack> = ctx
             .db
             .pending_slash_attack()
@@ -639,7 +665,7 @@ pub fn join_game_as(
 
     let player_character = PlayerCharacter {
         identity,
-        character_class: restored_character_class,
+        character_class: restored_character_class.clone(),
     };
     if ctx
         .db
@@ -655,6 +681,8 @@ pub fn join_game_as(
     } else {
         ctx.db.player_character().insert(player_character);
     }
+
+    seed_player_loadout(ctx, identity, &restored_character_class);
 
     let mut restored_input = default_input();
     restored_input.sequence = restored_last_input_seq;
@@ -733,41 +761,72 @@ pub fn join_game_as(
 }
 
 fn normalize_character_class(character_class: String) -> Result<String, String> {
-    match character_class.trim().to_ascii_lowercase().as_str() {
-        "paladin" | "pally" => Ok("paladin".to_string()),
-        "wizard" | "wizard2" => Ok("wizard".to_string()),
-        _ => Err("Unsupported character class".to_string()),
+    loadout::normalize_preset_id(&character_class)
+}
+
+// Grant-derived capabilities (loadout presets). Stored rows may still carry legacy
+// class strings until players rejoin — normalize first; bad values fall back to wizard.
+fn class_capabilities(class: &str) -> loadout::Capabilities {
+    loadout::capabilities_for_class(class)
+}
+
+/// Prefer equipment-derived grants when `player_equipment` rows exist; else preset.
+fn player_capabilities(ctx: &ReducerContext, identity: Identity, character_class: &str) -> loadout::Capabilities {
+    let item_ids: Vec<String> = ctx
+        .db
+        .player_equipment()
+        .owner()
+        .filter(&identity)
+        .map(|row| row.item_id)
+        .collect();
+    if item_ids.is_empty() {
+        return class_capabilities(character_class);
+    }
+    let refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
+    loadout::capabilities_for_equipment_item_ids(&refs)
+}
+
+fn seed_player_loadout(ctx: &ReducerContext, identity: Identity, preset_id: &str) {
+    let appearance = loadout::preset_appearance(preset_id);
+    let row = PlayerAppearance {
+        identity,
+        body_id: appearance.body_id.to_string(),
+        scale: appearance.scale,
+        loadout_preset: appearance.loadout_preset.to_string(),
+    };
+    if ctx.db.player_appearance().identity().find(identity).is_some() {
+        ctx.db.player_appearance().identity().update(row);
+    } else {
+        ctx.db.player_appearance().insert(row);
+    }
+
+    // Replace equipment rows for this owner (Phase A: always re-seed from preset).
+    clear_player_equipment(ctx, identity);
+    for piece in loadout::preset_equipment(preset_id) {
+        ctx.db.player_equipment().insert(PlayerEquipment {
+            id: 0,
+            owner: identity,
+            slot: piece.slot.to_string(),
+            item_id: piece.item_id.to_string(),
+        });
     }
 }
 
-struct ClassCapabilities {
-    melee: bool,
-    block: bool,
-    cast: bool,
-    drink_potion: bool,
+fn clear_player_equipment(ctx: &ReducerContext, identity: Identity) {
+    let rows: Vec<PlayerEquipment> = ctx
+        .db
+        .player_equipment()
+        .owner()
+        .filter(&identity)
+        .collect();
+    for row in rows {
+        ctx.db.player_equipment().id().delete(&row.id);
+    }
 }
 
-// Data-driven capability lookup (#149). Stored rows may still carry legacy class
-// strings until players rejoin, so normalize first; un-normalizable values fall
-// back to the default class (wizard).
-fn class_capabilities(class: &str) -> ClassCapabilities {
-    let normalized =
-        normalize_character_class(class.to_string()).unwrap_or_else(|_| "wizard".to_string());
-    match normalized.as_str() {
-        "wizard" => ClassCapabilities {
-            melee: false,
-            block: false,
-            cast: true,
-            drink_potion: true,
-        },
-        // "paladin" and any normalized default.
-        _ => ClassCapabilities {
-            melee: true,
-            block: true,
-            cast: false,
-            drink_potion: true,
-        },
-    }
+fn clear_player_loadout(ctx: &ReducerContext, identity: Identity) {
+    ctx.db.player_appearance().identity().delete(identity);
+    clear_player_equipment(ctx, identity);
 }
 
 #[spacetimedb::reducer]
@@ -780,7 +839,7 @@ pub fn trigger_slash_attack(ctx: &ReducerContext) -> Result<(), String> {
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).melee {
+    if !player_capabilities(ctx, identity, &player_character.character_class).melee {
         return Err("This class cannot slash".to_string());
     }
 
@@ -836,7 +895,7 @@ pub fn trigger_block_animation(ctx: &ReducerContext) -> Result<(), String> {
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).block {
+    if !player_capabilities(ctx, identity, &player_character.character_class).block {
         return Err("This class cannot block".to_string());
     }
 
@@ -877,7 +936,7 @@ pub fn stop_block(ctx: &ReducerContext) -> Result<(), String> {
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).block {
+    if !player_capabilities(ctx, identity, &player_character.character_class).block {
         return Err("This class cannot block".to_string());
     }
 
@@ -922,7 +981,7 @@ fn start_blocking(ctx: &ReducerContext) -> Result<(), String> {
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).block {
+    if !player_capabilities(ctx, identity, &player_character.character_class).block {
         return Err("This class cannot block".to_string());
     }
 
@@ -960,7 +1019,7 @@ pub fn trigger_lightning_strike(
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).cast {
+    if !player_capabilities(ctx, identity, &player_character.character_class).cast {
         return Err("This class cannot cast lightning strike".to_string());
     }
 
@@ -1020,7 +1079,7 @@ pub fn trigger_fireball(ctx: &ReducerContext, target_position: Vector3) -> Resul
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).cast {
+    if !player_capabilities(ctx, identity, &player_character.character_class).cast {
         return Err("This class cannot cast fireball".to_string());
     }
 
@@ -1070,7 +1129,7 @@ pub fn trigger_drinking_potion(ctx: &ReducerContext) -> Result<(), String> {
     let Some(player_character) = ctx.db.player_character().identity().find(identity) else {
         return Err("Player character row is missing".to_string());
     };
-    if !class_capabilities(&player_character.character_class).drink_potion {
+    if !player_capabilities(ctx, identity, &player_character.character_class).drink_potion {
         return Err("This class cannot drink potions".to_string());
     }
 

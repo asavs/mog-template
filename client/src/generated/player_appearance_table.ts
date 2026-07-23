@@ -12,7 +12,7 @@ import {
 
 export default __t.row({
   identity: __t.identity().primaryKey(),
-  lastInputSeq: __t.u32().name("last_input_seq"),
-  lastProcessedClientTick: __t.u32().name("last_processed_client_tick"),
-  serverTick: __t.u64().name("server_tick"),
+  bodyId: __t.string().name("body_id"),
+  scale: __t.f32(),
+  loadoutPreset: __t.string().name("loadout_preset"),
 });
