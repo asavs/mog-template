@@ -95,17 +95,17 @@ log() { printf '[preview-up] %s\n' "$*" >&2; }
 # Default VM attached SA = project Compute Engine default (actAs target for OS Login).
 # Use Compute API (roles/compute.viewer), NOT Resource Manager projects.describe
 # which needs resourcemanager.projects.get and is NOT in the documented deploy SA roles.
+#
+# compute project-info fields (do not swap these):
+#   id   = numeric project number  (e.g. 123456789012)  ← required for default SA email
+#   name = string project id       (e.g. my-gcp-project) ← NOT valid in the SA email
 # Treat empty PREVIEW_VM_SA (workflow vars default '') as unset.
-PROJECT_NUMBER=$(gc compute project-info describe --format='value(name)' 2>/dev/null || true)
-# Some gcloud versions expose numeric id as `name`, others as `id` — try both.
-if [ -z "$PROJECT_NUMBER" ]; then
-  PROJECT_NUMBER=$(gc compute project-info describe --format='value(id)' 2>/dev/null || true)
-fi
+PROJECT_NUMBER=$(gc compute project-info describe --format='value(id)' 2>/dev/null || true)
 if [ -z "${PREVIEW_VM_SA:-}" ]; then
-  if [ -n "$PROJECT_NUMBER" ]; then
+  if [[ "$PROJECT_NUMBER" =~ ^[0-9]+$ ]]; then
     PREVIEW_VM_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
   else
-    log "WARNING: could not resolve project number via compute project-info; VM SA will use GCE default (omit --service-account)"
+    log "WARNING: could not resolve numeric project number via compute project-info (got '${PROJECT_NUMBER:-empty}'); VM SA will use GCE default (omit --service-account)"
     PREVIEW_VM_SA=""
   fi
 fi
