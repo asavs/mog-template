@@ -60,7 +60,7 @@
       "remedy": "Fetch LFS objects: `git lfs pull`.",
       "probe": {
         "type": "file-min-size",
-        "path": "client/public/models/terrain/dark-fantasy-map-2.glb",
+        "path": "client/public/models/terrain/dark-fantasy-map-lower-poly.glb",
         "minBytes": 1048576
       },
       "severity": "fail"

@@ -3,7 +3,9 @@ import path from 'node:path';
 import { encodeHeightmapBinary, writeHeightmapMeta } from './heightmap-binary-format.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const GLB_PATH = path.join(ROOT, 'client/public/models/terrain/dark-fantasy-map-2.glb');
+/** Keep in sync with `client/src/terrainConfig.ts` (TERRAIN_GLB_RELATIVE_PATH). */
+const TERRAIN_GLB_RELATIVE_PATH = 'models/terrain/dark-fantasy-map-lower-poly.glb';
+const GLB_PATH = path.join(ROOT, 'client/public', TERRAIN_GLB_RELATIVE_PATH);
 /** Client runtime binary (static web root). */
 const CLIENT_BIN_OUT = path.join(ROOT, 'client/public/models/terrain/heightmap.bin');
 /** Embedded by SpacetimeDB module via include_bytes!. */
@@ -11,6 +13,7 @@ const SERVER_BIN_OUT = path.join(ROOT, 'server/spacetimedb/src/heightmap.bin');
 /** Thin TS bounds for the client loader — not the giant sample grid. */
 const CLIENT_META_OUT = path.join(ROOT, 'client/src/heightmapMeta.ts');
 
+/** Keep in sync with `client/src/terrainConfig.ts` (TERRAIN_TARGET_SIZE). */
 const TERRAIN_TARGET_SIZE = 3148.07;
 const HEIGHTMAP_SIZE = 513;
 const MAX_WALKABLE_SLOPE_DEGREES = 70;

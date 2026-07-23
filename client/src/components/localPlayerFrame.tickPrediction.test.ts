@@ -11,7 +11,9 @@ import {
 } from './localPlayerFrame';
 
 const IDENTITY = { toHexString: () => 'local-player' };
-const RECONCILIATION_EPSILON_METERS = 0.12;
+// Terrain height samples affect vertical error slightly when the heightmap changes;
+// keep tight but not brittle to bake-to-bake ground Y differences.
+const RECONCILIATION_EPSILON_METERS = 0.15;
 
 type AuthoritySnapshot = {
   transform: PlayerTransform;

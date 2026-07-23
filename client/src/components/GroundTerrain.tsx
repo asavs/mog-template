@@ -2,10 +2,13 @@ import { useLayoutEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { publicAssetPath } from '../publicAssets';
+import {
+  TERRAIN_GLB_RELATIVE_PATH,
+  TERRAIN_TARGET_SIZE,
+  TERRAIN_Y_OFFSET,
+} from '../terrainConfig';
 
-const TERRAIN_PATH = publicAssetPath('models/terrain/dark-fantasy-map-2.glb');
-const TERRAIN_Y_OFFSET = 0;
-const TERRAIN_TARGET_SIZE = 3148.07;
+const TERRAIN_PATH = publicAssetPath(TERRAIN_GLB_RELATIVE_PATH);
 
 export function GroundTerrain() {
   const { scene } = useGLTF(TERRAIN_PATH);
