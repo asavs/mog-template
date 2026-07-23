@@ -8,42 +8,28 @@
 # gcloud + prebuilt artifacts. This script does NOT build anything — it consumes
 # a prebuilt WASM and client dist (like apply-artifacts.sh).
 #
-# Config knobs (env vars; defaults match the preview-VM factory plan v1 §11).
-# In CI these are sourced from repo `vars.*` with these same fallbacks:
-#   MACHINE_TYPE           [e2-micro]   VM shape (fallback e2-small if micro OOMs)
-#   PREVIEW_MAX_CONCURRENT [3]          hard cap on live preview VMs project-wide
-#   ZONE                   [us-central1-a]
-#   PREVIEW_DB_NAME        [mog-game-v1]  MUST match the DB name the built client
-#                          connects to. The caller (preview-up.yml) builds the
-#                          client with VITE_STDB_DB_NAME="$PREVIEW_DB_NAME",
-#                          which client/src/environment.ts reads (falling back
-#                          to 'mog-game-v1' when unset), so this one knob
-#                          governs both the publish target here and the
-#                          client's connection target.
-#   IMAGE_FAMILY           [mog-preview]  golden-image family (plan §9). If an
-#                          image exists in this family (in PROJECT), the VM is
-#                          created FROM it and the bootstrap below self-skips via
-#                          its sentinel; otherwise falls back to stock debian-12
-#                          + full bootstrap. Baked by scripts/preview-bootstrap.sh.
-#   PREVIEW_USE_IAP        [false]  if true, pass --tunnel-through-iap on all
-#                          gcloud compute ssh/scp (useful when OS Login over
-#                          public IP flakes or firewall policy prefers IAP).
-#   PREVIEW_VM_SA          [PROJECT_NUMBER-compute@developer.gserviceaccount.com]
-#                          service account attached to the preview VM (actAs target
-#                          for gcloud compute ssh). Set explicitly so IAM is clear.
-#   PREVIEW_DELETE_ON_FAIL [false]  if true, delete the VM when deploy fails after
-#                          create/reuse began remote work. Default keeps the VM
-#                          labeled deploy-failed=true for salvage.
-#   PROJECT / GCP_PROJECT               GCP project id (required)
-#   WASM_PATH                           override wasm path (else auto-find)
-#   DIST_DIR               [client/dist]  built client bundle
-#   (PREVIEW_TTL_HOURS is consumed by the GC job in preview-down.yml, not here.)
+# Config (who provides what — see docs/preview-ssh.md):
 #
-# SSH / OS Login notes (PR feel-test deploys):
-#   Deploy SA needs roles/compute.osAdminLogin (or osLogin) + actAs on the VM's
-#   attached service account; instances must have enable-oslogin=true. IAM can
-#   lag several minutes. See docs/preview-ssh.md for the checklist and the
-#   Permission denied (publickey) failure mode.
+#   GitHub Secrets (identity — set once by setup-deploy-infra.sh):
+#     GCP_PROJECT, GCP_SERVICE_ACCOUNT, GCP_WORKLOAD_IDENTITY_PROVIDER
+#     → workflow maps GCP_PROJECT into PROJECT for this script
+#
+#   GitHub Variables (knobs — not secret; optional overrides):
+#     MACHINE_TYPE [e2-micro]   PREVIEW_MAX_CONCURRENT [3]   ZONE [us-central1-a]
+#     PREVIEW_DB_NAME [mog-game-v1]   IMAGE_FAMILY [mog-preview]
+#     PREVIEW_USE_IAP [false]   PREVIEW_DELETE_ON_FAIL [false]
+#     PREVIEW_VM_SA   [unset]  only if the VM must use a non-default attached SA
+#
+#   GCE platform default:
+#     When PREVIEW_VM_SA is unset, omit --service-account so GCE attaches the
+#     project default compute SA (idiomatic; do not invent the email in bash).
+#
+#   Local-only overrides:
+#     WASM_PATH, DIST_DIR [client/dist]
+#     PREVIEW_TTL_HOURS is for preview-down.yml GC, not this script.
+#
+# SSH / OS Login: deploy SA needs osAdminLogin + actAs on the VM SA;
+# enable-oslogin=true on the instance. See docs/preview-ssh.md.
 #
 # Manual runs from Windows: the heredoc-over-ssh publish step below (`gcloud
 # compute ssh ... --command=... <<'REMOTE'`) fails under Windows gcloud's
@@ -92,18 +78,8 @@ fi
 gc() { gcloud --project="$PROJECT" "$@"; }
 log() { printf '[preview-up] %s\n' "$*" >&2; }
 
-# VM attached SA (actAs target for gcloud compute ssh).
-# Default: OMIT --service-account so GCE attaches the project default compute SA
-# (same as pre-hardening behavior; that path successfully created mog-pr-* VMs).
-#
-# Do NOT auto-build PROJECT_NUMBER-compute@… from `compute project-info describe`:
-# field semantics vary by gcloud version and a wrong number yields
-# "serviceAccount was not found" at instances.create (seen on PR #39 CI).
-# Set PREVIEW_VM_SA explicitly (repo var) when you want a non-default SA.
-# Treat empty string (workflow vars default '') as unset.
-if [ -z "${PREVIEW_VM_SA:-}" ]; then
-  PREVIEW_VM_SA=""
-fi
+# Optional override only. Empty/unset → GCE default compute SA (no flag).
+PREVIEW_VM_SA="${PREVIEW_VM_SA:-}"
 
 instance_exists() { gc compute instances describe "$INSTANCE" --zone="$ZONE" >/dev/null 2>&1; }
 
@@ -160,12 +136,12 @@ trap salvage_or_delete_on_fail EXIT
 log_deploy_principal() {
   local principal
   principal=$(gcloud config get-value account 2>/dev/null || echo unknown)
-  log "deploy principal (gcloud account): $principal"
-  log "preview VM attached SA (actAs target): ${PREVIEW_VM_SA:-GCE default}"
-  # Soft actAs check is intentionally NOT done via get-iam-policy: that API needs
-  # iam.serviceAccounts.getIamPolicy, which is outside the documented deploy SA
-  # roles (compute.viewer / osAdminLogin / serviceAccountUser only). Operators
-  # verify actAs via docs/preview-ssh.md; a failed soft-check must never abort.
+  log "who: deploy principal=$principal  project=$PROJECT"
+  if [ -n "$PREVIEW_VM_SA" ]; then
+    log "vm SA: $PREVIEW_VM_SA (explicit PREVIEW_VM_SA)"
+  else
+    log "vm SA: GCE project default (PREVIEW_VM_SA unset — idiomatic)"
+  fi
 }
 
 diagnose_ssh_failure() {

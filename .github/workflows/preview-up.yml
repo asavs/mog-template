@@ -52,31 +52,23 @@ jobs:
       contents: read
       pull-requests: write   # upsert the announce comment
       checks: read           # check-runs API for check-ci.sh
+    # Config split (docs/preview-ssh.md):
+    #   Secrets → who/where (WIF + project) in the auth step below
+    #   Variables → knobs (safe to be non-secret)
+    #   Unset PREVIEW_VM_SA → GCE attaches default compute SA (do not invent email)
     env:
+      # --- knobs (repo Variables) ---
       MACHINE_TYPE: ${{ vars.MACHINE_TYPE || 'e2-micro' }}
       PREVIEW_MAX_CONCURRENT: ${{ vars.PREVIEW_MAX_CONCURRENT || '3' }}
       ZONE: ${{ vars.ZONE || 'us-central1-a' }}
-      # Drives BOTH the publish target (scripts/preview-up.sh) and the built
-      # client's connection target: the "Build client" step below passes this
-      # through as VITE_STDB_DB_NAME, which client/src/environment.ts reads
-      # (falling back to 'mog-game-v1' when unset).
+      # Same name used for spacetime publish and VITE_STDB_DB_NAME in Build client.
       PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-v1' }}
-      # Golden-image family (plan §9). When an image exists in this family,
-      # preview-up.sh creates the VM from it and the bootstrap self-skips (fast
-      # path); otherwise it falls back to debian-12 + full bootstrap. Bake with
-      # scripts/preview-bootstrap.sh, then `gcloud compute images create`.
       IMAGE_FAMILY: ${{ vars.IMAGE_FAMILY || 'mog-preview' }}
-      # Optional IAP tunnel for gcloud compute ssh/scp when public-IP OS Login
-      # flakes (Permission denied publickey). Set repo var PREVIEW_USE_IAP=true
-      # after granting roles/iap.tunnelResourceAccessor + IAP firewall. See
-      # docs/preview-ssh.md.
+      # --- optional hardening (repo Variables) ---
       PREVIEW_USE_IAP: ${{ vars.PREVIEW_USE_IAP || 'false' }}
-      # VM attached SA (actAs target). Empty → preview-up.sh uses project default
-      # compute SA. Override with vars.PREVIEW_VM_SA if previews use a custom SA.
-      PREVIEW_VM_SA: ${{ vars.PREVIEW_VM_SA || '' }}
-      # If true, delete the VM when deploy fails (frees cap). Default false leaves
-      # it labeled deploy-failed=true for salvage (docs/preview-ssh.md).
       PREVIEW_DELETE_ON_FAIL: ${{ vars.PREVIEW_DELETE_ON_FAIL || 'false' }}
+      # Only set if VMs must use a custom attached SA (email is not a secret).
+      PREVIEW_VM_SA: ${{ vars.PREVIEW_VM_SA }}
 
     steps:
       # ---- cheap gates FIRST (resolve → fork guard → CI green), THEN build ----
@@ -205,6 +197,8 @@ jobs:
         run: cargo build --release --target wasm32-unknown-unknown
 
       # ---- auth + provision + deploy ----
+      # Secrets (identity only): who Actions is and which GCP project.
+      # Set by scripts/setup-deploy-infra.sh — not duplicated as script inventing.
       - name: Authenticate to GCP via Workload Identity Federation
         uses: google-github-actions/auth@v2
         with:
@@ -217,6 +211,7 @@ jobs:
       - name: Create-or-reuse preview VM and deploy
         id: deploy
         env:
+          # Secret project id → script's PROJECT (required).
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           PR: ${{ steps.resolve.outputs.pr }}
           SHA: ${{ steps.resolve.outputs.sha }}

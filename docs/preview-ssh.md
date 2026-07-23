@@ -3,43 +3,58 @@
 How GitHub Actions reaches ephemeral preview VMs (`mog-pr-<N>`) and what to do
 when deploy fails with **Permission denied (publickey)**.
 
+## Config: secrets vs variables vs GCE (clean model)
+
+| Layer | What | Examples |
+|---|---|---|
+| **GitHub Secrets** | Who Actions is + which project | `GCP_SERVICE_ACCOUNT`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_PROJECT` |
+| **GitHub Variables** | Knobs (not confidential) | `ZONE`, `MACHINE_TYPE`, `PREVIEW_DB_NAME`, `IMAGE_FAMILY`, `PREVIEW_USE_IAP`, `PREVIEW_DELETE_ON_FAIL` |
+| **GCE default** | VM identity if you don’t override | Project default compute SA — **leave unset** |
+| **Optional Variable** | Only if the VM must not use the default SA | `PREVIEW_VM_SA` = full SA email (not a secret, just config) |
+
+**Do not** put the default `…-compute@developer.gserviceaccount.com` email into Secrets
+or invent it in bash from a project-number lookup. Let GCE attach the default when
+`PREVIEW_VM_SA` is unset. That is the idiomatic path and the one that creates VMs
+successfully.
+
+Optional later: move the three `GCP_*` secrets into a GitHub **Environment**
+named `preview` for stage isolation. Repo-level secrets are fine for a single
+project.
+
+`scripts/setup-deploy-infra.sh` is what should create the deploy SA and write
+those Secrets once. Day-to-day deploys only *consume* them.
+
 ## How deploy SSH works
 
-1. `preview-up.yml` authenticates as the **GitHub Actions deploy service account**
-   via Workload Identity Federation.
+1. Workflow becomes the **deploy service account** via Workload Identity Federation  
+   (`secrets.GCP_SERVICE_ACCOUNT` + WIF provider).
 2. `scripts/preview-up.sh` runs `gcloud compute ssh` / `scp` against the VM.
-3. Instances are created with `enable-oslogin=true`. There are **no** static
-   SSH keys in metadata; identity is IAM + OS Login.
-4. The OS Login username looks like `sa_<numeric-id>` when the principal is a
-   service account (what you see in failed scp logs).
+3. Instances use `enable-oslogin=true` — no static SSH keys in metadata.
+4. OS Login usernames for service accounts look like `sa_<digits>` in error logs.
 
 ## Required IAM (project)
 
-On the deploy SA (e.g. `github-actions-deploy@PROJECT.iam.gserviceaccount.com`):
+On the deploy SA (e.g. `github-actions-deploy@PROJECT_ID.iam.gserviceaccount.com`):
 
 | Role | Why |
 |---|---|
-| `roles/compute.osAdminLogin` | Passwordless SSH **and** sudo (apply step uses sudo) |
-| `roles/compute.viewer` | Describe instances / list; also enough for `compute project-info describe` (project number) |
-| `roles/iam.serviceAccountUser` on the **VM's attached** SA | `gcloud compute ssh` actAs that SA |
+| `roles/compute.osAdminLogin` | Passwordless SSH **and** sudo (apply uses sudo) |
+| `roles/compute.viewer` | Describe / list instances |
+| `roles/iam.serviceAccountUser` on the **VM’s attached** SA | `gcloud compute ssh` actAs |
 
-Do **not** rely on Resource Manager (`projects describe`) or `get-iam-policy` in the deploy
-script — those need permissions outside this least-privilege set.
+Also: instance create/delete + image use (see `setup-deploy-infra.sh` / `deploy-your-vm.md`).
 
-By default GCE VMs use the project Compute Engine default SA
-(`PROJECT_NUMBER-compute@developer.gserviceaccount.com`).  
-`preview-up.sh` leaves that default alone unless you set **`PREVIEW_VM_SA`** to a
-real SA email (never auto-derived — wrong project-number lookups break `instances.create`).
-
-Grant actAs on whichever SA is actually attached:
+Grant actAs on the SA that is **actually** on the VM (default compute SA unless
+you set `PREVIEW_VM_SA`):
 
 ```bash
+# Resolve the default compute SA in your project:
+#   gcloud iam service-accounts list --filter='email~compute@developer'
+
 gcloud projects add-iam-policy-binding PROJECT_ID \
   --member="serviceAccount:github-actions-deploy@PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/compute.osAdminLogin"
 
-# Resolve the real default compute SA email in your project (numeric PROJECT_NUMBER):
-#   gcloud iam service-accounts list --filter='displayName:Compute Engine default'
 gcloud iam service-accounts add-iam-policy-binding \
   PROJECT_NUMBER-compute@developer.gserviceaccount.com \
   --project=PROJECT_ID \
@@ -47,67 +62,49 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role="roles/iam.serviceAccountUser"
 ```
 
-Also ensure the deploy SA can create/delete instances and use the golden image
-(see `docs/deploy-your-vm.md` and `scripts/setup-deploy-infra.sh`).
+## Hardening behavior (`preview-up.sh`)
+
+| Behavior | Control |
+|---|---|
+| Retry SSH and SCP with backoff | always on |
+| Re-probe before large artifact upload | always on |
+| Fail if SSH never becomes ready | always on (no silent fall-through) |
+| Last-5 probe snippets + checklist on failure | always on |
+| Split wasm / dist scp | always on |
+| IAP tunnel | Variable `PREVIEW_USE_IAP=true` (+ IAP IAM/firewall) |
+| Custom VM SA | Variable `PREVIEW_VM_SA` (email); unset = GCE default |
+| On fail: delete VM vs leave labeled | Variable `PREVIEW_DELETE_ON_FAIL` (default leave + `deploy-failed=true`) |
 
 ## Failure mode: Permission denied (publickey)
 
-Observed on PR preview deploys (e.g. PR #38):
+Typical sequence:
 
 - VM create succeeds.
-- An early hop sometimes works (bootstrap script scp).
-- A later hop fails with `sa_…@EXTERNAL_IP: Permission denied (publickey)`.
+- An early hop may work; a later hop fails as `sa_…@…: Permission denied (publickey)`.
 
-Common causes:
-
-1. **OS Login IAM lag** after create (can be minutes).
-2. Missing `osAdminLogin` / `actAs` (fails more consistently).
-3. Guest agent not ready / OS Login not fully up on golden image boot.
-4. Rare multi-source recursive scp flake (script now stages wasm + dist separately).
-
-### What the script does now
-
-| Behavior | Env / note |
-|---|---|
-| Retry `ssh` / `scp` (not only a single `ssh true`) | built-in backoff |
-| Re-probe before large artifact SCP | after mkdir, before wasm/dist |
-| Clearer errors | principal, zone, instance, **last 5 probe snippets**, live probe |
-| Optional IAP tunnel | `PREVIEW_USE_IAP=true` |
-| Explicit VM service account | optional `PREVIEW_VM_SA` (unset = GCE default SA; do not auto-invent the email) |
-| Fail after create | label `deploy-failed=true` + salvage SSH/tear-down hints; or `PREVIEW_DELETE_ON_FAIL=true` to delete |
-
-Also: waits until SSH succeeds and **exits non-zero** if it never becomes ready
-(previously a failed wait could fall through silently). Uploads wasm and `dist/`
-as **separate** scp operations (avoids multi-source recursive flake).
+Common causes: OS Login IAM lag, missing `osAdminLogin` / `actAs`, guest agent not
+ready, rare scp flake (mitigated by retries + split uploads).
 
 ### Ops recovery
 
 ```bash
-# Re-run preview after IAM settles or after merging this hardening
 gh workflow run "Preview VM up" --repo OWNER/REPO -f pr=NN
 
-# Or tear down a half-created VM and retry
-bash scripts/preview-down.sh NN
+bash scripts/preview-down.sh NN   # free a half-dead VM
 gh workflow run "Preview VM up" --repo OWNER/REPO -f pr=NN
 ```
 
-If failures persist after IAM is correct, try enabling IAP tunnel in the workflow
-env (`PREVIEW_USE_IAP: 'true'`) and ensure the deploy SA has
-`roles/iap.tunnelResourceAccessor` plus a firewall rule allowing IAP to port 22.
-
 ## Public-repo hygiene
 
-This repo is public. Prefer:
-
-- Placeholder project / SA names in docs (`PROJECT_ID`, not real numbers)
-- No long-lived IPs or full `sa_<digits>` identities in issues/PR comments
-- Preview announce URLs are fine (ephemeral); raw IPs in chat are optional noise
-
-CI salvage logs intentionally omit external IPs; use `gcloud compute instances describe`.
+- Placeholders in docs (`PROJECT_ID`), not real project numbers or SA emails  
+- Prefer not pasting long-lived IPs or full `sa_<digits>` into issues  
+- Preview announce URLs are fine (ephemeral)  
+- Salvage logs omit NAT IPs; use `gcloud compute instances describe`
 
 ## Related
 
-- `scripts/preview-up.sh` — create/deploy/announce
-- `scripts/preview-bootstrap.sh` — lean runtime on the VM
-- `docs/deploy-your-vm.md` — full VM + IAM setup
-- `docs/dev-pipeline.md` — when preview-up runs in the PR lifecycle
+- `scripts/preview-up.sh` — create / deploy / announce  
+- `scripts/preview-bootstrap.sh` — lean runtime on the VM  
+- `scripts/setup-deploy-infra.sh` — one-time SA + Secrets  
+- `docs/deploy-your-vm.md` — full VM setup  
+- `docs/dev-pipeline.md` — when preview-up runs  
