@@ -1,0 +1,60 @@
+{
+  "$schemaNote": "Canonical loadout authority (issue #46). Presentation meshKeys/clips stay in client/src/avatar/catalog.ts. Edit this file, then run: node scripts/gen-avatar-loadout.mjs",
+  "baselineGrants": ["drink_potion"],
+  "legacyClassToPreset": {
+    "paladin": "paladin",
+    "pally": "paladin",
+    "wizard": "wizard",
+    "wizard2": "wizard"
+  },
+  "defaultPresetId": "wizard",
+  "equipSlots": ["main_hand", "off_hand"],
+  "bodies": {
+    "body_m": {},
+    "body_f": {}
+  },
+  "items": {
+    "sword_1h": {
+      "slot": "main_hand",
+      "grants": ["melee_slash"]
+    },
+    "shield": {
+      "slot": "off_hand",
+      "grants": ["block"]
+    },
+    "staff": {
+      "slot": "main_hand",
+      "grants": ["cast_fireball", "cast_lightning"]
+    },
+    "potion": {
+      "slot": "off_hand",
+      "grants": ["drink_potion"]
+    }
+  },
+  "presets": {
+    "paladin": {
+      "label": "Paladin",
+      "bodyId": "body_m",
+      "scale": 1.0,
+      "slots": {
+        "main_hand": "sword_1h"
+      },
+      "utilityEquipment": [
+        { "slot": "off_hand", "itemId": "shield" },
+        { "slot": "utility_potion", "itemId": "potion" }
+      ],
+      "extraGrants": ["drink_potion"]
+    },
+    "wizard": {
+      "label": "Wizard",
+      "bodyId": "body_f",
+      "scale": 1.0,
+      "slots": {
+        "main_hand": "staff",
+        "off_hand": "potion"
+      },
+      "utilityEquipment": [],
+      "extraGrants": ["drink_potion"]
+    }
+  }
+}

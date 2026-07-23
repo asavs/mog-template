@@ -1,5 +1,6 @@
 import { publicAssetPath } from '../publicAssets';
 import { SOCKET_BONE_CANDIDATES } from './rig';
+import { LOADOUT_AUTHORITY, LOADOUT_DERIVED } from './loadoutAuthority.generated';
 import type {
   AbilityId,
   AvatarCapabilities,
@@ -23,12 +24,12 @@ import type {
 /**
  * Default catalog.
  *
- * meshKeys still point at today's disposable FBX/GLB pile so presets resolve
- * without new art. Phase B swaps meshKeys for modular body/armor/weapon GLBs
- * and a shared animation library — types stay the same.
+ * **Authority** (ids, slots, grants, presets, utility equipment) comes from
+ * `shared/avatar-loadout.json` via `loadoutAuthority.generated.ts` (issue #46).
+ * Regenerate: `node scripts/gen-avatar-loadout.mjs`
  *
- * Rig contract: `mog_humanoid` (see rig.ts). Not Mixamo-locked; Mixamo names
- * are transitional aliases only.
+ * **Presentation** (meshKeys, sockets TRS, clips) stays here until modular art.
+ * Rig contract: `mog_humanoid` (see rig.ts).
  */
 
 const SHARED_FOOTSTEPS = {
@@ -71,45 +72,35 @@ const BODIES: Record<string, BodyDef> = {
   },
 };
 
-const ITEMS: Record<string, ItemDef> = {
+/** Presentation-only fields keyed by authority item id. */
+const ITEM_PRESENTATION: Record<
+  string,
+  Omit<ItemDef, 'id' | 'slot' | 'grants'>
+> = {
   sword_1h: {
-    id: 'sword_1h',
-    slot: 'main_hand',
     meshKey: 'models/weapons/low_poly_weapons_pack_rigged_blender.glb',
     attach: 'socket',
     socketId: 'right_hand',
     objectNames: ['Baked one handed sword', 'One handed sword'],
-    grants: ['melee_slash'],
-    // TRS comes from SOCKETS.right_hand (single source; item overrides only when needed).
   },
   shield: {
-    id: 'shield',
-    slot: 'off_hand',
     meshKey: 'models/weapons/low_poly_weapons_pack_rigged_blender.glb',
     attach: 'socket',
     socketId: 'left_hand',
     objectNames: ['Baked shield 1', 'Shield 1'],
-    grants: ['block'],
-    // TRS comes from SOCKETS.left_hand.
   },
   staff: {
-    id: 'staff',
-    slot: 'main_hand',
-    // Placeholder: no isolated staff mesh yet; grants only until art exists (#64).
+    // Placeholder: no isolated staff mesh yet (#64).
     meshKey: 'models/wizard2/wizard2.fbx',
     attach: 'socket',
     socketId: 'right_hand',
-    grants: ['cast_fireball', 'cast_lightning'],
     grantsOnly: true,
     visibleByDefault: false,
   },
   potion: {
-    id: 'potion',
-    slot: 'off_hand',
     meshKey: 'models/items/red-potion.glb',
     attach: 'socket',
     socketId: 'left_hand',
-    grants: ['drink_potion'],
     position: [19, 7, 0],
     rotation: [-1.5708, 0.1, 1.75],
     scale: 122.5031,
@@ -117,6 +108,27 @@ const ITEMS: Record<string, ItemDef> = {
     visibleByDefault: false,
   },
 };
+
+function buildItemsFromAuthority(): Record<string, ItemDef> {
+  const out: Record<string, ItemDef> = {};
+  for (const [id, auth] of Object.entries(LOADOUT_AUTHORITY.items)) {
+    const presentation = ITEM_PRESENTATION[id];
+    if (!presentation) {
+      throw new Error(
+        `Missing ITEM_PRESENTATION for authority item "${id}" — add meshKey/attach in catalog.ts`,
+      );
+    }
+    out[id] = {
+      id,
+      slot: auth.slot as EquipSlot,
+      grants: [...auth.grants] as AbilityId[],
+      ...presentation,
+    };
+  }
+  return out;
+}
+
+const ITEMS: Record<string, ItemDef> = buildItemsFromAuthority();
 
 const DRINKING_CLIP: ClipSource = {
   actionKey: 'drinking',
@@ -174,43 +186,43 @@ function wizardClips(): ClipSource[] {
   ];
 }
 
-const PRESETS: Record<string, LoadoutPreset> = {
-  paladin: {
-    id: 'paladin',
-    label: 'Paladin',
-    appearance: {
-      bodyId: 'body_m',
-      scale: 1,
-      slots: {
-        main_hand: 'sword_1h',
-        // Potion is a utility item; shield occupies off_hand in the true paper-doll.
-        // Phase A keeps potion attachable via extra equipment merge (see resolve).
-      },
-    },
-    clips: paladinClips(),
-    extraGrants: ['drink_potion'],
-  },
-  wizard: {
-    id: 'wizard',
-    label: 'Wizard',
-    appearance: {
-      bodyId: 'body_f',
-      scale: 1,
-      slots: {
-        main_hand: 'staff',
-        off_hand: 'potion',
-      },
-    },
-    clips: wizardClips(),
-    extraGrants: ['drink_potion'],
-  },
+/** Presentation clip lists keyed by preset id (not authority). */
+const PRESET_CLIPS: Record<string, () => ClipSource[]> = {
+  paladin: paladinClips,
+  wizard: wizardClips,
 };
 
+function buildPresetsFromAuthority(): Record<string, LoadoutPreset> {
+  const out: Record<string, LoadoutPreset> = {};
+  for (const [id, auth] of Object.entries(LOADOUT_AUTHORITY.presets)) {
+    const clipsFn = PRESET_CLIPS[id];
+    if (!clipsFn) {
+      throw new Error(`Missing PRESET_CLIPS for authority preset "${id}"`);
+    }
+    out[id] = {
+      id,
+      label: auth.label,
+      appearance: {
+        bodyId: auth.bodyId as BodyId,
+        scale: auth.scale,
+        slots: { ...(auth.slots as Partial<Record<EquipSlot, ItemId>>) },
+      },
+      clips: clipsFn(),
+      extraGrants: [...(auth.extraGrants ?? [])] as AbilityId[],
+    };
+  }
+  return out;
+}
+
+const PRESETS: Record<string, LoadoutPreset> = buildPresetsFromAuthority();
+
 /** Always-on utility attaches that are not exclusive paper-doll slots (Phase A). */
-const UTILITY_ITEMS_BY_PRESET: Record<string, readonly ItemId[]> = {
-  paladin: ['shield', 'potion'],
-  wizard: [],
-};
+const UTILITY_ITEMS_BY_PRESET: Record<string, readonly ItemId[]> = Object.fromEntries(
+  Object.entries(LOADOUT_DERIVED.utilityItemsByPreset).map(([presetId, items]) => [
+    presetId,
+    [...items] as ItemId[],
+  ]),
+);
 
 const SLOT_ORDER: readonly EquipSlot[] = [
   'head',
@@ -238,9 +250,11 @@ function uniqueGrants(parts: readonly (readonly AbilityId[])[]): AbilityId[] {
 
 /**
  * Grants every humanoid PC has even with empty equipment.
- * Keep aligned with server `capabilities_from_grants` baseline (loadout.rs).
+ * From shared/avatar-loadout.json → baselineGrants.
  */
-export const BASELINE_ABILITY_GRANTS: readonly AbilityId[] = ['drink_potion'];
+export const BASELINE_ABILITY_GRANTS: readonly AbilityId[] = [
+  ...LOADOUT_AUTHORITY.baselineGrants,
+] as AbilityId[];
 
 export function capabilitiesFromGrants(grants: readonly AbilityId[]): AvatarCapabilities {
   const set = new Set<AbilityId>([...BASELINE_ABILITY_GRANTS, ...grants]);
@@ -393,19 +407,15 @@ export const defaultAvatarCatalog: AvatarCatalog = createAvatarCatalog();
 
 /**
  * Map legacy join class strings onto loadout preset ids.
- * Prefer presets going forward; keep this until character_class rows migrate.
+ * Table lives in shared/avatar-loadout.json → legacyClassToPreset.
  */
 export function presetIdFromLegacyClass(characterClass: string | null | undefined): string {
-  switch ((characterClass ?? '').trim().toLowerCase()) {
-    case 'paladin':
-    case 'pally':
-      return 'paladin';
-    case 'wizard':
-    case 'wizard2':
-      return 'wizard';
-    default:
-      return 'wizard';
-  }
+  const key = (characterClass ?? '').trim().toLowerCase();
+  const mapped =
+    LOADOUT_AUTHORITY.legacyClassToPreset[
+      key as keyof typeof LOADOUT_AUTHORITY.legacyClassToPreset
+    ];
+  return mapped ?? LOADOUT_AUTHORITY.defaultPresetId;
 }
 
 export function appearanceFromPreset(

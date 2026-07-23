@@ -7,10 +7,10 @@ import {
 } from './loadoutParity';
 
 /**
- * Dual-catalog parity (issue #47).
- * Server ids live in server/spacetimedb/src/loadout.rs — mirrored in SERVER_LOADOUT_IDS.
+ * Authority parity (issues #46 / #47).
+ * Ids come from shared/avatar-loadout.json via loadoutAuthority.generated.ts.
  */
-describe('loadout id parity (client catalog ↔ server fixture)', () => {
+describe('loadout id parity (client catalog ↔ shared authority)', () => {
   const client = collectCatalogLoadoutIds();
 
   it('exposes the same preset ids as the server', () => {
