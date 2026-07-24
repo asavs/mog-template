@@ -770,8 +770,17 @@ fn class_capabilities(class: &str) -> loadout::Capabilities {
     loadout::capabilities_for_class(class)
 }
 
-/// Prefer equipment-derived grants when `player_equipment` rows exist; else preset.
-fn player_capabilities(ctx: &ReducerContext, identity: Identity, character_class: &str) -> loadout::Capabilities {
+/// Combat gates from live `player_equipment` rows (+ baseline grants).
+///
+/// Empty equipment is intentional mid-session unequip — do **not** fall back to
+/// preset/class grants (that would restore cast/melee with empty hands). Join
+/// seeds equipment in the same transaction as player insert, so an empty set is
+/// not a "rows not ready yet" race on the combat path.
+fn player_capabilities(
+    ctx: &ReducerContext,
+    identity: Identity,
+    _character_class: &str,
+) -> loadout::Capabilities {
     let item_ids: Vec<String> = ctx
         .db
         .player_equipment()
@@ -779,9 +788,6 @@ fn player_capabilities(ctx: &ReducerContext, identity: Identity, character_class
         .filter(&identity)
         .map(|row| row.item_id)
         .collect();
-    if item_ids.is_empty() {
-        return class_capabilities(character_class);
-    }
     let refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
     loadout::capabilities_for_equipment_item_ids(&refs)
 }
