@@ -119,15 +119,18 @@ export function castleGroundSupport(
   radius: number,
   height: number,
 ): THREE.Vector3 | null {
+  const probeStart = new THREE.Vector3(position.x, position.y + maxDistance, position.z);
   const result = resolveCastleCapsuleSweep(
-    position,
+    probeStart,
     new THREE.Vector3(position.x, position.y - maxDistance, position.z),
     radius,
     height,
     false,
   );
   const movedSideways = Math.hypot(result.position.x - position.x, result.position.z - position.z) > CASTLE_CAPSULE_SKIN;
+  const movedVertically = Math.abs(result.position.y - position.y) > maxDistance + CASTLE_CAPSULE_SKIN;
   return !movedSideways && result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y
+    && !movedVertically
     ? result.position
     : null;
 }

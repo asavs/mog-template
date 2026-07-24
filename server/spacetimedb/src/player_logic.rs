@@ -155,7 +155,7 @@ pub fn update_transform(
         transform.movement_state.sprint_active,
     );
 
-    let desired_position = calculate_next_position(
+    let mut desired_position = calculate_next_position(
         &transform.position,
         current_ground_y,
         rotation_y,
@@ -164,6 +164,20 @@ pub fn update_transform(
         &mut jump_state.vertical_velocity,
         &mut jump_state.was_jump_pressed,
     );
+    if was_grounded && !is_starting_jump {
+        let ending_terrain_y = heightmap::terrain_height_at(&desired_position);
+        let ending_castle_ground = collision::castle_ground_support(
+            &desired_position,
+            GROUND_SNAP_DISTANCE,
+        );
+        let ending_ground_y = ending_castle_ground
+            .as_ref()
+            .map(|support| support.y)
+            .unwrap_or(ending_terrain_y);
+        if ending_ground_y > desired_position.y {
+            desired_position.y = ending_ground_y;
+        }
+    }
     let move_result = collision::resolve_player_movement(&transform.position, &desired_position);
     let mut resolved_position = move_result.position;
     if move_result.hit_ceiling && jump_state.vertical_velocity > 0.0 {

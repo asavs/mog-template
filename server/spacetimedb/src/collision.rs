@@ -35,25 +35,29 @@ pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_c
     )
 }
 
-/// Finds the first reachable walkable castle surface below this exact capsule.
-/// It deliberately sweeps from the player's current elevation instead of looking up a
+/// Finds the first reachable walkable castle surface within the short vertical snap band.
+/// It deliberately sweeps from the player's current elevation band instead of looking up a
 /// global X/Z height, so stacked spiral ramps remain distinct.
 pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Vector3> {
+    let probe_start = Vector3 { x: position.x, y: position.y + max_distance, z: position.z };
     let result = castle_collision::snap_capsule_down(
-        position,
-        max_distance,
+        &probe_start,
+        max_distance * 2.0,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
     );
     let moved_sideways = ((result.position.x - position.x).powi(2)
         + (result.position.z - position.z).powi(2))
     .sqrt() > castle_collision::CAPSULE_SKIN;
+    let moved_vertically = (result.position.y - position.y).abs()
+        > max_distance + castle_collision::CAPSULE_SKIN;
     if moved_sideways {
         return None;
     }
     result
         .ground_normal
         .filter(|normal| normal.y >= castle_collision::MIN_WALKABLE_NORMAL_Y)
+        .filter(|_| !moved_vertically)
         .map(|_| result.position)
 }
 

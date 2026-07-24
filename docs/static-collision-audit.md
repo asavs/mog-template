@@ -124,6 +124,10 @@ after the initial document was written:
 - **Client/server castle snap parity:** client prediction now mirrors the
   server's post-sweep castle snap decision for grounded, non-jumping downward
   movement, preventing downhill ramp prediction drift.
+- **Matched uphill ramp sweep target:** the server now raises grounded,
+  non-jumping desired movement to the ending support height before the castle
+  sweep, matching the client path that clamps to ground after horizontal
+  movement and before the final castle reachability sweep.
 
 ### Definite hardening work still needed
 
