@@ -163,8 +163,14 @@ pub fn update_transform(
         &mut jump_state.vertical_velocity,
         &mut jump_state.was_jump_pressed,
     );
-    let mut resolved_position =
-        collision::resolve_player_movement(&transform.position, &desired_position);
+    let move_result = collision::resolve_player_movement(&transform.position, &desired_position);
+    let mut resolved_position = move_result.position;
+    if move_result.hit_ceiling && jump_state.vertical_velocity > 0.0 {
+        jump_state.vertical_velocity = 0.0;
+    }
+    if move_result.ground_normal.is_some() && jump_state.vertical_velocity < 0.0 {
+        jump_state.vertical_velocity = 0.0;
+    }
     let terrain_resolved_ground_y = heightmap::terrain_height_at(&resolved_position);
     let castle_resolved_ground = collision::castle_ground_support(
         &resolved_position,

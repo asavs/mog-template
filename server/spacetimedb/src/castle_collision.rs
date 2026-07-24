@@ -36,6 +36,8 @@ const MAX_SUBSTEP_DISTANCE: f32 = 0.2;
 pub struct CapsuleMoveResult {
     pub position: Vector3,
     pub ground_normal: Option<Vector3>,
+    pub hit_ceiling: bool,
+    pub hit_wall: bool,
 }
 
 pub fn castle_collision() -> &'static CastleCollisionData {
@@ -173,6 +175,8 @@ pub fn resolve_capsule_sweep(
     let target = Point::from(desired);
     let mut remaining = target - position;
     let mut ground_normal = None;
+    let mut hit_ceiling = false;
+    let mut hit_wall = false;
 
     // Spawn/reconciliation corrections can begin inside the static mesh even
     // with a zero desired displacement. Recover before the normal sweep.
@@ -220,8 +224,15 @@ pub fn resolve_capsule_sweep(
         // original blocked sample. Re-query before applying the slide normal.
         let final_contact = capsule_contact(high, radius, height, remaining).unwrap_or(contact);
         position = low + final_contact.normal * CAPSULE_SKIN;
-        if final_contact.normal.y >= MIN_WALKABLE_NORMAL_Y {
+        let contact_motion = remaining;
+        if final_contact.normal.y >= MIN_WALKABLE_NORMAL_Y && contact_motion.y <= 0.0 {
             ground_normal = Some(final_contact.normal.into());
+        }
+        if final_contact.normal.y < -CONTACT_EPSILON && contact_motion.y > 0.0 {
+            hit_ceiling = true;
+        }
+        if final_contact.normal.y.abs() < MIN_WALKABLE_NORMAL_Y {
+            hit_wall = true;
         }
         remaining = target - position;
         let into_surface = remaining.dot(final_contact.normal);
@@ -236,7 +247,7 @@ pub fn resolve_capsule_sweep(
         };
         position = position + overlap.normal * (overlap.penetration + CAPSULE_SKIN);
     }
-    CapsuleMoveResult { position: position.into(), ground_normal }
+    CapsuleMoveResult { position: position.into(), ground_normal, hit_ceiling, hit_wall }
 }
 
 pub fn snap_capsule_down(position: &Vector3, max_distance: f32, radius: f32, height: f32) -> CapsuleMoveResult {

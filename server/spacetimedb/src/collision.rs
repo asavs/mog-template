@@ -24,14 +24,14 @@ pub struct Aabb {
     pub max_z: f32,
 }
 
-pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> Vector3 {
+pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_collision::CapsuleMoveResult {
     let terrain_resolved = resolve_player_movement_against(current, desired, &[]);
     castle_collision::resolve_capsule_sweep(
         current,
         &terrain_resolved,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
-    ).position
+    )
 }
 
 /// Finds the first reachable walkable castle surface below this exact capsule.
@@ -177,7 +177,7 @@ mod tests {
             z: -10000.0,
         };
 
-        let resolved = resolve_player_movement(&current, &desired);
+        let resolved = resolve_player_movement(&current, &desired).position;
 
         assert_close(resolved.x, WORLD_MAX_X - PLAYER_COLLISION_RADIUS);
         assert_close(resolved.y, 2.0);
@@ -193,7 +193,7 @@ mod tests {
             z: -1.0,
         };
 
-        assert_eq!(resolve_player_movement(&current, &desired), desired);
+        assert_eq!(resolve_player_movement(&current, &desired).position, desired);
     }
 
     #[test]
