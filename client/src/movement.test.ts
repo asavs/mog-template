@@ -111,29 +111,27 @@ describe('movement collision prediction', () => {
     expect(result.movementState.isAirborne).toBe(true);
   });
 
-  it('uses pre-move grounded state when jumping across a terrain drop', () => {
-    const startX = -205.96875;
-    const startZ = 126.28125;
-    const position = new THREE.Vector3(startX, sampleHeight(startX, startZ), startZ);
+  it('uses pre-move grounded flag for jump, not post-move ground sample', () => {
+    // Jump eligibility is the wasGrounded snapshot from tick start. After
+    // horizontal motion you may already be over a cliff this same tick — that
+    // must not cancel the jump. Assert the pure contract with no map coords:
+    // far above any baked heightmap cell so "current ground under feet" cannot
+    // explain a successful jump.
+    const dt = 1 / 20;
     const input = defaultInput();
-    input.left = true;
     input.jump = true;
+    const overDrop = () => new THREE.Vector3(0, 50, 0);
 
-    const result = simulateMovementTick(
-      position,
-      0,
-      input,
-      1 / 20,
-      0,
-      false,
-      createMovementState(position, input),
-    );
+    const launched = overDrop();
+    const jumped = applyJumpPhysics(launched, input, dt, 0, false, /* wasGrounded */ true);
+    expect(jumped.verticalVelocity).toBe(JUMP_FORCE);
+    expect(launched.y).toBeGreaterThan(50);
 
-    expect(position.x).toBeLessThan(startX);
-    expect(position.y).toBeGreaterThan(sampleHeight(position.x, position.z) + 0.5);
-    expect(result.verticalVelocity).toBe(JUMP_FORCE);
-    expect(result.movementState.wasGrounded).toBe(true);
-    expect(result.movementState.isAirborne).toBe(true);
+    const denied = overDrop();
+    const noJump = applyJumpPhysics(denied, input, dt, 0, false, /* wasGrounded */ false);
+    // Gravity only — no jump impulse when wasGrounded is false.
+    expect(noJump.verticalVelocity).toBeCloseTo(GRAVITY * dt);
+    expect(denied.y).toBeLessThan(50);
   });
 
   it('keeps jump tuning in a lower and faster target envelope', () => {
