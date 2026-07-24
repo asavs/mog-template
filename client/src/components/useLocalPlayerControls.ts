@@ -218,8 +218,7 @@ export function useLocalPlayerControls({
       if (
         event.button === 0 &&
         !isDead &&
-        isEquipmentVisible('potion') &&
-        animations[animationNames.drinking]
+        isEquipmentVisible('potion')
       ) {
         if (isOneShotAnimationActive(animationNames.drinking)) return;
         playOneShotAnimation(animationNames.drinking);
@@ -236,7 +235,9 @@ export function useLocalPlayerControls({
         return;
       }
 
-      if (event.button === 0 && !isDead && capabilities.melee && animations[animationNames.slash]) {
+      // Gate on the granted capability, not on clip presence — playOneShotAnimation is
+      // already a safe no-op when the equipped body has no matching clip.
+      if (event.button === 0 && !isDead && capabilities.melee) {
         const now = performance.now();
         if (!canRequestAction(
           playerActionState,
@@ -253,7 +254,6 @@ export function useLocalPlayerControls({
         event.button === 0
         && !isDead
         && capabilities.spells.includes(selectedWizardSpell)
-        && animations[animationNames.cast]
       ) {
         if (selectedWizardSpell === 'fireball') {
           const targetPosition = {
@@ -332,7 +332,7 @@ export function useLocalPlayerControls({
         return;
       }
 
-      const { animations, getRuntimeData } = controlsRuntimeRef.current;
+      const { getRuntimeData } = controlsRuntimeRef.current;
       const { actionState: playerActionState, health: playerHealth } = getRuntimeData();
       const isDead = playerHealth?.isDead ?? false;
       if (event.button !== 2) return;
@@ -342,7 +342,8 @@ export function useLocalPlayerControls({
         document.body.requestPointerLock();
       }
 
-      if (!isDead && capabilities.block && animations[animationNames.block]) {
+      // Same rule as the slash gate above: capability-gated, clip-optional.
+      if (!isDead && capabilities.block) {
         if (paladinBlockRequestedRef.current) return;
 
         const now = performance.now();
