@@ -21,6 +21,12 @@ describe('normalizeCharacterClass legacy remapping', () => {
     expect(normalizeCharacterClass('wizard')).toBe('wizard');
   });
 
+  it('maps acolyte identifiers to acolyte (not wizard)', () => {
+    expect(normalizeCharacterClass('acolyte')).toBe('acolyte');
+    expect(normalizeCharacterClass('Acolyte')).toBe('acolyte');
+    expect(normalizeCharacterClass('  ACOLYTE ')).toBe('acolyte');
+  });
+
   it('is case- and whitespace-insensitive', () => {
     expect(normalizeCharacterClass('  PALADIN ')).toBe('paladin');
     expect(normalizeCharacterClass('Wizard2')).toBe('wizard');
@@ -52,6 +58,7 @@ describe('catalog-driven character configs (QA matrix)', () => {
   it('joinPresetButtonLabel uses catalog labels', () => {
     expect(joinPresetButtonLabel('wizard')).toBe('Wizard');
     expect(joinPresetButtonLabel('paladin')).toBe('Paladin');
+    expect(joinPresetButtonLabel('acolyte')).toBe('Acolyte');
   });
 });
 
@@ -70,6 +77,14 @@ describe('class capabilities', () => {
     expect(wizard.block).toBe(false);
     expect(wizard.drinkPotion).toBe(true);
     expect([...wizard.spells]).toEqual(['fireball', 'lightning']);
+  });
+
+  it('gives acolyte the same cast/potion caps as wizard', () => {
+    const acolyte = getCharacterCapabilities('acolyte');
+    expect(acolyte.melee).toBe(false);
+    expect(acolyte.block).toBe(false);
+    expect(acolyte.drinkPotion).toBe(true);
+    expect([...acolyte.spells]).toEqual(['fireball', 'lightning']);
   });
 
   it('lets both classes drink potions', () => {
