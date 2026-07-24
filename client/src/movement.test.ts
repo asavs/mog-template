@@ -29,6 +29,17 @@ function defaultInput(): InputState {
 }
 
 describe('movement collision prediction', () => {
+  it('does not alter an unobstructed proposed movement', () => {
+    const current = new THREE.Vector3(0, 10, 0);
+    const desired = new THREE.Vector3(1.25, 10.4, -0.7);
+
+    const resolved = resolvePlayerMovement(current, desired);
+
+    expect(resolved.x).toBeCloseTo(desired.x);
+    expect(resolved.y).toBeCloseTo(desired.y);
+    expect(resolved.z).toBeCloseTo(desired.z);
+  });
+
   it('clamps predicted movement to the authoritative map bounds', () => {
     const position = new THREE.Vector3(1573, 10000, 0);
     const input = defaultInput();

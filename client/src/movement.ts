@@ -242,7 +242,7 @@ function groundHeightAt(position: THREE.Vector3): number {
   const terrain = terrainHeightAt(position);
   if (!isCastleCollisionReady()) return terrain;
   const support = castleGroundSupport(position, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
-  return support ? Math.max(terrain, support.y) : terrain;
+  return support ? support.y : terrain;
 }
 
 

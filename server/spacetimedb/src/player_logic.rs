@@ -144,7 +144,7 @@ pub fn update_transform(
     let castle_ground = collision::castle_ground_support(&transform.position, GROUND_SNAP_DISTANCE);
     let current_ground_y = castle_ground
         .as_ref()
-        .map(|support| support.y.max(terrain_ground_y))
+        .map(|support| support.y)
         .unwrap_or(terrain_ground_y);
     let was_grounded = transform.position.y <= current_ground_y + GROUNDED_EPSILON;
     let is_starting_jump = input.jump && !jump_state.was_jump_pressed && was_grounded;
@@ -172,7 +172,7 @@ pub fn update_transform(
     );
     let resolved_ground_y = castle_resolved_ground
         .as_ref()
-        .map(|support| support.y.max(terrain_resolved_ground_y))
+        .map(|support| support.y)
         .unwrap_or(terrain_resolved_ground_y);
     if was_grounded && is_starting_jump {
         if current_ground_y - resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
