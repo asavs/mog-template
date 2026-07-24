@@ -133,6 +133,13 @@ export function isCastleCollisionReady(): boolean {
 /** Returns ascending triangle ids for a world-space AABB, with duplicate grid hits removed. */
 export function castleTriangleCandidates(min: readonly number[], max: readonly number[]): readonly number[] {
   const asset = castleCollisionAsset();
+  if (
+    max[0] < asset.min[0] || min[0] > asset.max[0]
+    || max[1] < asset.min[1] || min[1] > asset.max[1]
+    || max[2] < asset.min[2] || min[2] > asset.max[2]
+  ) {
+    return [];
+  }
   const { grid } = asset;
   const dims = [grid.x, grid.y, grid.z];
   const start = [0, 1, 2].map(axis => gridCoordinate(min[axis], asset.min[axis], asset.max[axis], dims[axis]));

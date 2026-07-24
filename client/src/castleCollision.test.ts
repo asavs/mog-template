@@ -26,5 +26,10 @@ describe('castle collision CC01 asset', () => {
     const candidates = castleTriangleCandidates(asset.min, asset.max);
     expect(candidates).not.toHaveLength(0);
     expect(candidates.every((id, index) => index === 0 || candidates[index - 1] < id)).toBe(true);
+
+    expect(castleTriangleCandidates(
+      [asset.max[0] + 100, asset.max[1] + 100, asset.max[2] + 100],
+      [asset.max[0] + 101, asset.max[1] + 101, asset.max[2] + 101],
+    )).toEqual([]);
   });
 });

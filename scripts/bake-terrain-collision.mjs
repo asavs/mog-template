@@ -545,7 +545,7 @@ function buildCastleGrid(vertices, indices, min, max) {
   const cellIndex = (x, y, z) => (z * gridY + y) * gridX + x;
   const gridCoordinate = (value, axis) => Math.min(
     dimensions[axis] - 1,
-    Math.max(0, Math.floor((value - min[axis]) / CASTLE_GRID_CELL_SIZE)),
+    Math.max(0, Math.floor(((value - min[axis]) / (max[axis] - min[axis])) * dimensions[axis])),
   );
 
   for (let triangleId = 0; triangleId < indices.length / 3; triangleId += 1) {

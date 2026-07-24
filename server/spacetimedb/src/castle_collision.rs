@@ -148,7 +148,8 @@ impl CastleCollisionData {
     fn grid_coordinate(&self, value: f32, min: f32, max: f32, dimension: usize) -> usize {
         if value <= min { return 0; }
         if value >= max { return dimension - 1; }
-        (((value - min) / (max - min)) * dimension as f32).floor() as usize
+        ((((value - min) / (max - min)) * dimension as f32).floor() as usize)
+            .min(dimension - 1)
     }
 }
 
