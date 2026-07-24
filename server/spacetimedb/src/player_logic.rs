@@ -139,7 +139,12 @@ pub fn update_transform(
     input: &InputState,
     rotation_y: f32,
 ) {
-    let current_ground_y = heightmap::terrain_height_at(&transform.position);
+    let terrain_ground_y = heightmap::terrain_height_at(&transform.position);
+    let castle_ground = collision::castle_ground_support(&transform.position, MAX_SNAP_DOWN_HEIGHT);
+    let current_ground_y = castle_ground
+        .as_ref()
+        .map(|support| support.y.max(terrain_ground_y))
+        .unwrap_or(terrain_ground_y);
     let was_grounded = transform.position.y <= current_ground_y + GROUNDED_EPSILON;
     let is_starting_jump = input.jump && !jump_state.was_jump_pressed && was_grounded;
     let sprint_active = sprint_active_for_state(
@@ -159,7 +164,15 @@ pub fn update_transform(
     );
     let mut resolved_position =
         collision::resolve_player_movement(&transform.position, &desired_position);
-    let resolved_ground_y = heightmap::terrain_height_at(&resolved_position);
+    let terrain_resolved_ground_y = heightmap::terrain_height_at(&resolved_position);
+    let castle_resolved_ground = collision::castle_ground_support(
+        &resolved_position,
+        MAX_SNAP_DOWN_HEIGHT,
+    );
+    let resolved_ground_y = castle_resolved_ground
+        .as_ref()
+        .map(|support| support.y.max(terrain_resolved_ground_y))
+        .unwrap_or(terrain_resolved_ground_y);
     if was_grounded && is_starting_jump {
         if current_ground_y - resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
             resolved_position.y = resolved_ground_y + jump_state.vertical_velocity * DELTA_TIME;

@@ -126,6 +126,10 @@ export function castleCollisionAsset(): CastleCollisionAsset {
   return collision;
 }
 
+export function isCastleCollisionReady(): boolean {
+  return collision !== null;
+}
+
 /** Returns ascending triangle ids for a world-space AABB, with duplicate grid hits removed. */
 export function castleTriangleCandidates(min: readonly number[], max: readonly number[]): readonly number[] {
   const asset = castleCollisionAsset();

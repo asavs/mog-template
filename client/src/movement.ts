@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
+import { castleGroundSupport, resolveCastleCapsuleSweep } from './castleController';
+import { isCastleCollisionReady } from './castleCollision';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
@@ -28,6 +30,7 @@ export {
   type LocomotionState,
 } from './locomotion';
 export const PLAYER_COLLISION_RADIUS = 0.45;
+export const PLAYER_CAPSULE_HEIGHT = 1.8;
 export const MAX_WALKABLE_SLOPE_DEGREES = 70;
 export const MAX_STEP_HEIGHT = 1.25;
 export const MAX_SNAP_DOWN_HEIGHT = 6.0;
@@ -44,7 +47,7 @@ export function isMoving(input: InputState): boolean {
 }
 
 export function isGroundedAt(position: THREE.Vector3): boolean {
-  return position.y <= terrainHeightAt(position) + GROUNDED_EPSILON;
+  return position.y <= groundHeightAt(position) + GROUNDED_EPSILON;
 }
 
 export function sprintActiveForState(
@@ -111,11 +114,11 @@ export function applyMovement(
   const desired = position.clone();
   desired.x += moveX * movementScale;
   desired.z += moveZ * movementScale;
-  const currentGround = terrainHeightAt(position);
+  const currentGround = groundHeightAt(position);
   const wasGrounded = position.y <= currentGround + GROUNDED_EPSILON;
   const resolved = resolvePlayerMovement(position, desired);
   if (wasGrounded) {
-    const resolvedGround = terrainHeightAt(resolved);
+    const resolvedGround = groundHeightAt(resolved);
     if (currentGround - resolvedGround <= MAX_SNAP_DOWN_HEIGHT) {
       resolved.y = resolvedGround;
     }
@@ -125,21 +128,22 @@ export function applyMovement(
 
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
+  let terrainResolved: THREE.Vector3;
   if (canMoveTo(current, clampedDesired)) {
-    return clampedDesired;
+    terrainResolved = clampedDesired;
+  } else {
+    const xOnly = clampToWorld(new THREE.Vector3(clampedDesired.x, clampedDesired.y, current.z));
+    if (canMoveTo(current, xOnly)) terrainResolved = xOnly;
+    else {
+      const zOnly = clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, clampedDesired.z));
+      terrainResolved = canMoveTo(current, zOnly)
+        ? zOnly
+        : clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, current.z));
+    }
   }
-
-  const xOnly = clampToWorld(new THREE.Vector3(clampedDesired.x, clampedDesired.y, current.z));
-  if (canMoveTo(current, xOnly)) {
-    return xOnly;
-  }
-
-  const zOnly = clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, clampedDesired.z));
-  if (canMoveTo(current, zOnly)) {
-    return zOnly;
-  }
-
-  return clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, current.z));
+  return isCastleCollisionReady()
+    ? resolveCastleCapsuleSweep(current, terrainResolved, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT).position
+    : terrainResolved;
 }
 
 function clampToWorld(position: THREE.Vector3): THREE.Vector3 {
@@ -204,7 +208,7 @@ export function applyJumpPhysics(
   wasJumpPressed: boolean,
   wasGrounded = isGroundedAt(position),
 ): { verticalVelocity: number; wasJumpPressed: boolean } {
-  const groundY = terrainHeightAt(position);
+  const groundY = groundHeightAt(position);
 
   let nextVerticalVelocity = verticalVelocity + GRAVITY * deltaSeconds;
 
@@ -228,6 +232,13 @@ export function applyJumpPhysics(
 export function lerpAngle(from: number, to: number, alpha: number): number {
   const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
   return from + delta * alpha;
+}
+
+function groundHeightAt(position: THREE.Vector3): number {
+  const terrain = terrainHeightAt(position);
+  if (!isCastleCollisionReady()) return terrain;
+  const support = castleGroundSupport(position, MAX_SNAP_DOWN_HEIGHT, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
+  return support ? Math.max(terrain, support.y) : terrain;
 }
 
 

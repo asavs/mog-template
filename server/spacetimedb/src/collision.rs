@@ -1,7 +1,10 @@
 use crate::common::Vector3;
+use crate::castle_collision;
 use crate::heightmap;
 
 pub const PLAYER_COLLISION_RADIUS: f32 = 0.45;
+/// Player transform positions are capsule feet, not capsule centers.
+pub const PLAYER_CAPSULE_HEIGHT: f32 = 1.8;
 pub const MAX_WALKABLE_SLOPE_DEGREES: f32 = 70.0;
 pub const MAX_STEP_HEIGHT: f32 = 1.25;
 pub const MAX_SNAP_DOWN_HEIGHT: f32 = 6.0;
@@ -22,7 +25,26 @@ pub struct Aabb {
 }
 
 pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> Vector3 {
-    resolve_player_movement_against(current, desired, &[])
+    let terrain_resolved = resolve_player_movement_against(current, desired, &[]);
+    castle_collision::resolve_capsule_sweep(
+        current,
+        &terrain_resolved,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+    ).position
+}
+
+/// Finds the first reachable walkable castle surface below this exact capsule.
+/// It deliberately sweeps from the player's current elevation instead of looking up a
+/// global X/Z height, so stacked spiral ramps remain distinct.
+pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Vector3> {
+    let result = castle_collision::snap_capsule_down(
+        position,
+        max_distance,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+    );
+    result.ground_normal.filter(|normal| normal.y >= 0.342).map(|_| result.position)
 }
 
 fn resolve_player_movement_against(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> Vector3 {

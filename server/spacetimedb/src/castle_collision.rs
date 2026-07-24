@@ -1,3 +1,4 @@
+use crate::common::Vector3;
 use std::sync::OnceLock;
 
 const MAGIC: &[u8; 4] = b"CC01";
@@ -22,6 +23,17 @@ pub struct CastleCollisionData {
 }
 
 static CASTLE_COLLISION: OnceLock<CastleCollisionData> = OnceLock::new();
+
+pub const CAPSULE_SKIN: f32 = 0.002;
+const CONTACT_EPSILON: f32 = 0.0001;
+const MAX_SLIDE_ITERATIONS: usize = 4;
+const MAX_SUBSTEP_DISTANCE: f32 = 0.2;
+
+#[derive(Clone, Debug)]
+pub struct CapsuleMoveResult {
+    pub position: Vector3,
+    pub ground_normal: Option<Vector3>,
+}
 
 pub fn castle_collision() -> &'static CastleCollisionData {
     CASTLE_COLLISION.get_or_init(|| {
@@ -140,6 +152,214 @@ impl CastleCollisionData {
     }
 }
 
+/// Fixed-order capsule sweep-and-slide against the baked castle triangles.
+/// Broad-phase candidates are grid selected; every contact below is triangle narrow phase.
+pub fn resolve_capsule_sweep(
+    current: &Vector3,
+    desired: &Vector3,
+    radius: f32,
+    height: f32,
+) -> CapsuleMoveResult {
+    let mut position = Point::from(current);
+    let target = Point::from(desired);
+    let mut remaining = target - position;
+    let mut ground_normal = None;
+
+    for _ in 0..MAX_SLIDE_ITERATIONS {
+        let distance = remaining.length();
+        if distance <= CONTACT_EPSILON {
+            break;
+        }
+        let steps = (distance / MAX_SUBSTEP_DISTANCE).ceil().clamp(1.0, 32.0) as usize;
+        let start = position;
+        let mut previous = position;
+        let mut hit = None;
+        for step in 1..=steps {
+            let candidate = start + remaining * (step as f32 / steps as f32);
+            if let Some(contact) = capsule_contact(candidate, radius, height, remaining) {
+                hit = Some((previous, candidate, contact));
+                break;
+            }
+            previous = candidate;
+        }
+        let Some((safe, blocked, contact)) = hit else {
+            position = target;
+            break;
+        };
+
+        let mut low = safe;
+        let mut high = blocked;
+        for _ in 0..8 {
+            let middle = (low + high) * 0.5;
+            if capsule_contact(middle, radius, height, remaining).is_some() {
+                high = middle;
+            } else {
+                low = middle;
+            }
+        }
+        position = low + contact.normal * CAPSULE_SKIN;
+        if contact.normal.y > 0.35 {
+            ground_normal = Some(contact.normal.into());
+        }
+        remaining = target - position;
+        let into_surface = remaining.dot(contact.normal);
+        if into_surface < 0.0 {
+            remaining = remaining - contact.normal * into_surface;
+        }
+    }
+
+    CapsuleMoveResult { position: position.into(), ground_normal }
+}
+
+pub fn snap_capsule_down(position: &Vector3, max_distance: f32, radius: f32, height: f32) -> CapsuleMoveResult {
+    let desired = Vector3 { x: position.x, y: position.y - max_distance, z: position.z };
+    resolve_capsule_sweep(position, &desired, radius, height)
+}
+
+#[derive(Clone, Copy)]
+struct Contact {
+    normal: Point,
+    penetration: f32,
+}
+
+fn capsule_contact(position: Point, radius: f32, height: f32, motion: Point) -> Option<Contact> {
+    let asset = castle_collision();
+    let segment_start = position + Point::new(0.0, radius, 0.0);
+    let segment_end = position + Point::new(0.0, height - radius, 0.0);
+    let query_min = Point::min(segment_start, segment_end) - Point::splat(radius);
+    let query_max = Point::max(segment_start, segment_end) + Point::splat(radius);
+    let mut deepest: Option<Contact> = None;
+    for triangle_id in asset.triangle_candidates(
+        [query_min.x, query_min.y, query_min.z],
+        [query_max.x, query_max.y, query_max.z],
+    ) {
+        let base = triangle_id as usize * 3;
+        let a = vertex(asset, asset.indices[base]);
+        let b = vertex(asset, asset.indices[base + 1]);
+        let c = vertex(asset, asset.indices[base + 2]);
+        let (segment_point, triangle_point) = closest_segment_triangle(segment_start, segment_end, a, b, c);
+        let delta = segment_point - triangle_point;
+        let distance = delta.length();
+        let penetration = radius - distance;
+        if penetration <= CONTACT_EPSILON {
+            continue;
+        }
+        let mut normal = if distance > CONTACT_EPSILON { delta * (1.0 / distance) } else { (b - a).cross(c - a).normalized() };
+        if normal.dot((segment_start + segment_end) * 0.5 - (a + b + c) * (1.0 / 3.0)) < 0.0 {
+            normal = normal * -1.0;
+        }
+        if normal.length() <= CONTACT_EPSILON {
+            normal = motion.normalized() * -1.0;
+        }
+        let contact = Contact { normal, penetration };
+        if deepest.map(|existing| contact.penetration > existing.penetration).unwrap_or(true) {
+            deepest = Some(contact);
+        }
+    }
+    deepest
+}
+
+fn vertex(asset: &CastleCollisionData, index: u32) -> Point {
+    let base = index as usize * 3;
+    Point::new(asset.vertices[base], asset.vertices[base + 1], asset.vertices[base + 2])
+}
+
+/// Exact closest feature search for a segment against a triangle: endpoints/face and all edges.
+/// A non-intersecting segment's nearest feature is one of these; plane intersection is handled first.
+fn closest_segment_triangle(start: Point, end: Point, a: Point, b: Point, c: Point) -> (Point, Point) {
+    if let Some(hit) = segment_triangle_intersection(start, end, a, b, c) {
+        return (hit, hit);
+    }
+    let mut best = (start, closest_point_triangle(start, a, b, c));
+    let mut best_distance = (best.0 - best.1).length_squared();
+    for point in [end] {
+        let candidate = (point, closest_point_triangle(point, a, b, c));
+        let distance = (candidate.0 - candidate.1).length_squared();
+        if distance < best_distance { best = candidate; best_distance = distance; }
+    }
+    for (edge_start, edge_end) in [(a, b), (b, c), (c, a)] {
+        let candidate = closest_segment_segment(start, end, edge_start, edge_end);
+        let distance = (candidate.0 - candidate.1).length_squared();
+        if distance < best_distance { best = candidate; best_distance = distance; }
+    }
+    best
+}
+
+fn segment_triangle_intersection(start: Point, end: Point, a: Point, b: Point, c: Point) -> Option<Point> {
+    let normal = (b - a).cross(c - a);
+    let denominator = normal.dot(end - start);
+    if denominator.abs() <= CONTACT_EPSILON { return None; }
+    let t = normal.dot(a - start) / denominator;
+    if !(0.0..=1.0).contains(&t) { return None; }
+    let point = start + (end - start) * t;
+    point_in_triangle(point, a, b, c).then_some(point)
+}
+
+fn point_in_triangle(point: Point, a: Point, b: Point, c: Point) -> bool {
+    let ab = (b - a).cross(point - a);
+    let bc = (c - b).cross(point - b);
+    let ca = (a - c).cross(point - c);
+    let normal = (b - a).cross(c - a);
+    ab.dot(normal) >= -CONTACT_EPSILON && bc.dot(normal) >= -CONTACT_EPSILON && ca.dot(normal) >= -CONTACT_EPSILON
+}
+
+fn closest_point_triangle(point: Point, a: Point, b: Point, c: Point) -> Point {
+    let ab = b - a; let ac = c - a; let ap = point - a;
+    let d1 = ab.dot(ap); let d2 = ac.dot(ap);
+    if d1 <= 0.0 && d2 <= 0.0 { return a; }
+    let bp = point - b; let d3 = ab.dot(bp); let d4 = ac.dot(bp);
+    if d3 >= 0.0 && d4 <= d3 { return b; }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 { return a + ab * (d1 / (d1 - d3)); }
+    let cp = point - c; let d5 = ab.dot(cp); let d6 = ac.dot(cp);
+    if d6 >= 0.0 && d5 <= d6 { return c; }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 { return a + ac * (d2 / (d2 - d6)); }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 { return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))); }
+    let denominator = 1.0 / (va + vb + vc);
+    a + ab * (vb * denominator) + ac * (vc * denominator)
+}
+
+fn closest_segment_segment(a0: Point, a1: Point, b0: Point, b1: Point) -> (Point, Point) {
+    let d1 = a1 - a0; let d2 = b1 - b0; let r = a0 - b0;
+    let a = d1.dot(d1); let e = d2.dot(d2); let f = d2.dot(r);
+    let (mut s, mut t);
+    if a <= CONTACT_EPSILON && e <= CONTACT_EPSILON { return (a0, b0); }
+    if a <= CONTACT_EPSILON { s = 0.0; t = (f / e).clamp(0.0, 1.0); }
+    else {
+        let c = d1.dot(r);
+        if e <= CONTACT_EPSILON { t = 0.0; s = (-c / a).clamp(0.0, 1.0); }
+        else {
+            let b = d1.dot(d2); let denominator = a * e - b * b;
+            s = if denominator.abs() > CONTACT_EPSILON { ((b * f - c * e) / denominator).clamp(0.0, 1.0) } else { 0.0 };
+            t = (b * s + f) / e;
+            if t < 0.0 { t = 0.0; s = (-c / a).clamp(0.0, 1.0); }
+            else if t > 1.0 { t = 1.0; s = ((b - c) / a).clamp(0.0, 1.0); }
+        }
+    }
+    (a0 + d1 * s, b0 + d2 * t)
+}
+
+#[derive(Clone, Copy)]
+struct Point { x: f32, y: f32, z: f32 }
+impl Point {
+    const fn new(x: f32, y: f32, z: f32) -> Self { Self { x, y, z } }
+    const fn splat(value: f32) -> Self { Self::new(value, value, value) }
+    fn min(a: Self, b: Self) -> Self { Self::new(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z)) }
+    fn max(a: Self, b: Self) -> Self { Self::new(a.x.max(b.x), a.y.max(b.y), a.z.max(b.z)) }
+    fn dot(self, other: Self) -> f32 { self.x * other.x + self.y * other.y + self.z * other.z }
+    fn cross(self, other: Self) -> Self { Self::new(self.y * other.z - self.z * other.y, self.z * other.x - self.x * other.z, self.x * other.y - self.y * other.x) }
+    fn length_squared(self) -> f32 { self.dot(self) }
+    fn length(self) -> f32 { self.length_squared().sqrt() }
+    fn normalized(self) -> Self { let length = self.length(); if length > CONTACT_EPSILON { self * (1.0 / length) } else { Self::new(0.0, 1.0, 0.0) } }
+}
+impl From<&Vector3> for Point { fn from(value: &Vector3) -> Self { Self::new(value.x, value.y, value.z) } }
+impl From<Point> for Vector3 { fn from(value: Point) -> Self { Self { x: value.x, y: value.y, z: value.z } } }
+impl std::ops::Add for Point { type Output = Self; fn add(self, rhs: Self) -> Self { Self::new(self.x + rhs.x, self.y + rhs.y, self.z + rhs.z) } }
+impl std::ops::Sub for Point { type Output = Self; fn sub(self, rhs: Self) -> Self { Self::new(self.x - rhs.x, self.y - rhs.y, self.z - rhs.z) } }
+impl std::ops::Mul<f32> for Point { type Output = Self; fn mul(self, rhs: f32) -> Self { Self::new(self.x * rhs, self.y * rhs, self.z * rhs) } }
+
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
     let end = offset.checked_add(4).ok_or("castle collision offset overflow")?;
     let slice: [u8; 4] = bytes.get(offset..end).ok_or("castle collision read out of bounds")?.try_into().map_err(|_| "invalid castle collision u32")?;
@@ -174,5 +394,29 @@ mod tests {
         let candidates = data.triangle_candidates(data.min, data.max);
         assert!(!candidates.is_empty());
         assert!(candidates.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn narrow_phase_uses_triangle_face_not_a_bounding_box() {
+        let a = Point::new(-1.0, 0.0, -1.0);
+        let b = Point::new(1.0, 0.0, -1.0);
+        let c = Point::new(0.0, 0.0, 1.0);
+        let (on_capsule, on_triangle) = closest_segment_triangle(
+            Point::new(0.0, 2.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+            a,
+            b,
+            c,
+        );
+        assert!(((on_capsule - on_triangle).length() - 1.0).abs() < 0.0001);
+
+        let (outside_capsule, outside_triangle) = closest_segment_triangle(
+            Point::new(1.0, 2.0, 1.0),
+            Point::new(1.0, 1.0, 1.0),
+            a,
+            b,
+            c,
+        );
+        assert!((outside_capsule - outside_triangle).length() > 1.0);
     }
 }
