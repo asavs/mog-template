@@ -1,7 +1,11 @@
-import { normalizeCharacterClass } from './components/characterConfig';
+import {
+  DEFAULT_PRESET_ID,
+  normalizeCharacterClass,
+  type NormalizedCharacterClass,
+} from './components/characterConfig';
 
 /** Loadout preset id stored for re-join (wizard, paladin, acolyte, …). */
-export type StoredCharacterClass = string;
+export type StoredCharacterClass = NormalizedCharacterClass;
 
 export type JoinPreferences = {
   username: string;
@@ -15,7 +19,7 @@ const JOIN_USERNAME_KEY = 'mog.join.username';
 const JOIN_CHARACTER_CLASS_KEY = 'mog.join.characterClass';
 const DEFAULT_JOIN_PREFERENCES: JoinPreferences = {
   username: 'Adventurer',
-  characterClass: 'wizard',
+  characterClass: DEFAULT_PRESET_ID,
 };
 
 function browserStorage(): TokenStorage | undefined {
@@ -54,8 +58,9 @@ export function loadJoinPreferences(storage = browserStorage()): JoinPreferences
 
 export function saveJoinPreferences(preferences: JoinPreferences, storage = browserStorage()) {
   const username = preferences.username.trim() || DEFAULT_JOIN_PREFERENCES.username;
+  const characterClass = normalizeCharacterClass(preferences.characterClass);
   storage?.setItem(JOIN_USERNAME_KEY, username);
-  storage?.setItem(JOIN_CHARACTER_CLASS_KEY, preferences.characterClass);
+  storage?.setItem(JOIN_CHARACTER_CLASS_KEY, characterClass);
 }
 
 export function clearSavedCharacter(storage = browserStorage()) {

@@ -14,9 +14,20 @@ import {
   type NetworkAppearanceRow,
   type NetworkEquipmentRow,
 } from '../avatar/catalog';
+import {
+  AUTHORITY_EQUIP_SLOTS,
+  AUTHORITY_UTILITY_SLOTS,
+  DEFAULT_PRESET_ID,
+  ITEM_IDS,
+  LOADOUT_AUTHORITY,
+  isAuthorityUtilitySlot,
+  isLoadoutPresetId,
+  type LoadoutPresetId,
+} from '../avatar/loadoutAuthority.generated';
 import type { AvatarCapabilities, ResolvedAppearance, WizardSpell } from '../avatar/types';
 
-export type { WizardSpell };
+export type { WizardSpell, LoadoutPresetId };
+export { DEFAULT_PRESET_ID, isLoadoutPresetId };
 
 export const ANIMATIONS = {
   IDLE: 'idle',
@@ -45,7 +56,7 @@ export type ClassCapabilities = AvatarCapabilities;
 
 /**
  * Normalized join/loadout preset id after legacy remap.
- * Open string so new presets (e.g. acolyte) work without harness type edits.
+ * Open string so new presets (e.g. acolyte) work without closed-union churn.
  */
 export type NormalizedCharacterClass = string;
 
@@ -80,14 +91,81 @@ export type CharacterPresentation = {
   equipmentIds: readonly string[];
 };
 
+export type LoadoutPresetOption = {
+  id: LoadoutPresetId;
+  label: string;
+};
+
+export type CatalogEquipItem = {
+  itemId: string;
+  /** Authority slot this item equips into. */
+  slot: string;
+  /** paper-doll exclusive vs utility attach */
+  group: 'equipment' | 'utility';
+  label: string;
+};
+
+/** Human-readable label from a snake_case / id string. */
+export function formatCatalogIdLabel(id: string): string {
+  return id
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+/**
+ * Join UI options: one entry per catalog loadout preset (labels from authority).
+ * Driven by `defaultAvatarCatalog.listPresets()` — not a hardcoded class list.
+ */
+export function listLoadoutPresetsForSelect(
+  catalog = defaultAvatarCatalog,
+): readonly LoadoutPresetOption[] {
+  return catalog.listPresets().map(preset => ({
+    id: preset.id as LoadoutPresetId,
+    label: preset.label || formatCatalogIdLabel(preset.id),
+  }));
+}
+
+/**
+ * Catalog items available to equip mid-session.
+ * True inventory bags are future work — this is the authority item catalog.
+ */
+export function listEquippableCatalogItems(): readonly CatalogEquipItem[] {
+  return ITEM_IDS.map(itemId => {
+    const auth = LOADOUT_AUTHORITY.items[itemId];
+    const slot = auth.slot;
+    return {
+      itemId,
+      slot,
+      group: isAuthorityUtilitySlot(slot) ? 'utility' : 'equipment',
+      label: formatCatalogIdLabel(itemId),
+    };
+  });
+}
+
+/** Paper-doll equip slots from loadout authority (stable order). */
+export function listAuthorityEquipSlots(): readonly string[] {
+  return AUTHORITY_EQUIP_SLOTS;
+}
+
+/** Utility attach slots from loadout authority (stable order). */
+export function listAuthorityUtilitySlots(): readonly string[] {
+  return AUTHORITY_UTILITY_SLOTS;
+}
+
 // Single copy of the legacy class remap table on the client. Remote players'
 // DB rows may still carry legacy values until they rejoin, and localStorage may
 // hold a legacy stored class; normalize both through here.
-// Returns the catalog loadout preset id (wizard, paladin, acolyte, …) — not a
-// closed two-class union.
 export function normalizeCharacterClass(
   characterClass: string | null | undefined,
 ): NormalizedCharacterClass {
+  const key = (characterClass ?? '').trim().toLowerCase();
+  // Direct preset ids (including acolyte and future presets) pass through when
+  // present in generated authority + catalog presentation.
+  if (key && isLoadoutPresetId(key) && defaultAvatarCatalog.getPreset(key)) {
+    return key;
+  }
   return presetIdFromLegacyClass(characterClass);
 }
 
@@ -95,13 +173,13 @@ export function normalizeCharacterClass(
 export function joinPresetButtonLabel(presetId: string): string {
   const preset = defaultAvatarCatalog.getPreset(presetId);
   if (preset?.label) return preset.label;
-  if (!presetId) return 'Wizard';
-  return presetId.charAt(0).toUpperCase() + presetId.slice(1);
+  if (!presetId) return formatCatalogIdLabel(DEFAULT_PRESET_ID);
+  return formatCatalogIdLabel(presetId);
 }
 
 export function presentationFromResolved(resolved: ResolvedAppearance): CharacterPresentation {
   return {
-    presetId: resolved.presetId ?? 'wizard',
+    presetId: resolved.presetId ?? DEFAULT_PRESET_ID,
     resolved,
     yOffset: resolved.body.yOffset,
     targetHeight: resolved.body.referenceHeight * resolved.scale,

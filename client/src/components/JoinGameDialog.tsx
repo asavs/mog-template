@@ -1,15 +1,20 @@
 /**
  * JoinGameDialog.tsx
- * 
+ *
  * Adapted from vibe-coding-starter-pack-3d-multiplayer by Majid Manzarpour (MIT).
  * https://github.com/majidmanzarpour/vibe-coding-starter-pack-3d-multiplayer
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { buildInfo } from '../buildInfo';
+import {
+  listLoadoutPresetsForSelect,
+  normalizeCharacterClass,
+  type LoadoutPresetId,
+} from './characterConfig';
 
-/** Loadout preset id (wizard, paladin, acolyte, …). */
-export type CharacterClass = string;
+/** Join class = loadout preset id (catalog-driven; not a fixed wizard|paladin union). */
+export type CharacterClass = LoadoutPresetId | string;
 
 interface JoinGameDialogProps {
   onJoin: (username: string, characterClass: CharacterClass) => void;
@@ -26,13 +31,16 @@ export const JoinGameDialog: React.FC<JoinGameDialogProps> = ({
   hasSavedCharacter,
   onClearSavedCharacter,
 }) => {
+  const presets = useMemo(() => listLoadoutPresetsForSelect(), []);
   const [username, setUsername] = useState(initialUsername);
-  const [characterClass, setCharacterClass] = useState<CharacterClass>(initialCharacterClass);
+  const [characterClass, setCharacterClass] = useState<CharacterClass>(() =>
+    normalizeCharacterClass(initialCharacterClass),
+  );
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     const finalUsername = username.trim() || `Player${Math.floor(Math.random() * 1000)}`;
-    onJoin(finalUsername, characterClass);
+    onJoin(finalUsername, normalizeCharacterClass(characterClass));
   };
 
   return (
@@ -54,26 +62,19 @@ export const JoinGameDialog: React.FC<JoinGameDialogProps> = ({
         <div style={styles.inputGroup}>
           <label style={styles.label}>Class:</label>
           <div style={styles.classGrid}>
-            <button
-              type="button"
-              style={{
-                ...styles.classButton,
-                ...(characterClass === 'wizard' ? styles.classButtonActive : {}),
-              }}
-              onClick={() => setCharacterClass('wizard')}
-            >
-              Wizard
-            </button>
-            <button
-              type="button"
-              style={{
-                ...styles.classButton,
-                ...(characterClass === 'paladin' ? styles.classButtonActive : {}),
-              }}
-              onClick={() => setCharacterClass('paladin')}
-            >
-              Paladin
-            </button>
+            {presets.map(preset => (
+              <button
+                key={preset.id}
+                type="button"
+                style={{
+                  ...styles.classButton,
+                  ...(characterClass === preset.id ? styles.classButtonActive : {}),
+                }}
+                onClick={() => setCharacterClass(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
         </div>
         <button type="submit" style={styles.button}>Join Game</button>
@@ -136,7 +137,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   classGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
     gap: '10px',
   },
   classButton: {

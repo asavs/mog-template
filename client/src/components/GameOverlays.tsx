@@ -6,7 +6,7 @@ import { useNetwork } from '../network/useNetwork';
 import { useGameState } from '../state/useGameState';
 import { useHudState } from '../state/useHudState';
 import { JoinGameDialog, type CharacterClass } from './JoinGameDialog';
-import { EquipDebugPanel } from './EquipDebugPanel';
+import { InventoryPanel } from './InventoryPanel';
 import './GameOverlays.css';
 
 type GameOverlaysProps = {
@@ -68,7 +68,7 @@ export function GameOverlays({
         onLeave={onLeave}
       />
 
-      <EquipDebugPanel />
+      <InventoryPanel />
     </>
   );
 }
