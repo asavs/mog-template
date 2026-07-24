@@ -23,7 +23,14 @@ import {
   type PhaseDef,
   type PhaseGroup,
 } from './phase-helpers';
-import { generateCapabilityPhases, generateMovementMatrix } from './generate-phases';
+import {
+  classesWithBlock,
+  classesWithMelee,
+  classesWithSpell,
+  generateCapabilityPhases,
+  generateEquipPhases,
+  generateMovementMatrix,
+} from './generate-phases';
 import type { CharacterClass } from './trace-types';
 
 export type { PhaseContext, PhaseDef, PhaseGroup } from './phase-helpers';
@@ -196,7 +203,8 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
   {
     name: 'cast_fireball',
     group: 'combat',
-    classes: ['wizard'],
+    // wizard + acolyte (and any future cast preset) via catalog capabilities
+    classes: classesWithSpell('fireball'),
     expect: { kind: 'stationary' },
     run: async ({ page }) => {
       await tapKey(page, 'Digit1');
@@ -210,7 +218,7 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
   {
     name: 'cast_lightning',
     group: 'combat',
-    classes: ['wizard'],
+    classes: classesWithSpell('lightning'),
     expect: { kind: 'stationary' },
     run: async ({ page }) => {
       await tapKey(page, 'Digit2');
@@ -224,7 +232,7 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
   {
     name: 'stop_cast',
     group: 'combat',
-    classes: ['wizard'],
+    classes: classesWithSpell('fireball'),
     run: async ({ page }) => {
       await page.keyboard.down('ShiftLeft');
       await page.keyboard.down('KeyW');
@@ -239,7 +247,7 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
   {
     name: 'attack_slash',
     group: 'combat',
-    classes: ['paladin'],
+    classes: classesWithMelee(),
     expect: { kind: 'stationary' },
     run: async ({ page }) => {
       await click(page);
@@ -251,7 +259,7 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
   {
     name: 'block_hold',
     group: 'combat',
-    classes: ['paladin'],
+    classes: classesWithBlock(),
     expect: { kind: 'stationary' },
     run: async ({ page }) => {
       await page.mouse.down({ button: 'right' });
@@ -264,10 +272,12 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
 
 export const GENERATED_MOVEMENT_PHASES = generateMovementMatrix();
 export const GENERATED_CAPABILITY_PHASES = generateCapabilityPhases();
+export const GENERATED_EQUIP_PHASES = generateEquipPhases();
 export const PHASES: PhaseDef[] = [
   ...HANDWRITTEN_PHASES,
   ...GENERATED_MOVEMENT_PHASES,
   ...GENERATED_CAPABILITY_PHASES,
+  ...GENERATED_EQUIP_PHASES,
 ];
 
 export type QaTier = 'smoke' | 'full';

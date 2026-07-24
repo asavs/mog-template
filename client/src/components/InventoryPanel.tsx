@@ -11,7 +11,7 @@ import {
  * Minimal inventory / equipment panel for joined players (#52).
  *
  * Available items come from loadout authority (`ITEM_IDS` / catalog), not a
- * hardcoded staff/sword list — wand and future items appear when Auth regenerates.
+ * hardcoded item list — wand and future items appear when authority regenerates.
  *
  * True inventory bag persistence is future work; this uses the catalog as the
  * set of equippable loadout items.
@@ -68,22 +68,38 @@ export function InventoryPanel() {
   if (!isJoined) return null;
 
   return (
-    <div style={panelStyle}>
+    <div
+      style={panelStyle}
+      data-qa="inventory-panel"
+      // Document-level combat listeners (useLocalPlayerControls) request pointer
+      // lock and fire attack/cast on any bubbled click/mousedown. Inventory must
+      // not leak those events or equipping becomes a free swing with stale grants.
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onAuxClick={(e) => e.stopPropagation()}
+    >
       <div style={titleStyle}>Inventory / Equipment</div>
 
       <div style={sectionLabelStyle}>Equipped</div>
       {equippedRows.length === 0 ? (
-        <div style={emptyStyle}>(empty)</div>
+        <div style={emptyStyle} data-qa-equipped-empty>(empty)</div>
       ) : (
-        <ul style={listStyle}>
+        <ul style={listStyle} data-qa-equipped-list>
           {equippedRows.map(row => (
-            <li key={`${row.slot}:${row.itemId}`} style={listItemStyle}>
+            <li key={`${row.slot}:${row.itemId}`} style={listItemStyle} data-qa-equipped-slot={row.slot}>
               <span style={slotLabelStyle}>
                 {formatCatalogIdLabel(row.slot)} → {formatCatalogIdLabel(row.itemId)}
               </span>
               <button
                 type="button"
                 style={btnStyle}
+                data-qa-unequip={row.slot}
+                aria-label={`Unequip ${row.slot}`}
                 onClick={() => callUnequip(row.slot)}
               >
                 Unequip
@@ -106,6 +122,9 @@ export function InventoryPanel() {
                 ...btnStyle,
                 ...(isEquipped ? btnActiveStyle : {}),
               }}
+              data-qa-equip={item.itemId}
+              data-qa-equipped={isEquipped ? '1' : '0'}
+              aria-label={isEquipped ? `Equipped ${item.label}` : `Equip ${item.label}`}
               onClick={() => {
                 if (!isEquipped) callEquip(item.itemId);
               }}
@@ -132,6 +151,9 @@ export function InventoryPanel() {
                     ...btnStyle,
                     ...(isEquipped ? btnActiveStyle : {}),
                   }}
+                  data-qa-equip={item.itemId}
+                  data-qa-equipped={isEquipped ? '1' : '0'}
+                  aria-label={isEquipped ? `Equipped ${item.label}` : `Equip ${item.label}`}
                   onClick={() => {
                     if (!isEquipped) callEquip(item.itemId);
                   }}

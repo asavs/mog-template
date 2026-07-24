@@ -186,19 +186,19 @@ describe('avatar catalog', () => {
       ],
       legacyClass: 'paladin',
     });
-    const withStaff = resolveFromServerState({
+    const withWand = resolveFromServerState({
       appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
       equipment: [
-        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'main_hand', itemId: 'wand' },
         { slot: 'off_hand', itemId: 'shield' },
       ],
       legacyClass: 'paladin',
     });
     const wizard = resolvePreset('wizard');
 
-    expect(appearanceBodyClipsKey(withSword)).toBe(appearanceBodyClipsKey(withStaff));
-    expect(appearanceEquipmentKey(withSword)).not.toBe(appearanceEquipmentKey(withStaff));
-    expect(presentationAssemblyKey(withSword)).not.toBe(presentationAssemblyKey(withStaff));
+    expect(appearanceBodyClipsKey(withSword)).toBe(appearanceBodyClipsKey(withWand));
+    expect(appearanceEquipmentKey(withSword)).not.toBe(appearanceEquipmentKey(withWand));
+    expect(presentationAssemblyKey(withSword)).not.toBe(presentationAssemblyKey(withWand));
 
     expect(appearanceBodyClipsKey(withSword)).not.toBe(appearanceBodyClipsKey(wizard));
   });
