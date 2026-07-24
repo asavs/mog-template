@@ -12,6 +12,7 @@ import type { SoundId } from '../audio/soundRegistry';
 import type {
   AbilityId as GeneratedAbilityId,
   AuthorityEquipSlot,
+  AuthorityUtilitySlot,
   BodyId as GeneratedBodyId,
   ItemId as GeneratedItemId,
   LoadoutPresetId,
@@ -20,6 +21,8 @@ import type {
 export type {
   AbilityId,
   AuthorityEquipSlot,
+  AuthorityItemSlot,
+  AuthorityUtilitySlot,
   BodyId,
   ItemId,
   LoadoutPresetId,
@@ -27,11 +30,15 @@ export type {
 export {
   ABILITY_IDS,
   AUTHORITY_EQUIP_SLOTS,
+  AUTHORITY_UTILITY_SLOTS,
   BODY_IDS,
   DEFAULT_PRESET_ID,
   ITEM_IDS,
   LOADOUT_PRESET_IDS,
   isAbilityId,
+  isAuthorityEquipSlot,
+  isAuthorityItemSlot,
+  isAuthorityUtilitySlot,
   isBodyId,
   isItemId,
   isLoadoutPresetId,
@@ -54,6 +61,12 @@ export type EquipSlot =
   | 'legs'
   | 'feet'
   | 'back';
+
+/** Utility / consumable attach slots (not exclusive against paper-doll). */
+export type UtilitySlot = AuthorityUtilitySlot;
+
+/** Any exclusive equipment attach id an item may declare. */
+export type ItemSlot = EquipSlot | UtilitySlot;
 
 /** Named attach point on the canonical skeleton. */
 export type SocketId = 'right_hand' | 'left_hand' | 'spine_sheath' | (string & {});
@@ -94,7 +107,8 @@ export type ItemAttachKind = 'skinned' | 'socket';
  */
 export type ItemDef = {
   id: ItemId;
-  slot: EquipSlot;
+  /** Paper-doll equip slot or utility attach id from authority. */
+  slot: ItemSlot;
   meshKey: string;
   attach: ItemAttachKind;
   /** Required when attach === 'socket'. */
@@ -209,6 +223,10 @@ export type AvatarCatalog = {
   urlForMeshKey(meshKey: string): string;
   resolve(
     appearance: PlayerAppearance,
-    options?: { presetId?: LoadoutPresetId | string },
+    options?: {
+      presetId?: LoadoutPresetId | string;
+      /** Default true. Set false when equipment rows already include utility. */
+      includePresetUtility?: boolean;
+    },
   ): ResolvedAppearance;
 };

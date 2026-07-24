@@ -34,6 +34,7 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import EquipItemReducer from "./equip_item_reducer";
 import JoinGameReducer from "./join_game_reducer";
 import JoinGameAsReducer from "./join_game_as_reducer";
 import LeaveGameReducer from "./leave_game_reducer";
@@ -44,6 +45,7 @@ import TriggerDrinkingPotionReducer from "./trigger_drinking_potion_reducer";
 import TriggerFireballReducer from "./trigger_fireball_reducer";
 import TriggerLightningStrikeReducer from "./trigger_lightning_strike_reducer";
 import TriggerSlashAttackReducer from "./trigger_slash_attack_reducer";
+import UnequipSlotReducer from "./unequip_slot_reducer";
 import UpdatePlayerInputReducer from "./update_player_input_reducer";
 
 // Import all procedure arg schemas
@@ -238,6 +240,7 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("equip_item", EquipItemReducer),
   __reducerSchema("join_game", JoinGameReducer),
   __reducerSchema("join_game_as", JoinGameAsReducer),
   __reducerSchema("leave_game", LeaveGameReducer),
@@ -248,6 +251,7 @@ const reducersSchema = __reducers(
   __reducerSchema("trigger_fireball", TriggerFireballReducer),
   __reducerSchema("trigger_lightning_strike", TriggerLightningStrikeReducer),
   __reducerSchema("trigger_slash_attack", TriggerSlashAttackReducer),
+  __reducerSchema("unequip_slot", UnequipSlotReducer),
   __reducerSchema("update_player_input", UpdatePlayerInputReducer),
 );
 

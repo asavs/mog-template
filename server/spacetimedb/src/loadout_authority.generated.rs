@@ -9,6 +9,8 @@ pub const PRESET_IDS: &[&str] = &["paladin", "wizard"];
 pub const BODY_IDS: &[&str] = &["body_f", "body_m"];
 pub const ITEM_IDS: &[&str] = &["potion", "shield", "staff", "sword_1h"];
 pub const GRANT_IDS: &[&str] = &["block", "cast_fireball", "cast_lightning", "drink_potion", "melee_slash"];
+pub const EQUIP_SLOTS: &[&str] = &["main_hand", "off_hand"];
+pub const UTILITY_SLOTS: &[&str] = &["utility_potion"];
 
 pub fn normalize_preset_id(character_class: &str) -> Result<String, String> {
     match character_class.trim().to_ascii_lowercase().as_str() {
@@ -32,12 +34,24 @@ pub fn item_grants(item_id: &str) -> &'static [&'static str] {
 
 pub fn item_slot(item_id: &str) -> Option<&'static str> {
     match item_id {
-        "potion" => Some("off_hand"),
+        "potion" => Some("utility_potion"),
         "shield" => Some("off_hand"),
         "staff" => Some("main_hand"),
         "sword_1h" => Some("main_hand"),
         _ => None,
     }
+}
+
+pub fn is_equip_slot(slot: &str) -> bool {
+    matches!(slot, "main_hand" | "off_hand")
+}
+
+pub fn is_utility_slot(slot: &str) -> bool {
+    matches!(slot, "utility_potion")
+}
+
+pub fn is_known_slot(slot: &str) -> bool {
+    is_equip_slot(slot) || is_utility_slot(slot)
 }
 
 pub fn preset_grants(preset_id: &str) -> &'static [&'static str] {
@@ -72,7 +86,7 @@ pub static PRESET_EQUIPMENT_PALADIN: &[(&str, &str)] = &[
 
 pub static PRESET_EQUIPMENT_WIZARD: &[(&str, &str)] = &[
     ("main_hand", "staff"),
-    ("off_hand", "potion"),
+    ("utility_potion", "potion"),
 ];
 
 pub fn preset_equipment_pairs(preset_id: &str) -> &'static [(&'static str, &'static str)] {

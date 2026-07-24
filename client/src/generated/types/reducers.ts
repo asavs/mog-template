@@ -6,6 +6,7 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import EquipItemReducer from "../equip_item_reducer";
 import JoinGameReducer from "../join_game_reducer";
 import JoinGameAsReducer from "../join_game_as_reducer";
 import LeaveGameReducer from "../leave_game_reducer";
@@ -16,8 +17,10 @@ import TriggerDrinkingPotionReducer from "../trigger_drinking_potion_reducer";
 import TriggerFireballReducer from "../trigger_fireball_reducer";
 import TriggerLightningStrikeReducer from "../trigger_lightning_strike_reducer";
 import TriggerSlashAttackReducer from "../trigger_slash_attack_reducer";
+import UnequipSlotReducer from "../unequip_slot_reducer";
 import UpdatePlayerInputReducer from "../update_player_input_reducer";
 
+export type EquipItemParams = __Infer<typeof EquipItemReducer>;
 export type JoinGameParams = __Infer<typeof JoinGameReducer>;
 export type JoinGameAsParams = __Infer<typeof JoinGameAsReducer>;
 export type LeaveGameParams = __Infer<typeof LeaveGameReducer>;
@@ -28,5 +31,6 @@ export type TriggerDrinkingPotionParams = __Infer<typeof TriggerDrinkingPotionRe
 export type TriggerFireballParams = __Infer<typeof TriggerFireballReducer>;
 export type TriggerLightningStrikeParams = __Infer<typeof TriggerLightningStrikeReducer>;
 export type TriggerSlashAttackParams = __Infer<typeof TriggerSlashAttackReducer>;
+export type UnequipSlotParams = __Infer<typeof UnequipSlotReducer>;
 export type UpdatePlayerInputParams = __Infer<typeof UpdatePlayerInputReducer>;
 

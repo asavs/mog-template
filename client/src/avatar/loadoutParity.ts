@@ -17,7 +17,7 @@ export const SERVER_LOADOUT_IDS = {
   items: LOADOUT_DERIVED.itemIds,
   grants: LOADOUT_DERIVED.grantIds,
   equipSlots: LOADOUT_AUTHORITY.equipSlots,
-  utilitySlots: ['utility_potion'] as const,
+  utilitySlots: LOADOUT_AUTHORITY.utilitySlots,
   presetBodies: LOADOUT_DERIVED.presetBodies,
   presetGrants: LOADOUT_DERIVED.presetGrants,
   presetEquipmentItemIds: LOADOUT_DERIVED.presetEquipmentItemIds,

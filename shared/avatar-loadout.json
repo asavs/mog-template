@@ -9,6 +9,7 @@
   },
   "defaultPresetId": "wizard",
   "equipSlots": ["main_hand", "off_hand"],
+  "utilitySlots": ["utility_potion"],
   "bodies": {
     "body_m": {},
     "body_f": {}
@@ -27,7 +28,7 @@
       "grants": ["cast_fireball", "cast_lightning"]
     },
     "potion": {
-      "slot": "off_hand",
+      "slot": "utility_potion",
       "grants": ["drink_potion"]
     }
   },
@@ -37,10 +38,10 @@
       "bodyId": "body_m",
       "scale": 1.0,
       "slots": {
-        "main_hand": "sword_1h"
+        "main_hand": "sword_1h",
+        "off_hand": "shield"
       },
       "utilityEquipment": [
-        { "slot": "off_hand", "itemId": "shield" },
         { "slot": "utility_potion", "itemId": "potion" }
       ],
       "extraGrants": ["drink_potion"]
@@ -50,10 +51,11 @@
       "bodyId": "body_f",
       "scale": 1.0,
       "slots": {
-        "main_hand": "staff",
-        "off_hand": "potion"
+        "main_hand": "staff"
       },
-      "utilityEquipment": [],
+      "utilityEquipment": [
+        { "slot": "utility_potion", "itemId": "potion" }
+      ],
       "extraGrants": ["drink_potion"]
     }
   }

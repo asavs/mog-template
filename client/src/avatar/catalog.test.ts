@@ -161,4 +161,40 @@ describe('avatar catalog', () => {
     });
     expect(presentationAssemblyKey(normal)).not.toBe(presentationAssemblyKey(scaled));
   });
+
+  it('follows mid-session equipment rows without re-injecting preset utility', () => {
+    const withStaff = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+      legacyClass: 'paladin',
+    });
+    expect(withStaff.equipped.map(item => item.id).sort()).toEqual(['shield', 'staff']);
+    expect([...withStaff.capabilities.spells]).toEqual(['fireball', 'lightning']);
+    expect(withStaff.capabilities.melee).toBe(false);
+    expect(withStaff.capabilities.drinkPotion).toBe(true); // baseline
+
+    const unequippedMain = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [{ slot: 'off_hand', itemId: 'shield' }],
+      legacyClass: 'paladin',
+    });
+    expect(unequippedMain.equipped.map(item => item.id)).toEqual(['shield']);
+    expect(unequippedMain.capabilities.spells).toEqual([]);
+    expect(unequippedMain.capabilities.melee).toBe(false);
+    expect(unequippedMain.capabilities.block).toBe(true);
+  });
+
+  it('treats empty equipment array as empty loadout (not preset fallback)', () => {
+    const empty = resolveFromServerState({
+      appearance: { bodyId: 'body_f', scale: 1, loadoutPreset: 'wizard' },
+      equipment: [],
+      legacyClass: 'wizard',
+    });
+    expect(empty.equipped).toEqual([]);
+    expect(empty.capabilities.spells).toEqual([]);
+    expect(empty.capabilities.drinkPotion).toBe(true);
+  });
 });

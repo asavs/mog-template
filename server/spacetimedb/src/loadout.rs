@@ -4,15 +4,25 @@
 //! `loadout_authority.generated.rs` (issue #46).
 //! Regenerate: `node scripts/gen-avatar-loadout.mjs`
 //!
+//! Slot model (issue #51):
+//! - `equipSlots` — exclusive paper-doll (at most one item per slot)
+//! - `utilitySlots` — consumable/utility attaches (exclusive within their id,
+//!   not competing with paper-doll)
+//!
 //! Presentation meshKeys / clips remain client-only (`client/src/avatar/catalog.ts`).
 
 #[path = "loadout_authority.generated.rs"]
 mod authority;
 
 pub use authority::{
-    BASELINE_GRANTS, BODY_IDS, DEFAULT_PRESET_ID, GRANT_IDS, ITEM_IDS, PRESET_IDS,
-    item_grants, normalize_preset_id, preset_body_id, preset_equipment_pairs, preset_grants,
-    preset_scale,
+    BASELINE_GRANTS, DEFAULT_PRESET_ID, PRESET_IDS, is_known_slot, item_grants, item_slot,
+    normalize_preset_id, preset_body_id, preset_equipment_pairs, preset_grants, preset_scale,
+};
+
+// Re-exported for tests / call sites that need full authority tables.
+#[cfg(test)]
+pub use authority::{
+    BODY_IDS, EQUIP_SLOTS, GRANT_IDS, ITEM_IDS, UTILITY_SLOTS, is_equip_slot, is_utility_slot,
 };
 
 /// Ability grant id constants (stable string aliases for call sites / tests).
@@ -25,10 +35,11 @@ pub mod grants {
     pub const DRINK_POTION: &str = "drink_potion";
 }
 
-/// Equipment slot names used by paper-doll seeds.
+/// Equipment slot name constants (paper-doll + utility).
 pub mod slots {
     pub const MAIN_HAND: &str = "main_hand";
     pub const OFF_HAND: &str = "off_hand";
+    pub const UTILITY_POTION: &str = "utility_potion";
 }
 
 /// Item id constants (stable string aliases for call sites / tests).
@@ -88,7 +99,7 @@ pub fn preset_appearance(preset_id: &str) -> AppearanceSeed {
     }
 }
 
-/// Starting equipment for a preset (including utility attaches like potion).
+/// Starting equipment for a preset (paper-doll + utility attaches).
 pub fn preset_equipment(preset_id: &str) -> impl Iterator<Item = EquipmentSeed> {
     // pairs are `Copy` (`&'static str` tuples); destructure by value, not `&&str`.
     preset_equipment_pairs(preset_id)
@@ -136,9 +147,54 @@ pub fn capabilities_for_equipment_item_ids(item_ids: &[&str]) -> Capabilities {
     capabilities_from_grants(&grant_list)
 }
 
+/// Validate `item_id` can be equipped; returns its exclusive authority slot.
+pub fn equip_slot_for_item(item_id: &str) -> Result<&'static str, String> {
+    let Some(slot) = item_slot(item_id) else {
+        return Err(format!("Unknown item: {item_id}"));
+    };
+    if !is_known_slot(slot) {
+        return Err(format!("Item {item_id} has unknown slot {slot}"));
+    }
+    Ok(slot)
+}
+
+/// Validate a slot name for unequip (paper-doll or utility).
+pub fn validate_unequip_slot(slot: &str) -> Result<(), String> {
+    if !is_known_slot(slot) {
+        return Err(format!("Unknown equipment slot: {slot}"));
+    }
+    Ok(())
+}
+
+/// Pure equip mutation for tests / reasoning: replace exclusive slot with `item_id`.
+/// `equipment` is `(slot, item_id)` pairs (order not significant).
+#[cfg(test)]
+pub fn apply_equip(equipment: &mut Vec<(String, String)>, item_id: &str) -> Result<(), String> {
+    let slot = equip_slot_for_item(item_id)?;
+    equipment.retain(|(s, _)| s != slot);
+    equipment.push((slot.to_string(), item_id.to_string()));
+    Ok(())
+}
+
+/// Pure unequip mutation: clear `slot` if present.
+#[cfg(test)]
+pub fn apply_unequip(equipment: &mut Vec<(String, String)>, slot: &str) -> Result<(), String> {
+    validate_unequip_slot(slot)?;
+    let before = equipment.len();
+    equipment.retain(|(s, _)| s != slot);
+    if equipment.len() == before {
+        return Err(format!("Nothing equipped in slot: {slot}"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn item_ids_only(equipment: &[(String, String)]) -> Vec<&str> {
+        equipment.iter().map(|(_, id)| id.as_str()).collect()
+    }
 
     #[test]
     fn normalizes_legacy_class_strings() {
@@ -197,19 +253,97 @@ mod tests {
         assert!(paladin_gear.iter().any(|e| e.item_id == items::SWORD_1H));
         assert!(paladin_gear.iter().any(|e| e.item_id == items::SHIELD));
         assert!(paladin_gear.iter().any(|e| e.item_id == items::POTION));
+        // Shield is paper-doll off_hand; potion is utility — not competing.
+        assert!(paladin_gear
+            .iter()
+            .any(|e| e.slot == slots::OFF_HAND && e.item_id == items::SHIELD));
+        assert!(paladin_gear
+            .iter()
+            .any(|e| e.slot == slots::UTILITY_POTION && e.item_id == items::POTION));
 
         let wizard = preset_appearance("wizard");
         assert_eq!(wizard.body_id, bodies::BODY_F);
-        assert!(preset_equipment("wizard").any(|e| e.item_id == items::STAFF));
+        let wizard_gear: Vec<_> = preset_equipment("wizard").collect();
+        assert!(wizard_gear.iter().any(|e| e.item_id == items::STAFF));
+        assert!(wizard_gear
+            .iter()
+            .any(|e| e.slot == slots::UTILITY_POTION && e.item_id == items::POTION));
+        // Potion must not seed as off_hand paper-doll.
+        assert!(!wizard_gear
+            .iter()
+            .any(|e| e.slot == slots::OFF_HAND && e.item_id == items::POTION));
+    }
+
+    #[test]
+    fn paper_doll_and_utility_slots_are_disjoint() {
+        for slot in EQUIP_SLOTS {
+            assert!(is_equip_slot(slot));
+            assert!(!is_utility_slot(slot));
+        }
+        for slot in UTILITY_SLOTS {
+            assert!(is_utility_slot(slot));
+            assert!(!is_equip_slot(slot));
+        }
+        assert_eq!(item_slot(items::POTION), Some(slots::UTILITY_POTION));
+        assert_eq!(item_slot(items::SHIELD), Some(slots::OFF_HAND));
+        assert_eq!(item_slot(items::SWORD_1H), Some(slots::MAIN_HAND));
     }
 
     #[test]
     fn equipment_items_derive_same_caps_as_preset() {
-        let from_items = capabilities_for_equipment_item_ids(&[items::SWORD_1H, items::SHIELD]);
+        let from_items =
+            capabilities_for_equipment_item_ids(&[items::SWORD_1H, items::SHIELD, items::POTION]);
         let from_preset = capabilities_for_class("paladin");
         assert_eq!(from_items.melee, from_preset.melee);
         assert_eq!(from_items.block, from_preset.block);
         assert_eq!(from_items.cast, from_preset.cast);
+        assert_eq!(from_items.drink_potion, from_preset.drink_potion);
+    }
+
+    #[test]
+    fn equip_staff_grants_cast_unequip_removes_cast() {
+        let mut gear: Vec<(String, String)> = preset_equipment("paladin")
+            .map(|e| (e.slot.to_string(), e.item_id.to_string()))
+            .collect();
+
+        // Swap main hand sword → staff
+        apply_equip(&mut gear, items::STAFF).unwrap();
+        let caps_staff = capabilities_for_equipment_item_ids(&item_ids_only(&gear));
+        assert!(caps_staff.cast);
+        assert!(!caps_staff.melee);
+        assert!(caps_staff.block); // shield still on
+        assert!(caps_staff.drink_potion);
+
+        apply_unequip(&mut gear, slots::MAIN_HAND).unwrap();
+        let caps_empty_hand = capabilities_for_equipment_item_ids(&item_ids_only(&gear));
+        assert!(!caps_empty_hand.cast);
+        assert!(!caps_empty_hand.melee);
+        assert!(caps_empty_hand.block);
+        assert!(caps_empty_hand.drink_potion); // baseline
+    }
+
+    #[test]
+    fn equip_rejects_unknown_item() {
+        let mut gear = Vec::new();
+        assert!(apply_equip(&mut gear, "not_a_real_item")
+            .unwrap_err()
+            .contains("Unknown item"));
+    }
+
+    #[test]
+    fn unequip_rejects_unknown_slot() {
+        let mut gear = Vec::new();
+        assert!(apply_unequip(&mut gear, "left_ear")
+            .unwrap_err()
+            .contains("Unknown equipment slot"));
+    }
+
+    #[test]
+    fn equip_replaces_same_slot() {
+        let mut gear = vec![(slots::MAIN_HAND.to_string(), items::SWORD_1H.to_string())];
+        apply_equip(&mut gear, items::STAFF).unwrap();
+        assert_eq!(gear.len(), 1);
+        assert_eq!(gear[0].1, items::STAFF);
     }
 
     #[test]
@@ -220,5 +354,7 @@ mod tests {
         assert!(BODY_IDS.contains(&"body_m"));
         assert!(GRANT_IDS.contains(&"melee_slash"));
         assert!(BASELINE_GRANTS.contains(&"drink_potion"));
+        assert!(EQUIP_SLOTS.contains(&"main_hand"));
+        assert!(UTILITY_SLOTS.contains(&"utility_potion"));
     }
 }

@@ -62,11 +62,14 @@ node scripts/gen-avatar-loadout.mjs
 - **Presets** are join / character-select ids (`wizard`, `paladin`) — not mesh-pack product names
 - **Legacy class strings** map onto presets via `legacyClassToPreset` in the JSON
 - **Grants** are capability tags: `melee_slash`, `block`, `cast_fireball`, `cast_lightning`, `drink_potion`
-- **Slots** match paper-doll `EquipSlot`. Non-slot attaches may use names like `utility_potion` until #50/#51
+- **Paper-doll slots** (`equipSlots`): exclusive body/hand slots (`main_hand`, `off_hand`, …). At most one item per slot.
+- **Utility slots** (`utilitySlots`): consumable/attach ids (`utility_potion`, …). Exclusive within their own id; do **not** compete with paper-doll (potion is never `off_hand`).
+- Item `slot` must be listed in exactly one of those lists. Preset `slots` keys ∈ `equipSlots`; `utilityEquipment` rows ∈ `utilitySlots`.
+- **Live equip** (issue #49): server reducers `equip_item(item_id)` / `unequip_slot(slot)` mutate `player_equipment`; combat grants recompute from those rows (+ `baselineGrants`).
 
 ### Where to edit
 
-1. **Authority** (ids, slots, grants, preset seeds, utility equipment, baseline grants) → **only** `shared/avatar-loadout.json`, then run the gen script
+1. **Authority** (ids, equip/utility slots, grants, preset seeds, baseline grants) → **only** `shared/avatar-loadout.json`, then run the gen script
 2. **Presentation** for a new item → `ITEM_PRESENTATION` (and body mesh / clips) in `catalog.ts`
 3. **New preset** → JSON row + `PRESET_CLIPS` entry in `catalog.ts`
 
