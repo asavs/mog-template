@@ -174,6 +174,16 @@ pub fn resolve_capsule_sweep(
     let mut remaining = target - position;
     let mut ground_normal = None;
 
+    // Spawn/reconciliation corrections can begin inside the static mesh even
+    // with a zero desired displacement. Recover before the normal sweep.
+    for _ in 0..MAX_SLIDE_ITERATIONS {
+        let Some(overlap) = capsule_contact(position, radius, height, Point::new(0.0, 0.0, 0.0)) else {
+            break;
+        };
+        position = position + overlap.normal * (overlap.penetration + CAPSULE_SKIN);
+    }
+    remaining = target - position;
+
     for _ in 0..MAX_SLIDE_ITERATIONS {
         let distance = remaining.length();
         if distance <= CONTACT_EPSILON {
@@ -220,6 +230,12 @@ pub fn resolve_capsule_sweep(
         }
     }
 
+    for _ in 0..MAX_SLIDE_ITERATIONS {
+        let Some(overlap) = capsule_contact(position, radius, height, Point::new(0.0, 0.0, 0.0)) else {
+            break;
+        };
+        position = position + overlap.normal * (overlap.penetration + CAPSULE_SKIN);
+    }
     CapsuleMoveResult { position: position.into(), ground_normal }
 }
 

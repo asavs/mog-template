@@ -287,6 +287,7 @@ export function simulateMovementTick(
     DEFAULT_LOCOMOTION_CONFIG,
   );
 
+  const fullTickStart = position.clone();
   applyMovement(
     position,
     rotationY,
@@ -302,11 +303,28 @@ export function simulateMovementTick(
     wasJumpPressed,
     movementStateBeforeTick.isGrounded,
   );
+  // Locomotion above deliberately remains unchanged. This is only the final
+  // full-XYZ reachability pass, so upward jumps and falls cannot bypass castle
+  // ceilings, undersides, or ramps after horizontal prediction has run.
+  let resolvedVerticalVelocity = jumpPhysicsAfterTick.verticalVelocity;
+  if (isCastleCollisionReady()) {
+    const collision = resolveCastleCapsuleSweep(
+      fullTickStart,
+      position,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    );
+    position.copy(collision.position);
+    if ((collision.hitCeiling && resolvedVerticalVelocity > 0)
+      || (collision.groundNormal && resolvedVerticalVelocity < 0)) {
+      resolvedVerticalVelocity = 0;
+    }
+  }
   const resolvedGrounded = isGroundedAt(position);
   const locomotionState = settleLocomotionAfterMove(
     {
       ...locomotionAfterTransition,
-      verticalVelocity: jumpPhysicsAfterTick.verticalVelocity,
+      verticalVelocity: resolvedVerticalVelocity,
       wasJumpPressed: jumpPhysicsAfterTick.wasJumpPressed,
     },
     input,
@@ -314,7 +332,7 @@ export function simulateMovementTick(
   );
 
   return {
-    verticalVelocity: jumpPhysicsAfterTick.verticalVelocity,
+    verticalVelocity: resolvedVerticalVelocity,
     wasJumpPressed: jumpPhysicsAfterTick.wasJumpPressed,
     movementState: movementStateFromLocomotion(
       locomotionState,

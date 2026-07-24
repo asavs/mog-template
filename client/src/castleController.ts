@@ -13,7 +13,11 @@ const MAX_SUBSTEP_DISTANCE = 0.2;
 export interface CastleMoveResult {
   position: THREE.Vector3;
   groundNormal: THREE.Vector3 | null;
+  hitCeiling: boolean;
+  hitWall: boolean;
 }
+
+type Contact = { normal: THREE.Vector3; penetration: number };
 
 /** Matches the Rust fixed-order broad-phase, substeps, triangle contacts, and slide projection. */
 export function resolveCastleCapsuleSweep(
@@ -26,6 +30,17 @@ export function resolveCastleCapsuleSweep(
   const target = desired.clone();
   let remaining = target.clone().sub(position);
   let groundNormal: THREE.Vector3 | null = null;
+  let hitCeiling = false;
+  let hitWall = false;
+
+  // Reconciliation, spawns, and precision drift can start inside geometry even
+  // with no movement request. Resolve a bounded amount before sweeping.
+  for (let iteration = 0; iteration < MAX_SLIDE_ITERATIONS; iteration += 1) {
+    const overlap = capsuleContact(position, radius, height, new THREE.Vector3());
+    if (!overlap) break;
+    position.addScaledVector(overlap.normal, overlap.penetration + CASTLE_CAPSULE_SKIN);
+  }
+  remaining = target.clone().sub(position);
 
   for (let iteration = 0; iteration < MAX_SLIDE_ITERATIONS; iteration += 1) {
     const distance = remaining.length();
@@ -59,11 +74,19 @@ export function resolveCastleCapsuleSweep(
     const finalContact = capsuleContact(high, radius, height, remaining) ?? { normal: hit.normal };
     position = low.addScaledVector(finalContact.normal, CASTLE_CAPSULE_SKIN);
     if (finalContact.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y) groundNormal = finalContact.normal;
+    if (finalContact.normal.y <= -CASTLE_MIN_WALKABLE_NORMAL_Y) hitCeiling = true;
+    if (Math.abs(finalContact.normal.y) < CASTLE_MIN_WALKABLE_NORMAL_Y) hitWall = true;
     remaining = target.clone().sub(position);
     const intoSurface = remaining.dot(finalContact.normal);
     if (intoSurface < 0) remaining.addScaledVector(finalContact.normal, -intoSurface);
   }
-  return { position, groundNormal };
+  // A final bounded recovery catches a contact created by the skin push itself.
+  for (let iteration = 0; iteration < MAX_SLIDE_ITERATIONS; iteration += 1) {
+    const overlap = capsuleContact(position, radius, height, new THREE.Vector3());
+    if (!overlap) break;
+    position.addScaledVector(overlap.normal, overlap.penetration + CASTLE_CAPSULE_SKIN);
+  }
+  return { position, groundNormal, hitCeiling, hitWall };
 }
 
 export function castleGroundSupport(
@@ -84,13 +107,13 @@ export function castleGroundSupport(
     : null;
 }
 
-function capsuleContact(position: THREE.Vector3, radius: number, height: number, motion: THREE.Vector3): { normal: THREE.Vector3 } | null {
+function capsuleContact(position: THREE.Vector3, radius: number, height: number, motion: THREE.Vector3): Contact | null {
   const asset = castleCollisionAsset();
   const start = position.clone().add(new THREE.Vector3(0, radius, 0));
   const end = position.clone().add(new THREE.Vector3(0, height - radius, 0));
   const min = start.clone().min(end).addScalar(-radius);
   const max = start.clone().max(end).addScalar(radius);
-  let deepest: { normal: THREE.Vector3; penetration: number } | null = null;
+  let deepest: Contact | null = null;
   for (const triangleId of castleTriangleCandidates([min.x, min.y, min.z], [max.x, max.y, max.z])) {
     const base = triangleId * 3;
     const a = vertex(asset.vertices, asset.indices[base]);
