@@ -3,29 +3,57 @@
  *
  * Doctrine: wiki design/avatar-equipment.md (Projects/mog/.wiki).
  * Bodies are skins, gear is modular, abilities are data, classes are presets.
+ *
+ * Authority id unions (BodyId, ItemId, AbilityId, LoadoutPresetId) are
+ * generated from shared/avatar-loadout.json — do not hand-edit those lists.
  */
 
 import type { SoundId } from '../audio/soundRegistry';
+import type {
+  AbilityId as GeneratedAbilityId,
+  AuthorityEquipSlot,
+  BodyId as GeneratedBodyId,
+  ItemId as GeneratedItemId,
+  LoadoutPresetId,
+} from './loadoutAuthority.generated';
 
-/** Canonical body mesh id (same skeleton topology for all humanoid PCs). */
-export type BodyId = 'body_m' | 'body_f' | (string & {});
+export type {
+  AbilityId,
+  AuthorityEquipSlot,
+  BodyId,
+  ItemId,
+  LoadoutPresetId,
+} from './loadoutAuthority.generated';
+export {
+  ABILITY_IDS,
+  AUTHORITY_EQUIP_SLOTS,
+  BODY_IDS,
+  DEFAULT_PRESET_ID,
+  ITEM_IDS,
+  LOADOUT_PRESET_IDS,
+  isAbilityId,
+  isBodyId,
+  isItemId,
+  isLoadoutPresetId,
+} from './loadoutAuthority.generated';
 
-/** Stable item definition id (catalog key, not a mesh path). */
-export type ItemId = string;
+// Local aliases so the rest of this file can use short names without cycles.
+type AbilityId = GeneratedAbilityId;
+type BodyId = GeneratedBodyId;
+type ItemId = GeneratedItemId;
 
-/** Stable ability definition id (server + presentation tags). */
-export type AbilityId = string;
-
-/** Paper-doll / hand slots. */
+/**
+ * Paper-doll / hand slots.
+ * Includes armor slots not yet seeded in loadout authority (only main/off hand today).
+ */
 export type EquipSlot =
+  | AuthorityEquipSlot
   | 'head'
   | 'chest'
   | 'arms'
   | 'legs'
   | 'feet'
-  | 'back'
-  | 'main_hand'
-  | 'off_hand';
+  | 'back';
 
 /** Named attach point on the canonical skeleton. */
 export type SocketId = 'right_hand' | 'left_hand' | 'spine_sheath' | (string & {});
@@ -139,7 +167,7 @@ export type AvatarCapabilities = {
  * wizard/paladin are rows here, not mesh-pack identities.
  */
 export type LoadoutPreset = {
-  id: string;
+  id: LoadoutPresetId;
   label: string;
   appearance: PlayerAppearance;
   /** Transitional per-preset clip files until shared anim library GLBs land. */
@@ -168,7 +196,7 @@ export type ResolvedAppearance = {
   grants: readonly AbilityId[];
   capabilities: AvatarCapabilities;
   clips: readonly ResolvedClip[];
-  presetId?: string;
+  presetId?: LoadoutPresetId;
 };
 
 export type AvatarCatalog = {
@@ -179,5 +207,8 @@ export type AvatarCatalog = {
   listPresets(): readonly LoadoutPreset[];
   /** meshKey → runtime URL (public/ CDN path). */
   urlForMeshKey(meshKey: string): string;
-  resolve(appearance: PlayerAppearance, options?: { presetId?: string }): ResolvedAppearance;
+  resolve(
+    appearance: PlayerAppearance,
+    options?: { presetId?: LoadoutPresetId | string },
+  ): ResolvedAppearance;
 };

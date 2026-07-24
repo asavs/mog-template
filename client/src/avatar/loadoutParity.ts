@@ -1,40 +1,26 @@
 /**
- * Phase A dual-catalog guardrail helpers.
+ * Guardrail: default catalog must match shared loadout authority (issue #46).
  *
- * Server source of truth for these string sets: `server/spacetimedb/src/loadout.rs`.
- * Client source: `catalog.ts` (default catalog). Keep both in the same PR until #46.
+ * Source of truth: `shared/avatar-loadout.json`
+ * Generated: `loadoutAuthority.generated.ts` / `loadout_authority.generated.rs`
+ * Regenerate: `node scripts/gen-avatar-loadout.mjs`
  */
 
 import { defaultAvatarCatalog, resolvePreset } from './catalog';
+import { LOADOUT_AUTHORITY, LOADOUT_DERIVED } from './loadoutAuthority.generated';
 import type { AvatarCatalog } from './types';
 
-/** Ids declared on the server loadout module (must stay aligned with loadout.rs). */
+/** Derived id tables from shared/avatar-loadout.json (via codegen). */
 export const SERVER_LOADOUT_IDS = {
-  presets: ['paladin', 'wizard'] as const,
-  bodies: ['body_m', 'body_f'] as const,
-  items: ['sword_1h', 'shield', 'staff', 'potion'] as const,
-  grants: [
-    'melee_slash',
-    'block',
-    'cast_fireball',
-    'cast_lightning',
-    'drink_potion',
-  ] as const,
-  equipSlots: ['main_hand', 'off_hand'] as const,
-  /** Non-EquipSlot attach names the server may seed (Phase A utility hack). */
+  presets: LOADOUT_DERIVED.presetIds,
+  bodies: LOADOUT_DERIVED.bodyIds,
+  items: LOADOUT_DERIVED.itemIds,
+  grants: LOADOUT_DERIVED.grantIds,
+  equipSlots: LOADOUT_AUTHORITY.equipSlots,
   utilitySlots: ['utility_potion'] as const,
-  presetBodies: {
-    paladin: 'body_m',
-    wizard: 'body_f',
-  } as const,
-  presetGrants: {
-    paladin: ['melee_slash', 'block', 'drink_potion'],
-    wizard: ['cast_fireball', 'cast_lightning', 'drink_potion'],
-  } as const,
-  presetEquipmentItemIds: {
-    paladin: ['sword_1h', 'shield', 'potion'],
-    wizard: ['staff', 'potion'],
-  } as const,
+  presetBodies: LOADOUT_DERIVED.presetBodies,
+  presetGrants: LOADOUT_DERIVED.presetGrants,
+  presetEquipmentItemIds: LOADOUT_DERIVED.presetEquipmentItemIds,
 } as const;
 
 function sortedUnique(values: Iterable<string>): string[] {

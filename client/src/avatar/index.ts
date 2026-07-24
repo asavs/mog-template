@@ -2,6 +2,7 @@ export type {
   AbilityId,
   AnimActionKey,
   AnimLibraryDef,
+  AuthorityEquipSlot,
   AvatarCapabilities,
   AvatarCatalog,
   BodyDef,
@@ -12,6 +13,7 @@ export type {
   ItemDef,
   ItemId,
   LoadoutPreset,
+  LoadoutPresetId,
   PlayerAppearance,
   PlayerCosmetics,
   ResolvedAppearance,
@@ -22,6 +24,18 @@ export type {
   SocketId,
   Vec3,
   WizardSpell,
+} from './types';
+export {
+  ABILITY_IDS,
+  AUTHORITY_EQUIP_SLOTS,
+  BODY_IDS,
+  DEFAULT_PRESET_ID,
+  ITEM_IDS,
+  LOADOUT_PRESET_IDS,
+  isAbilityId,
+  isBodyId,
+  isItemId,
+  isLoadoutPresetId,
 } from './types';
 
 export {

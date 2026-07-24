@@ -24,7 +24,9 @@
     "qa:report": "vite-node qa-harness/report-cli.ts --",
     "qa:typecheck": "tsc -p qa-harness/tsconfig.qa.json",
     "env:check": "node ../tools/env-requirements/preflight.mjs",
-    "env:fingerprint": "node ../tools/env-requirements/preflight.mjs --fingerprint"
+    "env:fingerprint": "node ../tools/env-requirements/preflight.mjs --fingerprint",
+    "gen:loadout": "node ../scripts/gen-avatar-loadout.mjs",
+    "gen:loadout:check": "node ../scripts/gen-avatar-loadout.mjs --check"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

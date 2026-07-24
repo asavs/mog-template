@@ -37,37 +37,46 @@ New armor/weapons should be **catalog rows + files** — no engine PR if ids/slo
 
 ## Id conventions (client ↔ server)
 
-Phase A keeps **two hand-aligned copies** of loadout ids:
+**One authority file:** `shared/avatar-loadout.json` (issue #46).
 
-| Side | File |
+| Layer | File |
 |---|---|
-| Client presentation | `client/src/avatar/catalog.ts` |
-| Server authority | `server/spacetimedb/src/loadout.rs` |
+| Canonical authority | `shared/avatar-loadout.json` |
+| Generated (do not hand-edit) | `client/src/avatar/loadoutAuthority.generated.ts` — data **and** TS string unions (`ItemId`, `BodyId`, `AbilityId`, `LoadoutPresetId`) |
+| Generated (do not hand-edit) | `server/spacetimedb/src/loadout_authority.generated.rs` |
+| Client presentation (meshes, clips, sockets) | `client/src/avatar/catalog.ts` |
+| Server capability helpers | `server/spacetimedb/src/loadout.rs` (reads generated authority) |
 
-**Do not invent server-only or client-only ids** for bodies, items, grants, presets, or equip slots. If one side needs a new string, update both in the same PR (or land #46 first).
+Wire/DB still carry plain strings; use `isItemId` / `isLoadoutPresetId` (etc.) at network boundaries. Prefer the generated unions inside client code.
+
+Regenerate after editing the JSON:
+
+```bash
+node scripts/gen-avatar-loadout.mjs
+# optional: node scripts/gen-avatar-loadout.mjs --check
+```
 
 ### Naming
 
 - **snake_case** only: `sword_1h`, `cast_fireball`, `body_m`
 - **Presets** are join / character-select ids (`wizard`, `paladin`) — not mesh-pack product names
-- **Legacy class strings** map onto presets: `wizard2` → `wizard`, `pally` → `paladin` (see `presetIdFromLegacyClass` / `normalize_preset_id`)
-- **Grants** are capability tags, not animation names: `melee_slash`, `block`, `cast_fireball`, `cast_lightning`, `drink_potion`
-- **Slots** match `EquipSlot` / server seed slots. Non-slot attaches (Phase A) may use names like `utility_potion` until #50/#51 retire that hack
+- **Legacy class strings** map onto presets via `legacyClassToPreset` in the JSON
+- **Grants** are capability tags: `melee_slash`, `block`, `cast_fireball`, `cast_lightning`, `drink_potion`
+- **Slots** match paper-doll `EquipSlot`. Non-slot attaches may use names like `utility_potion` until #50/#51
 
 ### Where to edit
 
-1. Add/change an **item** → `ITEMS` in `catalog.ts` **and** `items` + `preset_equipment` / grant mapping in `loadout.rs`
-2. Add/change a **grant** → item `grants` / `extraGrants` on the client **and** `grants` module + `preset_grants` / `capabilities_from_grants` on the server
-3. Add/change a **preset** → `PRESETS` + utility lists on the client **and** `preset_appearance` / `preset_equipment` / `preset_grants` on the server
-4. Add/change a **body** → `BODIES` on the client **and** `bodies` + appearance seeds on the server
+1. **Authority** (ids, slots, grants, preset seeds, utility equipment, baseline grants) → **only** `shared/avatar-loadout.json`, then run the gen script
+2. **Presentation** for a new item → `ITEM_PRESENTATION` (and body mesh / clips) in `catalog.ts`
+3. **New preset** → JSON row + `PRESET_CLIPS` entry in `catalog.ts`
 
 ### Guardrail
 
-`client/src/avatar/loadoutParity.test.ts` compares the default catalog to the Phase A id sets mirrored from `loadout.rs`. If you change ids on either side, update the fixture in that test (and the other language file) so CI stays green.
+`loadoutParity.test.ts` checks the default catalog against `LOADOUT_DERIVED` from the generated authority. If parity fails, regenerate or fix the JSON — do not hand-edit generated files.
 
 ### Baseline grants
 
-`drink_potion` is a **baseline humanoid grant** on both sides (`BASELINE_ABILITY_GRANTS` in `catalog.ts`, `capabilities_from_grants` in `loadout.rs`). Empty equipment still allows drinking; do not remove only on one side.
+`baselineGrants` in the JSON (currently `drink_potion`) apply on both client and server even with empty equipment.
 
 ## Suggested folder layout
 
