@@ -247,8 +247,14 @@ export class AnimationController {
           || !this.abilityInRecovery
         )
       ) return false;
-      if (this.isGuardOverlay()) return false;
-      if (this.overlay && !this.abilityInRecovery) return false;
+      // Already guarding, or on the way in: nothing to do. An exit in flight is
+      // different — the player changed their mind, and a change of mind inside
+      // a 250 ms blend is the most ordinary thing an input can express.
+      if (this.isGuardOverlay()) {
+        if (this.overlay?.ruleName !== 'guardExit') return false;
+      } else if (this.overlay && !this.abilityInRecovery) {
+        return false;
+      }
       const transitioned = this.startGuardMotion('guardEnter', this.guardMotions.enter)
         || this.startGuardMotion('guardHeld', this.guardMotions.held);
       if (transitioned) {
@@ -258,6 +264,8 @@ export class AnimationController {
     }
 
     if (!this.isGuardOverlay()) return false;
+    // Already leaving. Re-reporting the release must not restart the blend.
+    if (this.overlay?.ruleName === 'guardExit') return false;
     return this.startGuardMotion('guardExit', this.guardMotions.exit)
       || this.clearOverlay(MOTION_RULES.guardExit.exitBlendSeconds);
   }
@@ -609,10 +617,10 @@ export class AnimationController {
       this.override = null;
       this.abilityInRecovery = false;
       this.syncBands(rule.exitBlendSeconds);
-      if (this.guardDesired && !this.overlay) {
-        this.startGuardMotion('guardEnter', this.guardMotions.enter)
-          || this.startGuardMotion('guardHeld', this.guardMotions.held);
-      }
+      // setGuard rather than startGuardMotion: the overlay may still be a
+      // guardExit the player already reversed, and only setGuard knows that is
+      // interruptible.
+      if (this.guardDesired) this.setGuard(true);
       return;
     }
 
@@ -635,6 +643,13 @@ export class AnimationController {
       if (this.startGuardMotion('guardHeld', this.guardMotions.held)) return;
     } else if (finished.ruleName === 'guardHeld' && !this.guardDesired) {
       if (this.startGuardMotion('guardExit', this.guardMotions.exit)) return;
+    } else if (this.guardDesired && !this.override) {
+      // Whatever just ended — an exit the player reversed, or an ability they
+      // fired while still holding block — the layer is free and guard wants it.
+      if (
+        this.startGuardMotion('guardEnter', this.guardMotions.enter)
+        || this.startGuardMotion('guardHeld', this.guardMotions.held)
+      ) return;
     }
 
     this.syncBands(rule.exitBlendSeconds);
