@@ -5,9 +5,9 @@
 
 pub const DEFAULT_PRESET_ID: &str = "wizard";
 pub const BASELINE_GRANTS: &[&str] = &["drink_potion"];
-pub const PRESET_IDS: &[&str] = &["paladin", "wizard"];
+pub const PRESET_IDS: &[&str] = &["acolyte", "paladin", "wizard"];
 pub const BODY_IDS: &[&str] = &["body_f", "body_m"];
-pub const ITEM_IDS: &[&str] = &["potion", "shield", "staff", "sword_1h"];
+pub const ITEM_IDS: &[&str] = &["dagger", "potion", "shield", "sword_1h", "wand"];
 pub const GRANT_IDS: &[&str] = &["block", "cast_fireball", "cast_lightning", "drink_potion", "melee_slash"];
 pub const EQUIP_SLOTS: &[&str] = &["main_hand", "off_hand"];
 pub const UTILITY_SLOTS: &[&str] = &["utility_potion"];
@@ -18,26 +18,29 @@ pub fn normalize_preset_id(character_class: &str) -> Result<String, String> {
         "pally" => Ok("paladin".to_string()),
         "wizard" => Ok("wizard".to_string()),
         "wizard2" => Ok("wizard".to_string()),
+        "acolyte" => Ok("acolyte".to_string()),
         _ => Err("Unsupported character class".to_string()),
     }
 }
 
 pub fn item_grants(item_id: &str) -> &'static [&'static str] {
     match item_id {
+        "dagger" => &["melee_slash"],
         "potion" => &["drink_potion"],
         "shield" => &["block"],
-        "staff" => &["cast_fireball", "cast_lightning"],
         "sword_1h" => &["melee_slash"],
+        "wand" => &["cast_fireball", "cast_lightning"],
         _ => &[],
     }
 }
 
 pub fn item_slot(item_id: &str) -> Option<&'static str> {
     match item_id {
+        "dagger" => Some("main_hand"),
         "potion" => Some("utility_potion"),
         "shield" => Some("off_hand"),
-        "staff" => Some("main_hand"),
         "sword_1h" => Some("main_hand"),
+        "wand" => Some("main_hand"),
         _ => None,
     }
 }
@@ -56,6 +59,7 @@ pub fn is_known_slot(slot: &str) -> bool {
 
 pub fn preset_grants(preset_id: &str) -> &'static [&'static str] {
     match preset_id {
+        "acolyte" => &["cast_fireball", "cast_lightning", "drink_potion"],
         "paladin" => &["block", "drink_potion", "melee_slash"],
         "wizard" => &["cast_fireball", "cast_lightning", "drink_potion"],
         _ => &["cast_fireball", "cast_lightning", "drink_potion"],
@@ -64,6 +68,7 @@ pub fn preset_grants(preset_id: &str) -> &'static [&'static str] {
 
 pub fn preset_body_id(preset_id: &str) -> &'static str {
     match preset_id {
+        "acolyte" => "body_f",
         "paladin" => "body_m",
         "wizard" => "body_f",
         _ => "body_f",
@@ -72,11 +77,17 @@ pub fn preset_body_id(preset_id: &str) -> &'static str {
 
 pub fn preset_scale(preset_id: &str) -> f32 {
     match preset_id {
+        "acolyte" => 1.0,
         "paladin" => 1.0,
         "wizard" => 1.0,
         _ => 1.0,
     }
 }
+
+pub static PRESET_EQUIPMENT_ACOLYTE: &[(&str, &str)] = &[
+    ("main_hand", "wand"),
+    ("utility_potion", "potion"),
+];
 
 pub static PRESET_EQUIPMENT_PALADIN: &[(&str, &str)] = &[
     ("main_hand", "sword_1h"),
@@ -85,12 +96,13 @@ pub static PRESET_EQUIPMENT_PALADIN: &[(&str, &str)] = &[
 ];
 
 pub static PRESET_EQUIPMENT_WIZARD: &[(&str, &str)] = &[
-    ("main_hand", "staff"),
+    ("main_hand", "wand"),
     ("utility_potion", "potion"),
 ];
 
 pub fn preset_equipment_pairs(preset_id: &str) -> &'static [(&'static str, &'static str)] {
     match preset_id {
+        "acolyte" => PRESET_EQUIPMENT_ACOLYTE,
         "paladin" => PRESET_EQUIPMENT_PALADIN,
         "wizard" => PRESET_EQUIPMENT_WIZARD,
         _ => PRESET_EQUIPMENT_WIZARD,

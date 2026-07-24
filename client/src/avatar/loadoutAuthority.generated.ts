@@ -11,10 +11,11 @@ export const BODY_IDS = [
 export type BodyId = (typeof BODY_IDS)[number];
 
 export const ITEM_IDS = [
+  "dagger",
   "potion",
   "shield",
-  "staff",
   "sword_1h",
+  "wand",
 ] as const;
 export type ItemId = (typeof ITEM_IDS)[number];
 
@@ -29,6 +30,7 @@ export const ABILITY_IDS = [
 export type AbilityId = (typeof ABILITY_IDS)[number];
 
 export const LOADOUT_PRESET_IDS = [
+  "acolyte",
   "paladin",
   "wizard",
 ] as const;
@@ -59,7 +61,8 @@ export const LOADOUT_AUTHORITY = {
     "paladin": "paladin",
     "pally": "paladin",
     "wizard": "wizard",
-    "wizard2": "wizard"
+    "wizard2": "wizard",
+    "acolyte": "acolyte"
   },
   "defaultPresetId": "wizard",
   "equipSlots": [
@@ -86,11 +89,17 @@ export const LOADOUT_AUTHORITY = {
         "block"
       ]
     },
-    "staff": {
+    "wand": {
       "slot": "main_hand",
       "grants": [
         "cast_fireball",
         "cast_lightning"
+      ]
+    },
+    "dagger": {
+      "slot": "main_hand",
+      "grants": [
+        "melee_slash"
       ]
     },
     "potion": {
@@ -124,7 +133,24 @@ export const LOADOUT_AUTHORITY = {
       "bodyId": "body_f",
       "scale": 1,
       "slots": {
-        "main_hand": "staff"
+        "main_hand": "wand"
+      },
+      "utilityEquipment": [
+        {
+          "slot": "utility_potion",
+          "itemId": "potion"
+        }
+      ],
+      "extraGrants": [
+        "drink_potion"
+      ]
+    },
+    "acolyte": {
+      "label": "Acolyte",
+      "bodyId": "body_f",
+      "scale": 1,
+      "slots": {
+        "main_hand": "wand"
       },
       "utilityEquipment": [
         {
@@ -141,6 +167,7 @@ export const LOADOUT_AUTHORITY = {
 
 export const LOADOUT_DERIVED = {
   "presetIds": [
+    "acolyte",
     "paladin",
     "wizard"
   ],
@@ -149,10 +176,11 @@ export const LOADOUT_DERIVED = {
     "body_m"
   ],
   "itemIds": [
+    "dagger",
     "potion",
     "shield",
-    "staff",
-    "sword_1h"
+    "sword_1h",
+    "wand"
   ],
   "grantIds": [
     "block",
@@ -169,10 +197,16 @@ export const LOADOUT_DERIVED = {
     "utility_potion"
   ],
   "presetBodies": {
+    "acolyte": "body_f",
     "paladin": "body_m",
     "wizard": "body_f"
   },
   "presetGrants": {
+    "acolyte": [
+      "cast_fireball",
+      "cast_lightning",
+      "drink_potion"
+    ],
     "paladin": [
       "block",
       "drink_potion",
@@ -185,6 +219,10 @@ export const LOADOUT_DERIVED = {
     ]
   },
   "presetEquipmentItemIds": {
+    "acolyte": [
+      "potion",
+      "wand"
+    ],
     "paladin": [
       "potion",
       "shield",
@@ -192,10 +230,13 @@ export const LOADOUT_DERIVED = {
     ],
     "wizard": [
       "potion",
-      "staff"
+      "wand"
     ]
   },
   "utilityItemsByPreset": {
+    "acolyte": [
+      "potion"
+    ],
     "paladin": [
       "potion"
     ],

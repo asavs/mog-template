@@ -28,7 +28,9 @@ function asSet(values) {
 }
 
 /**
- * Validate paper-doll vs utility slot model (issue #51).
+ * Validate paper-doll (`equipSlots`) vs utility (`utilitySlots`) model.
+ * - Item.slot must be in exactly one of equipSlots / utilitySlots.
+ * - Preset `slots` is paper-doll only; `utilityEquipment` is utility only.
  * Throws with a clear message if authority is inconsistent.
  */
 function validateAuthority(data) {
@@ -63,7 +65,12 @@ function validateAuthority(data) {
     for (const [slot, itemId] of Object.entries(preset.slots ?? {})) {
       if (!equipSlots.has(slot)) {
         errors.push(
-          `preset "${presetId}" slots key "${slot}" is not an equipSlots paper-doll slot`,
+          `preset "${presetId}" slots key "${slot}" is not an equipSlots paper-doll slot (utility belongs in utilityEquipment)`,
+        );
+      }
+      if (utilitySlots.has(slot)) {
+        errors.push(
+          `preset "${presetId}" slots key "${slot}" is a utilitySlots id — put utility items in utilityEquipment only`,
         );
       }
       const item = data.items?.[itemId];
@@ -73,13 +80,22 @@ function validateAuthority(data) {
         errors.push(
           `preset "${presetId}" slots.${slot}="${itemId}" but item.slot is "${item.slot}"`,
         );
+      } else if (utilitySlots.has(item.slot)) {
+        errors.push(
+          `preset "${presetId}" slots.${slot} puts utility item "${itemId}" in paper-doll slots — use utilityEquipment`,
+        );
       }
     }
 
     for (const row of preset.utilityEquipment ?? []) {
       if (!utilitySlots.has(row.slot)) {
         errors.push(
-          `preset "${presetId}" utilityEquipment slot "${row.slot}" is not in utilitySlots`,
+          `preset "${presetId}" utilityEquipment slot "${row.slot}" is not in utilitySlots (paper-doll belongs in slots)`,
+        );
+      }
+      if (equipSlots.has(row.slot)) {
+        errors.push(
+          `preset "${presetId}" utilityEquipment slot "${row.slot}" is an equipSlots paper-doll id — put it in slots only`,
         );
       }
       const item = data.items?.[row.itemId];
@@ -90,6 +106,10 @@ function validateAuthority(data) {
       } else if (item.slot !== row.slot) {
         errors.push(
           `preset "${presetId}" utilityEquipment slot "${row.slot}" item "${row.itemId}" has item.slot "${item.slot}"`,
+        );
+      } else if (equipSlots.has(item.slot)) {
+        errors.push(
+          `preset "${presetId}" utilityEquipment puts paper-doll item "${row.itemId}" in utility — use slots`,
         );
       }
     }

@@ -17,6 +17,7 @@ describe('avatar catalog', () => {
     expect(presetIdFromLegacyClass('paladin')).toBe('paladin');
     expect(presetIdFromLegacyClass('Pally')).toBe('paladin');
     expect(presetIdFromLegacyClass('wizard2')).toBe('wizard');
+    expect(presetIdFromLegacyClass('acolyte')).toBe('acolyte');
     expect(presetIdFromLegacyClass(undefined)).toBe('wizard');
   });
 
@@ -35,10 +36,24 @@ describe('avatar catalog', () => {
   it('resolves wizard preset with cast grants', () => {
     const resolved = resolvePreset('wizard');
     expect(resolved.body.id).toBe('body_f');
+    expect(resolved.equipped.map(item => item.id).sort()).toEqual(['potion', 'wand']);
     expect(resolved.capabilities.melee).toBe(false);
     expect(resolved.capabilities.block).toBe(false);
     expect([...resolved.capabilities.spells]).toEqual(['fireball', 'lightning']);
     expect(resolved.clips.some(clip => clip.actionKey === 'cast' && clip.upperBodyOnly)).toBe(true);
+    // Wand is a real weapons-pack mesh (not grantsOnly).
+    const wand = resolved.equipped.find(item => item.id === 'wand');
+    expect(wand?.grantsOnly).toBeFalsy();
+    expect(wand?.meshKey).toContain('low_poly_weapons_pack');
+  });
+
+  it('resolves acolyte preset with wand and potion', () => {
+    const resolved = resolvePreset('acolyte');
+    expect(resolved.body.id).toBe('body_f');
+    expect(resolved.equipped.map(item => item.id).sort()).toEqual(['potion', 'wand']);
+    expect([...resolved.capabilities.spells]).toEqual(['fireball', 'lightning']);
+    expect(resolved.capabilities.drinkPotion).toBe(true);
+    expect(resolved.clips.some(clip => clip.actionKey === 'cast')).toBe(true);
   });
 
   it('rejects item in the wrong slot', () => {
@@ -104,20 +119,18 @@ describe('avatar catalog', () => {
   it('falls back to preset when server bodyId is unknown', () => {
     const resolved = resolveFromServerState({
       appearance: { bodyId: 'body_from_the_future', scale: 1, loadoutPreset: 'wizard' },
-      equipment: [{ slot: 'main_hand', itemId: 'staff' }],
+      equipment: [{ slot: 'main_hand', itemId: 'wand' }],
       legacyClass: 'wizard',
     });
     expect(resolved.body.id).toBe('body_f');
     expect(resolved.capabilities.spells).toEqual(['fireball', 'lightning']);
   });
 
-  it('skips grantsOnly items in asset url lists', () => {
+  it('includes wand weapons-pack url for wizard preload', () => {
     const urls = assetUrlsForAppearance(resolvePreset('wizard'));
-    // Staff is grantsOnly — must not pull a second body-pack URL as "gear".
-    const staff = resolvePreset('wizard').equipped.find(item => item.id === 'staff');
-    expect(staff?.grantsOnly).toBe(true);
-    // Body url may still be wizard2; gear must not re-list staff meshKey separately as attach.
-    expect(staff && urls.filter(url => url === staff.url).length).toBeLessThanOrEqual(1);
+    const wand = resolvePreset('wizard').equipped.find(item => item.id === 'wand');
+    expect(wand?.grantsOnly).toBeFalsy();
+    expect(urls.some(url => url.includes('low_poly_weapons_pack'))).toBe(true);
   });
 
   it('applies drink_potion as a baseline grant (aligned with server)', () => {
@@ -163,18 +176,18 @@ describe('avatar catalog', () => {
   });
 
   it('follows mid-session equipment rows without re-injecting preset utility', () => {
-    const withStaff = resolveFromServerState({
+    const withWand = resolveFromServerState({
       appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
       equipment: [
-        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'main_hand', itemId: 'wand' },
         { slot: 'off_hand', itemId: 'shield' },
       ],
       legacyClass: 'paladin',
     });
-    expect(withStaff.equipped.map(item => item.id).sort()).toEqual(['shield', 'staff']);
-    expect([...withStaff.capabilities.spells]).toEqual(['fireball', 'lightning']);
-    expect(withStaff.capabilities.melee).toBe(false);
-    expect(withStaff.capabilities.drinkPotion).toBe(true); // baseline
+    expect(withWand.equipped.map(item => item.id).sort()).toEqual(['shield', 'wand']);
+    expect([...withWand.capabilities.spells]).toEqual(['fireball', 'lightning']);
+    expect(withWand.capabilities.melee).toBe(false);
+    expect(withWand.capabilities.drinkPotion).toBe(true); // baseline
 
     const unequippedMain = resolveFromServerState({
       appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },

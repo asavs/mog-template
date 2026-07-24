@@ -5,7 +5,8 @@
     "paladin": "paladin",
     "pally": "paladin",
     "wizard": "wizard",
-    "wizard2": "wizard"
+    "wizard2": "wizard",
+    "acolyte": "acolyte"
   },
   "defaultPresetId": "wizard",
   "equipSlots": ["main_hand", "off_hand"],
@@ -23,9 +24,13 @@
       "slot": "off_hand",
       "grants": ["block"]
     },
-    "staff": {
+    "wand": {
       "slot": "main_hand",
       "grants": ["cast_fireball", "cast_lightning"]
+    },
+    "dagger": {
+      "slot": "main_hand",
+      "grants": ["melee_slash"]
     },
     "potion": {
       "slot": "utility_potion",
@@ -51,7 +56,19 @@
       "bodyId": "body_f",
       "scale": 1.0,
       "slots": {
-        "main_hand": "staff"
+        "main_hand": "wand"
+      },
+      "utilityEquipment": [
+        { "slot": "utility_potion", "itemId": "potion" }
+      ],
+      "extraGrants": ["drink_potion"]
+    },
+    "acolyte": {
+      "label": "Acolyte",
+      "bodyId": "body_f",
+      "scale": 1.0,
+      "slots": {
+        "main_hand": "wand"
       },
       "utilityEquipment": [
         { "slot": "utility_potion", "itemId": "potion" }

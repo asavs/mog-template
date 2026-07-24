@@ -125,7 +125,7 @@ export type ItemDef = {
   visibleByDefault?: boolean;
   /**
    * Grants-only placeholder: no mesh attach and no asset fetch.
-   * Use until a real meshKey exists (e.g. transitional staff).
+   * Use until a real meshKey exists for the item.
    */
   grantsOnly?: boolean;
 };

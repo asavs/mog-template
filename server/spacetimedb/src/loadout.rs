@@ -4,10 +4,11 @@
 //! `loadout_authority.generated.rs` (issue #46).
 //! Regenerate: `node scripts/gen-avatar-loadout.mjs`
 //!
-//! Slot model (issue #51):
+//! Slot model:
 //! - `equipSlots` — exclusive paper-doll (at most one item per slot)
 //! - `utilitySlots` — consumable/utility attaches (exclusive within their id,
 //!   not competing with paper-doll)
+//! Preset seeds put paper-doll items in `slots` and utility items in `utilityEquipment`.
 //!
 //! Presentation meshKeys / clips remain client-only (`client/src/avatar/catalog.ts`).
 
@@ -47,7 +48,8 @@ pub mod slots {
 pub mod items {
     pub const SWORD_1H: &str = "sword_1h";
     pub const SHIELD: &str = "shield";
-    pub const STAFF: &str = "staff";
+    pub const WAND: &str = "wand";
+    pub const DAGGER: &str = "dagger";
     pub const POTION: &str = "potion";
 }
 
@@ -204,6 +206,7 @@ mod tests {
         assert_eq!(normalize_preset_id("wizard").unwrap(), "wizard");
         assert_eq!(normalize_preset_id("wizard2").unwrap(), "wizard");
         assert_eq!(normalize_preset_id("Wizard2").unwrap(), "wizard");
+        assert_eq!(normalize_preset_id("acolyte").unwrap(), "acolyte");
         assert!(normalize_preset_id("knight").is_err());
         assert!(normalize_preset_id("").is_err());
     }
@@ -264,7 +267,7 @@ mod tests {
         let wizard = preset_appearance("wizard");
         assert_eq!(wizard.body_id, bodies::BODY_F);
         let wizard_gear: Vec<_> = preset_equipment("wizard").collect();
-        assert!(wizard_gear.iter().any(|e| e.item_id == items::STAFF));
+        assert!(wizard_gear.iter().any(|e| e.item_id == items::WAND));
         assert!(wizard_gear
             .iter()
             .any(|e| e.slot == slots::UTILITY_POTION && e.item_id == items::POTION));
@@ -272,6 +275,15 @@ mod tests {
         assert!(!wizard_gear
             .iter()
             .any(|e| e.slot == slots::OFF_HAND && e.item_id == items::POTION));
+
+        let acolyte = preset_appearance("acolyte");
+        assert_eq!(acolyte.body_id, bodies::BODY_F);
+        assert_eq!(acolyte.loadout_preset, "acolyte");
+        let acolyte_gear: Vec<_> = preset_equipment("acolyte").collect();
+        assert!(acolyte_gear.iter().any(|e| e.item_id == items::WAND));
+        assert!(acolyte_gear
+            .iter()
+            .any(|e| e.slot == slots::UTILITY_POTION && e.item_id == items::POTION));
     }
 
     #[test]
@@ -301,18 +313,18 @@ mod tests {
     }
 
     #[test]
-    fn equip_staff_grants_cast_unequip_removes_cast() {
+    fn equip_wand_grants_cast_unequip_removes_cast() {
         let mut gear: Vec<(String, String)> = preset_equipment("paladin")
             .map(|e| (e.slot.to_string(), e.item_id.to_string()))
             .collect();
 
-        // Swap main hand sword → staff
-        apply_equip(&mut gear, items::STAFF).unwrap();
-        let caps_staff = capabilities_for_equipment_item_ids(&item_ids_only(&gear));
-        assert!(caps_staff.cast);
-        assert!(!caps_staff.melee);
-        assert!(caps_staff.block); // shield still on
-        assert!(caps_staff.drink_potion);
+        // Swap main hand sword → wand
+        apply_equip(&mut gear, items::WAND).unwrap();
+        let caps_wand = capabilities_for_equipment_item_ids(&item_ids_only(&gear));
+        assert!(caps_wand.cast);
+        assert!(!caps_wand.melee);
+        assert!(caps_wand.block); // shield still on
+        assert!(caps_wand.drink_potion);
 
         apply_unequip(&mut gear, slots::MAIN_HAND).unwrap();
         let caps_empty_hand = capabilities_for_equipment_item_ids(&item_ids_only(&gear));
@@ -341,16 +353,30 @@ mod tests {
     #[test]
     fn equip_replaces_same_slot() {
         let mut gear = vec![(slots::MAIN_HAND.to_string(), items::SWORD_1H.to_string())];
-        apply_equip(&mut gear, items::STAFF).unwrap();
+        apply_equip(&mut gear, items::WAND).unwrap();
         assert_eq!(gear.len(), 1);
-        assert_eq!(gear[0].1, items::STAFF);
+        assert_eq!(gear[0].1, items::WAND);
+    }
+
+    #[test]
+    fn normalize_accepts_acolyte_preset() {
+        assert_eq!(normalize_preset_id("acolyte").unwrap(), "acolyte");
+        assert_eq!(normalize_preset_id("Acolyte").unwrap(), "acolyte");
+        assert!(PRESET_IDS.contains(&"acolyte"));
+        assert!(ITEM_IDS.contains(&items::WAND));
+        assert!(ITEM_IDS.contains(&items::DAGGER));
+        assert!(!ITEM_IDS.iter().any(|&id| id == "staff"));
+        assert_eq!(item_slot(items::DAGGER), Some(slots::MAIN_HAND));
+        assert_eq!(item_slot(items::WAND), Some(slots::MAIN_HAND));
     }
 
     #[test]
     fn authority_id_tables_are_non_empty() {
         assert!(PRESET_IDS.contains(&"paladin"));
         assert!(PRESET_IDS.contains(&"wizard"));
+        assert!(PRESET_IDS.contains(&"acolyte"));
         assert!(ITEM_IDS.contains(&"sword_1h"));
+        assert!(ITEM_IDS.contains(&"wand"));
         assert!(BODY_IDS.contains(&"body_m"));
         assert!(GRANT_IDS.contains(&"melee_slash"));
         assert!(BASELINE_GRANTS.contains(&"drink_potion"));
