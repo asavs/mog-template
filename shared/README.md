@@ -18,3 +18,5 @@ That writes:
 - `server/spacetimedb/src/loadout_authority.generated.rs`
 
 Do not hand-edit the generated files. See `client/src/avatar/ART_DROP_IN.md`.
+
+**Add a new item end-to-end:** [`docs/avatar-add-item.md`](../docs/avatar-add-item.md) (authority → codegen → presentation → optional preset seed).
