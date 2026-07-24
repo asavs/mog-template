@@ -8,6 +8,10 @@ import {
 import { castleCollisionAsset, isCastleCollisionReady } from './castleCollision';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
 import {
+  getRapierCastleGroundSupport,
+  resolveRapierCastleMovement,
+} from './rapierCastleBridge';
+import {
   DEFAULT_LOCOMOTION_CONFIG,
   GRAVITY,
   GROUNDED_EPSILON,
@@ -133,7 +137,7 @@ export function applyMovement(
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
   if (isCastleCollisionReady()
-    && (castleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)
+    && (activeCastleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE)
       || isInsideCastleCollisionBounds(current)
       || isInsideCastleCollisionBounds(clampedDesired))) {
     return clampedDesired;
@@ -258,8 +262,13 @@ export function lerpAngle(from: number, to: number, alpha: number): number {
 export function groundHeightAt(position: THREE.Vector3): number {
   const terrain = terrainHeightAt(position);
   if (!isCastleCollisionReady()) return terrain;
-  const support = castleGroundSupport(position, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
+  const support = activeCastleGroundSupport(position, CASTLE_GROUND_SNAP_DISTANCE);
   return support ? support.y : terrain;
+}
+
+function activeCastleGroundSupport(position: THREE.Vector3, maxDistance: number): THREE.Vector3 | null {
+  return getRapierCastleGroundSupport(position, maxDistance, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)
+    ?? castleGroundSupport(position, maxDistance, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
 }
 
 
@@ -330,17 +339,20 @@ export function simulateMovementTick(
     const sweepTarget = position.clone();
     if (wasGrounded && !isStartingJump) {
       const endingTerrainY = terrainHeightAt(sweepTarget);
-      const endingCastleGround = castleGroundSupport(
+      const endingCastleGround = activeCastleGroundSupport(
         sweepTarget,
         CASTLE_GROUND_SNAP_DISTANCE,
-        PLAYER_COLLISION_RADIUS,
-        PLAYER_CAPSULE_HEIGHT,
       );
       const endingGroundY = endingCastleGround ? endingCastleGround.y : endingTerrainY;
       sweepTarget.y = Math.max(fullTickStart.y, endingGroundY);
     }
     const desiredBeforeCastle = sweepTarget.clone();
-    const collision = resolveCastleCapsuleSweep(
+    const collision = resolveRapierCastleMovement(
+      fullTickStart,
+      sweepTarget,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    ) ?? resolveCastleCapsuleSweep(
       fullTickStart,
       sweepTarget,
       PLAYER_COLLISION_RADIUS,
@@ -352,18 +364,14 @@ export function simulateMovementTick(
       resolvedVerticalVelocity = 0;
     }
     const terrainGroundY = terrainHeightAt(fullTickStart);
-    const startedOnCastle = castleGroundSupport(
+    const startedOnCastle = activeCastleGroundSupport(
       fullTickStart,
       CASTLE_GROUND_SNAP_DISTANCE,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
     ) !== null;
     const terrainResolvedGroundY = terrainHeightAt(position);
-    const castleResolvedGround = castleGroundSupport(
+    const castleResolvedGround = activeCastleGroundSupport(
       position,
       CASTLE_GROUND_SNAP_DISTANCE,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
     );
     const resolvedGroundY = castleResolvedGround ? castleResolvedGround.y : terrainResolvedGroundY;
     if (wasGrounded && isStartingJump) {

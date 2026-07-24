@@ -1,6 +1,7 @@
 use crate::common::Vector3;
 use crate::castle_collision;
 use crate::heightmap;
+use crate::rapier_collision;
 
 pub const PLAYER_COLLISION_RADIUS: f32 = 0.45;
 /// Player transform positions are capsule feet, not capsule centers.
@@ -34,13 +35,21 @@ pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_c
     } else {
         resolve_player_movement_against(current, &clamped_desired, &[])
     };
-    castle_collision::resolve_capsule_sweep(
+    rapier_collision::resolve_capsule_sweep(
         current,
         &terrain_resolved,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
-        true,
     )
+    .unwrap_or_else(|| {
+        castle_collision::resolve_capsule_sweep(
+            current,
+            &terrain_resolved,
+            PLAYER_COLLISION_RADIUS,
+            PLAYER_CAPSULE_HEIGHT,
+            true,
+        )
+    })
 }
 
 /// Finds the first reachable walkable castle surface within the short vertical snap band.
@@ -49,12 +58,20 @@ pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_c
 pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Vector3> {
     let probe_lift = castle_collision::CAPSULE_SKIN * 2.0;
     let probe_start = Vector3 { x: position.x, y: position.y + probe_lift, z: position.z };
-    let result = castle_collision::snap_capsule_down(
+    let result = rapier_collision::snap_capsule_down(
         &probe_start,
         max_distance + probe_lift,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
-    );
+    )
+    .unwrap_or_else(|| {
+        castle_collision::snap_capsule_down(
+            &probe_start,
+            max_distance + probe_lift,
+            PLAYER_COLLISION_RADIUS,
+            PLAYER_CAPSULE_HEIGHT,
+        )
+    });
     let moved_sideways = ((result.position.x - position.x).powi(2)
         + (result.position.z - position.z).powi(2))
     .sqrt() > castle_collision::CAPSULE_SKIN;

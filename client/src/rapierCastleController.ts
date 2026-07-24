@@ -8,6 +8,7 @@ import {
   type CastleMoveResult,
 } from './castleController';
 import { castleCollisionAsset, isCastleCollisionReady } from './castleCollision';
+import { setRapierCastleResolver } from './rapierCastleBridge';
 
 let rapierWorld: World | null = null;
 let characterCollider: Collider | null = null;
@@ -45,6 +46,7 @@ export function initRapierCastleController(): Promise<void> {
       characterController.enableSnapToGround(CASTLE_GROUND_SNAP_DISTANCE);
       characterController.setNormalNudgeFactor(CASTLE_CAPSULE_SKIN);
       rapierWorld = world;
+      setRapierCastleResolver(resolveRapierCastleCapsuleMovement, rapierCastleGroundSupport);
     })().catch(error => {
       initPromise = null;
       throw error;
@@ -107,6 +109,30 @@ export function resolveRapierCastleCapsuleMovement(
   }
 
   return { position, groundNormal, hitCeiling, hitWall };
+}
+
+export function rapierCastleGroundSupport(
+  position: THREE.Vector3,
+  maxDistance: number,
+  radius: number,
+  height: number,
+): THREE.Vector3 | null {
+  const probeLift = CASTLE_CAPSULE_SKIN * 2;
+  const probeStart = new THREE.Vector3(position.x, position.y + probeLift, position.z);
+  const result = resolveRapierCastleCapsuleMovement(
+    probeStart,
+    new THREE.Vector3(position.x, position.y - maxDistance, position.z),
+    radius,
+    height,
+  );
+  const movedSideways = Math.hypot(result.position.x - position.x, result.position.z - position.z) > CASTLE_CAPSULE_SKIN;
+  const movedAboveProbe = result.position.y - position.y > probeLift + CASTLE_CAPSULE_SKIN;
+  const movedBelowSnap = position.y - result.position.y > maxDistance + CASTLE_CAPSULE_SKIN;
+  return !movedSideways && result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y
+    && !movedAboveProbe
+    && !movedBelowSnap
+    ? result.position
+    : null;
 }
 
 function capsuleSegmentHalfHeight(radius: number, height: number): number {
