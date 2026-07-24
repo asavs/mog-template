@@ -73,8 +73,15 @@ export function resolveCastleCapsuleSweep(
     // final blocked location rather than the stale sample that started it.
     const finalContact = capsuleContact(high, radius, height, remaining) ?? { normal: hit.normal };
     position = low.addScaledVector(finalContact.normal, CASTLE_CAPSULE_SKIN);
-    if (finalContact.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y) groundNormal = finalContact.normal;
-    if (finalContact.normal.y <= -CASTLE_MIN_WALKABLE_NORMAL_Y) hitCeiling = true;
+    // Keep these classifications aligned with the authoritative Rust solver.
+    // A contact is support only while moving down into it; a ceiling only
+    // while moving up into it. This avoids treating an upward jump into a
+    // slope as grounding on prediction.
+    const contactMotion = remaining;
+    if (finalContact.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y && contactMotion.y <= 0) {
+      groundNormal = finalContact.normal;
+    }
+    if (finalContact.normal.y < -CONTACT_EPSILON && contactMotion.y > 0) hitCeiling = true;
     if (Math.abs(finalContact.normal.y) < CASTLE_MIN_WALKABLE_NORMAL_Y) hitWall = true;
     remaining = target.clone().sub(position);
     const intoSurface = remaining.dot(finalContact.normal);

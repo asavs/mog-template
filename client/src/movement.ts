@@ -145,9 +145,11 @@ export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vec
         : clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, current.z));
     }
   }
-  return isCastleCollisionReady()
-    ? resolveCastleCapsuleSweep(current, terrainResolved, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT).position
-    : terrainResolved;
+  // Castle collision is resolved once, at the end of simulateMovementTick,
+  // after jump/gravity have produced the complete desired XYZ displacement.
+  // Resolving it here as well would make prediction sweep a horizontal path
+  // and then a second, different combined path.
+  return terrainResolved;
 }
 
 function clampToWorld(position: THREE.Vector3): THREE.Vector3 {

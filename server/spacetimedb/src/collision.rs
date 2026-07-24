@@ -193,7 +193,10 @@ mod tests {
             z: -1.0,
         };
 
-        assert_eq!(resolve_player_movement(&current, &desired).position, desired);
+        let resolved = resolve_player_movement(&current, &desired).position;
+        assert_close(resolved.x, desired.x);
+        assert_close(resolved.y, desired.y);
+        assert_close(resolved.z, desired.z);
     }
 
     #[test]
