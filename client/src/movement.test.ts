@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import type { InputState } from './generated/types';
-import { sampleHeight } from './heightmap';
+import { HEIGHTMAP_MAX_X, sampleHeight } from './heightmap';
 import {
   PLAYER_COLLISION_RADIUS,
   PLAYER_SPEED,
@@ -41,22 +41,24 @@ describe('movement collision prediction', () => {
   });
 
   it('clamps predicted movement to the authoritative map bounds', () => {
-    const position = new THREE.Vector3(1573, 10000, 0);
+    const nearEdge = HEIGHTMAP_MAX_X - 1;
+    const position = new THREE.Vector3(nearEdge, 10000, 0);
     const input = defaultInput();
     input.right = true;
 
     applyMovement(position, 0, input, 1);
 
-    expect(position.x).toBeCloseTo(1574.03 - PLAYER_COLLISION_RADIUS);
+    expect(position.x).toBeCloseTo(HEIGHTMAP_MAX_X - PLAYER_COLLISION_RADIUS);
   });
 
   it('preserves vertical motion while resolving horizontal bounds', () => {
-    const current = new THREE.Vector3(1573, 10000, 0);
+    const nearEdge = HEIGHTMAP_MAX_X - 1;
+    const current = new THREE.Vector3(nearEdge, 10000, 0);
     const desired = new THREE.Vector3(10000, 4, 0);
 
     const resolved = resolvePlayerMovement(current, desired);
 
-    expect(resolved.x).toBeCloseTo(1574.03 - PLAYER_COLLISION_RADIUS);
+    expect(resolved.x).toBeCloseTo(HEIGHTMAP_MAX_X - PLAYER_COLLISION_RADIUS);
     expect(resolved.y).toBeCloseTo(4);
     expect(resolved.z).toBeCloseTo(0);
   });
@@ -71,9 +73,10 @@ describe('movement collision prediction', () => {
   });
 
   it('keeps grounded movement attached while walking downhill', () => {
-    const startX = -1451.068125;
-    const startZ = -1135.23375;
-    const nextZ = -1125.613125;
+    // Slope sample inside the current castle-zone heightmap (not the old full map).
+    const startX = 200;
+    const startZ = -35;
+    const nextZ = -25;
     const position = new THREE.Vector3(startX, sampleHeight(startX, startZ), startZ);
     const input = defaultInput();
     input.backward = true;
@@ -85,8 +88,8 @@ describe('movement collision prediction', () => {
   });
 
   it('starts a moving jump from the resolved terrain height', () => {
-    const startX = -1451.068125;
-    const startZ = -1135.23375;
+    const startX = 200;
+    const startZ = -35;
     const position = new THREE.Vector3(startX, sampleHeight(startX, startZ), startZ);
     const input = defaultInput();
     input.backward = true;

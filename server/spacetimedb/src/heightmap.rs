@@ -116,6 +116,12 @@ pub fn terrain_slope_at(x: f32, z: f32) -> f32 {
     (dhdx * dhdx + dhdz * dhdz).sqrt()
 }
 
+/// Playable XZ clamp box — always the baked heightmap header, never a parallel constant.
+pub fn world_bounds() -> (f32, f32, f32, f32) {
+    let hm = heightmap();
+    (hm.min_x, hm.max_x, hm.min_z, hm.max_z)
+}
+
 fn height_at_index(x: usize, z: usize) -> f32 {
     heightmap().heights[z * HEIGHTMAP_SIZE + x]
 }

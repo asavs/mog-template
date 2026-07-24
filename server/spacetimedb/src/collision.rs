@@ -10,10 +10,6 @@ pub const MAX_WALKABLE_SLOPE_DEGREES: f32 = 70.0;
 pub const MAX_STEP_HEIGHT: f32 = 1.25;
 pub const MAX_SNAP_DOWN_HEIGHT: f32 = 6.0;
 
-const WORLD_MIN_X: f32 = -1574.03;
-const WORLD_MAX_X: f32 = 1574.03;
-const WORLD_MIN_Z: f32 = -1231.44;
-const WORLD_MAX_Z: f32 = 1231.44;
 const MAX_WALKABLE_SLOPE: f32 = 2.7474775; // tan(70 degrees)
 const SLOPE_SAMPLE_DISTANCE: f32 = 1.0;
 
@@ -121,15 +117,16 @@ fn resolve_player_movement_against(current: &Vector3, desired: &Vector3, blocker
 }
 
 fn clamp_to_world(position: &Vector3) -> Vector3 {
+    let (min_x, max_x, min_z, max_z) = heightmap::world_bounds();
     Vector3 {
         x: position.x.clamp(
-            WORLD_MIN_X + PLAYER_COLLISION_RADIUS,
-            WORLD_MAX_X - PLAYER_COLLISION_RADIUS,
+            min_x + PLAYER_COLLISION_RADIUS,
+            max_x - PLAYER_COLLISION_RADIUS,
         ),
         y: position.y,
         z: position.z.clamp(
-            WORLD_MIN_Z + PLAYER_COLLISION_RADIUS,
-            WORLD_MAX_Z - PLAYER_COLLISION_RADIUS,
+            min_z + PLAYER_COLLISION_RADIUS,
+            max_z - PLAYER_COLLISION_RADIUS,
         ),
     }
 }
@@ -219,10 +216,11 @@ mod tests {
         };
 
         let resolved = resolve_player_movement(&current, &desired).position;
+        let (_min_x, max_x, min_z, _max_z) = heightmap::world_bounds();
 
-        assert_close(resolved.x, WORLD_MAX_X - PLAYER_COLLISION_RADIUS);
+        assert_close(resolved.x, max_x - PLAYER_COLLISION_RADIUS);
         assert_close(resolved.y, 2.0);
-        assert_close(resolved.z, WORLD_MIN_Z + PLAYER_COLLISION_RADIUS);
+        assert_close(resolved.z, min_z + PLAYER_COLLISION_RADIUS);
     }
 
     #[test]
