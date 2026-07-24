@@ -68,22 +68,24 @@ export function InventoryPanel() {
   if (!isJoined) return null;
 
   return (
-    <div style={panelStyle}>
+    <div style={panelStyle} data-qa="inventory-panel">
       <div style={titleStyle}>Inventory / Equipment</div>
 
       <div style={sectionLabelStyle}>Equipped</div>
       {equippedRows.length === 0 ? (
-        <div style={emptyStyle}>(empty)</div>
+        <div style={emptyStyle} data-qa-equipped-empty>(empty)</div>
       ) : (
-        <ul style={listStyle}>
+        <ul style={listStyle} data-qa-equipped-list>
           {equippedRows.map(row => (
-            <li key={`${row.slot}:${row.itemId}`} style={listItemStyle}>
+            <li key={`${row.slot}:${row.itemId}`} style={listItemStyle} data-qa-equipped-slot={row.slot}>
               <span style={slotLabelStyle}>
                 {formatCatalogIdLabel(row.slot)} → {formatCatalogIdLabel(row.itemId)}
               </span>
               <button
                 type="button"
                 style={btnStyle}
+                data-qa-unequip={row.slot}
+                aria-label={`Unequip ${row.slot}`}
                 onClick={() => callUnequip(row.slot)}
               >
                 Unequip
@@ -106,6 +108,9 @@ export function InventoryPanel() {
                 ...btnStyle,
                 ...(isEquipped ? btnActiveStyle : {}),
               }}
+              data-qa-equip={item.itemId}
+              data-qa-equipped={isEquipped ? '1' : '0'}
+              aria-label={isEquipped ? `Equipped ${item.label}` : `Equip ${item.label}`}
               onClick={() => {
                 if (!isEquipped) callEquip(item.itemId);
               }}
@@ -132,6 +137,9 @@ export function InventoryPanel() {
                     ...btnStyle,
                     ...(isEquipped ? btnActiveStyle : {}),
                   }}
+                  data-qa-equip={item.itemId}
+                  data-qa-equipped={isEquipped ? '1' : '0'}
+                  aria-label={isEquipped ? `Equipped ${item.label}` : `Equip ${item.label}`}
                   onClick={() => {
                     if (!isEquipped) callEquip(item.itemId);
                   }}

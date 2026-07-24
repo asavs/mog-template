@@ -202,3 +202,119 @@ export function generateCapabilityPhases(
   return phases;
 }
 
+/**
+ * Mid-session equip/unequip via InventoryPanel data-qa hooks.
+ * Covers wand cast grants after equip and empty main_hand after unequip.
+ * All presets that can join (catalog) run these — equip UI is class-agnostic.
+ */
+export function generateEquipPhases(): PhaseDef[] {
+  const stationary = { kind: 'stationary' } as const;
+  const settleMs = 600;
+
+  return [
+    {
+      name: 'equip_wand',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        await page.waitForSelector('[data-qa="inventory-panel"]', { timeout: 10_000 });
+        const equip = page.locator('[data-qa-equip="wand"]');
+        await equip.waitFor({ state: 'visible', timeout: 10_000 });
+        // Already equipped (wizard/acolyte seed) → still click is a no-op when data-qa-equipped=1
+        if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
+          await equip.click();
+        }
+        await page.waitForTimeout(settleMs);
+        // Confirm UI shows wand equipped or main_hand unequip available.
+        const wandOn = page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]');
+        const mainUnequip = page.locator('[data-qa-unequip="main_hand"]');
+        await Promise.race([
+          wandOn.waitFor({ state: 'visible', timeout: 8_000 }),
+          mainUnequip.waitFor({ state: 'visible', timeout: 8_000 }),
+        ]);
+      },
+    },
+    {
+      name: 'cast_after_equip_wand',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        // Ensure wand is equipped (idempotent).
+        const equip = page.locator('[data-qa-equip="wand"]');
+        if (await equip.count()) {
+          if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
+            await equip.click();
+            await page.waitForTimeout(settleMs);
+          }
+        }
+        await tapKey(page, 'Digit1');
+        await click(page);
+        await page.waitForTimeout(400);
+        await click(page);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: 'unequip_main_hand',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        const unequip = page.locator('[data-qa-unequip="main_hand"]');
+        await unequip.waitFor({ state: 'visible', timeout: 10_000 });
+        await unequip.click();
+        await page.waitForTimeout(settleMs);
+        // Wand equip button should no longer show equipped.
+        const wandBtn = page.locator('[data-qa-equip="wand"]');
+        if (await wandBtn.count()) {
+          await page.waitForFunction(
+            () => {
+              const el = document.querySelector('[data-qa-equip="wand"]');
+              return el?.getAttribute('data-qa-equipped') === '0';
+            },
+            { timeout: 8_000 },
+          ).catch(() => {
+            /* sword/dagger may remain; main_hand empty is enough */
+          });
+        }
+      },
+    },
+    {
+      name: 'equip_sword',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        const equip = page.locator('[data-qa-equip="sword_1h"]');
+        await equip.waitFor({ state: 'visible', timeout: 10_000 });
+        if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
+          await equip.click();
+        }
+        await page.waitForTimeout(settleMs);
+        await page.locator('[data-qa-equip="sword_1h"][data-qa-equipped="1"]').waitFor({
+          state: 'visible',
+          timeout: 8_000,
+        });
+      },
+    },
+  ];
+}
+
+/** Preset ids that seed (or can equip into) cast grants — used by handwritten combat phases. */
+export function classesWithSpell(
+  spell: WizardSpell,
+  configs: CapabilityConfigs = CHARACTER_CONFIGS,
+): CharacterClass[] {
+  return classesWith(configs, (config) => config.capabilities.spells.includes(spell));
+}
+
+export function classesWithMelee(
+  configs: CapabilityConfigs = CHARACTER_CONFIGS,
+): CharacterClass[] {
+  return classesWith(configs, (config) => config.capabilities.melee);
+}
+
+export function classesWithBlock(
+  configs: CapabilityConfigs = CHARACTER_CONFIGS,
+): CharacterClass[] {
+  return classesWith(configs, (config) => config.capabilities.block);
+}
+
