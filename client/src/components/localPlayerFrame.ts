@@ -1,8 +1,8 @@
 import { useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import type { InputState, MovementState, PlayerInputAck, PlayerTransform } from '../generated/types';
-import { sampleHeight, terrainHeightAt } from '../heightmap';
-import { createMovementState, isMoving, simulateMovementTick, type LocomotionState } from '../movement';
+import { sampleHeight } from '../heightmap';
+import { createMovementState, groundHeightAt, isMoving, simulateMovementTick, type LocomotionState } from '../movement';
 import type { NetMetrics } from '../netcode';
 import { setAudioListenerWorldPosition } from '../audio/AudioManager';
 import type { ClassCapabilities } from './characterConfig';
@@ -399,7 +399,7 @@ function shouldPreserveLocalVerticalPrediction({
   localVerticalVelocity: number;
 }): boolean {
   return shouldClearVerticalCorrection({
-    groundY: terrainHeightAt(localPosition),
+    groundY: groundHeightAt(localPosition),
     movementState: localMovementState,
     positionY: localPosition.y,
     verticalVelocity: localVerticalVelocity,
@@ -564,7 +564,7 @@ export function runLocalPlayerFrame({
       visualOffset: vectorDebug(visualCorrectionOffsetRef.current),
       previousPredictedPosition: vectorDebug(previousPredictedTickPositionRef.current),
       currentPredictedPosition: vectorDebug(currentPredictedTickPositionRef.current),
-      groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+      groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
       localClientTick: localClientTickRef.current,
       localTick: localTickRef.current,
       acknowledgedClientTick: metrics.acknowledgedClientTick,
@@ -617,7 +617,7 @@ export function runLocalPlayerFrame({
           latestTransform.position.y,
           latestTransform.position.z,
         )),
-        groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+        groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
         localClientTick: localClientTickRef.current,
         localTick: localTickRef.current,
         acknowledgedClientTick: initAck.lastProcessedClientTick,
@@ -668,7 +668,7 @@ export function runLocalPlayerFrame({
         localPosition: vectorDebug(localPositionRef.current),
         renderPosition: vectorDebug(renderPositionRef.current),
         visualOffset: vectorDebug(visualCorrectionOffsetRef.current),
-        groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+        groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
         localClientTick: localClientTickRef.current,
         localTick: localTickRef.current,
         acknowledgedClientTick: metrics.acknowledgedClientTick,
@@ -740,7 +740,7 @@ export function runLocalPlayerFrame({
           localPosition: vectorDebug(localPositionRef.current),
           renderPosition: vectorDebug(renderPositionRef.current),
           visualOffset: vectorDebug(visualCorrectionOffsetRef.current),
-          groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+          groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
           localClientTick: localClientTickRef.current,
           localTick: localTickRef.current,
           acknowledgedClientTick: metrics.acknowledgedClientTick,
@@ -774,7 +774,7 @@ export function runLocalPlayerFrame({
     const startsGroundedJump =
       jumpPressed &&
       !localJumpWasPressedRef.current &&
-      localPositionRef.current.y <= terrainHeightAt(localPositionRef.current) + JUMP_START_GROUNDED_EPSILON;
+      localPositionRef.current.y <= groundHeightAt(localPositionRef.current) + JUMP_START_GROUNDED_EPSILON;
 
     if (startsGroundedJump) {
       jumpAnimationUntilRef.current = performance.now() + jumpAnimationDurationMs;
@@ -789,7 +789,7 @@ export function runLocalPlayerFrame({
         localPosition: vectorDebug(positionBeforeTick),
         previousPredictedPosition: vectorDebug(previousPredictedTickPositionRef.current),
         currentPredictedPosition: vectorDebug(currentPredictedTickPositionRef.current),
-        groundY: Number(terrainHeightAt(positionBeforeTick).toFixed(4)),
+        groundY: Number(groundHeightAt(positionBeforeTick).toFixed(4)),
         localClientTick: localClientTickRef.current,
         localTick: localTickRef.current,
         acknowledgedClientTick: metrics.acknowledgedClientTick,
@@ -834,7 +834,7 @@ export function runLocalPlayerFrame({
         localPosition: vectorDebug(localPositionRef.current),
         previousPredictedPosition: vectorDebug(previousPredictedTickPositionRef.current),
         currentPredictedPosition: vectorDebug(currentPredictedTickPositionRef.current),
-        groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+        groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
         localClientTick: localClientTickRef.current,
         localTick: localTickRef.current,
         acknowledgedClientTick: metrics.acknowledgedClientTick,
@@ -852,7 +852,7 @@ export function runLocalPlayerFrame({
 
   const correctionAlpha = 1 - Math.exp(-VISUAL_CORRECTION_DECAY_RATE * dt);
   visualCorrectionOffsetRef.current.lerp(zeroVectorRef.current, correctionAlpha);
-  const groundY = terrainHeightAt(localPositionRef.current);
+  const groundY = groundHeightAt(localPositionRef.current);
   const clearedVerticalCorrection = shouldClearVerticalCorrection({
     groundY,
     movementState: localMovementStateRef.current,
@@ -1082,7 +1082,7 @@ function reconcileLocalPrediction({
         latestTransform.position.y,
         latestTransform.position.z,
       )),
-      groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+      groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
       localClientTick: localClientTickRef.current,
       localTick: localTickRef.current,
       acknowledgedClientTick,
@@ -1216,7 +1216,7 @@ function reconcileLocalPrediction({
       previousPredictedPosition: vectorDebug(previousPredictedTickPositionRef.current),
       currentPredictedPosition: vectorDebug(currentPredictedTickPositionRef.current),
       serverPosition: vectorDebug(serverPosition),
-      groundY: Number(terrainHeightAt(replayPosition).toFixed(4)),
+      groundY: Number(groundHeightAt(replayPosition).toFixed(4)),
       localClientTick: localClientTickRef.current,
       localTick: localTickRef.current,
       acknowledgedClientTick,
@@ -1278,7 +1278,7 @@ function reconcileLocalPrediction({
         previousPredictedPosition: vectorDebug(previousPredictedTickPositionRef.current),
         currentPredictedPosition: vectorDebug(currentPredictedTickPositionRef.current),
         serverPosition: vectorDebug(serverPosition),
-        groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+        groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
         localClientTick: localClientTickRef.current,
         localTick: localTickRef.current,
         acknowledgedClientTick,
@@ -1401,7 +1401,7 @@ function snapToServerTransform({
         latestTransform.position.y,
         latestTransform.position.z,
       )),
-      groundY: Number(terrainHeightAt(localPositionRef.current).toFixed(4)),
+      groundY: Number(groundHeightAt(localPositionRef.current).toFixed(4)),
       localClientTick: localClientTickRef.current,
       localTick: localTickRef.current,
       acknowledgedClientTick: ack.lastProcessedClientTick,
@@ -1553,7 +1553,7 @@ function updateWizardAimTargets({
             0,
             renderPositionRef.current.z + (aimDirection.z / horizontalAimLength) * LIGHTNING_AIM_FALLBACK_DISTANCE,
           );
-          aimPoint.y = terrainHeightAt(aimPoint);
+          aimPoint.y = groundHeightAt(aimPoint);
         } else {
           aimPoint.copy(renderPositionRef.current);
         }
@@ -1576,7 +1576,7 @@ function updateWizardAimTargets({
         0,
         renderPositionRef.current.z + horizontalOffset.z,
       );
-      target.y = terrainHeightAt(target);
+      target.y = groundHeightAt(target);
       const terrainNormal = getTerrainNormalAt(target, lightningTerrainNormalRef.current);
       target.addScaledVector(terrainNormal, LIGHTNING_TARGET_Y_OFFSET);
       reticle.position.copy(target);
@@ -1612,7 +1612,7 @@ function updateWizardAimTargets({
     0,
     start.z + aimDirection.z * FIREBALL_TARGET_DISTANCE,
   );
-  target.y = terrainHeightAt(target);
+  target.y = groundHeightAt(target);
   publishFireballAimDebug({
     aimDirection: fireballVectorDebug(aimDirection),
     cameraPosition: fireballVectorDebug(camera.position),
@@ -1623,7 +1623,7 @@ function updateWizardAimTargets({
 
   const geometry = fireballLine.geometry as THREE.BufferGeometry;
   const positions = geometry.getAttribute('position') as THREE.BufferAttribute;
-  positions.setXYZ(0, start.x, terrainHeightAt(start) + FIREBALL_MARKER_Y_OFFSET, start.z);
+  positions.setXYZ(0, start.x, groundHeightAt(start) + FIREBALL_MARKER_Y_OFFSET, start.z);
   positions.setXYZ(1, target.x, target.y + FIREBALL_MARKER_Y_OFFSET, target.z);
   positions.needsUpdate = true;
   geometry.computeBoundingSphere();
@@ -1644,25 +1644,25 @@ function findTerrainHitAlongRay(
   out: THREE.Vector3,
 ): boolean {
   let previousDistance = 0;
-  let previousDelta = origin.y - terrainHeightAt(origin);
+  let previousDelta = origin.y - groundHeightAt(origin);
 
   for (let distance = LIGHTNING_AIM_RAY_STEP; distance <= maxDistance; distance += LIGHTNING_AIM_RAY_STEP) {
     out.copy(origin).addScaledVector(direction, distance);
-    const delta = out.y - terrainHeightAt(out);
+    const delta = out.y - groundHeightAt(out);
     if (delta <= 0) {
       let low = previousDistance;
       let high = distance;
       for (let i = 0; i < 6; i += 1) {
         const mid = (low + high) * 0.5;
         out.copy(origin).addScaledVector(direction, mid);
-        if (out.y - terrainHeightAt(out) <= 0) {
+        if (out.y - groundHeightAt(out) <= 0) {
           high = mid;
         } else {
           low = mid;
         }
       }
       out.copy(origin).addScaledVector(direction, high);
-      out.y = terrainHeightAt(out);
+      out.y = groundHeightAt(out);
       return true;
     }
 

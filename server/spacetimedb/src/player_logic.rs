@@ -1,4 +1,5 @@
 use crate::collision::{self, MAX_SNAP_DOWN_HEIGHT};
+use crate::castle_collision::GROUND_SNAP_DISTANCE;
 use crate::common::{
     DELTA_TIME, GROUNDED_EPSILON, InputState, MovementState, PLAYER_SPEED,
     POSE_POSITION_EPSILON, POSE_ROTATION_EPSILON, SPRINT_MULTIPLIER, Vector3,
@@ -139,7 +140,13 @@ pub fn update_transform(
     input: &InputState,
     rotation_y: f32,
 ) {
-    let current_ground_y = heightmap::terrain_height_at(&transform.position);
+    let terrain_ground_y = heightmap::terrain_height_at(&transform.position);
+    let castle_ground = collision::castle_ground_support(&transform.position, GROUND_SNAP_DISTANCE);
+    let started_on_castle = castle_ground.is_some();
+    let current_ground_y = castle_ground
+        .as_ref()
+        .map(|support| support.y)
+        .unwrap_or(terrain_ground_y);
     let was_grounded = transform.position.y <= current_ground_y + GROUNDED_EPSILON;
     let is_starting_jump = input.jump && !jump_state.was_jump_pressed && was_grounded;
     let sprint_active = sprint_active_for_state(
@@ -148,7 +155,7 @@ pub fn update_transform(
         transform.movement_state.sprint_active,
     );
 
-    let desired_position = calculate_next_position(
+    let mut desired_position = calculate_next_position(
         &transform.position,
         current_ground_y,
         rotation_y,
@@ -157,16 +164,49 @@ pub fn update_transform(
         &mut jump_state.vertical_velocity,
         &mut jump_state.was_jump_pressed,
     );
-    let mut resolved_position =
-        collision::resolve_player_movement(&transform.position, &desired_position);
-    let resolved_ground_y = heightmap::terrain_height_at(&resolved_position);
+    if was_grounded && !is_starting_jump {
+        let ending_terrain_y = heightmap::terrain_height_at(&desired_position);
+        let ending_castle_ground = collision::castle_ground_support(
+            &desired_position,
+            GROUND_SNAP_DISTANCE,
+        );
+        let ending_ground_y = ending_castle_ground
+            .as_ref()
+            .map(|support| support.y)
+            .unwrap_or(ending_terrain_y);
+        if ending_ground_y > desired_position.y {
+            desired_position.y = ending_ground_y;
+        }
+    }
+    let move_result = collision::resolve_player_movement(&transform.position, &desired_position);
+    let mut resolved_position = move_result.position;
+    if move_result.hit_ceiling && jump_state.vertical_velocity > 0.0 {
+        jump_state.vertical_velocity = 0.0;
+    }
+    if move_result.ground_normal.is_some() && jump_state.vertical_velocity < 0.0 {
+        jump_state.vertical_velocity = 0.0;
+    }
+    let terrain_resolved_ground_y = heightmap::terrain_height_at(&resolved_position);
+    let castle_resolved_ground = collision::castle_ground_support(
+        &resolved_position,
+        GROUND_SNAP_DISTANCE,
+    );
+    let resolved_ground_y = castle_resolved_ground
+        .as_ref()
+        .map(|support| support.y)
+        .unwrap_or(terrain_resolved_ground_y);
     if was_grounded && is_starting_jump {
-        if current_ground_y - resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
-            resolved_position.y = resolved_ground_y + jump_state.vertical_velocity * DELTA_TIME;
+        if !started_on_castle && terrain_ground_y - terrain_resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
+            resolved_position.y = terrain_resolved_ground_y + jump_state.vertical_velocity * DELTA_TIME;
         }
     } else if was_grounded {
-        if current_ground_y - resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
-            resolved_position.y = resolved_ground_y;
+        if let Some(castle_support) = castle_resolved_ground.as_ref() {
+            if jump_state.vertical_velocity <= 0.0 && desired_position.y <= transform.position.y {
+                resolved_position.y = castle_support.y;
+                jump_state.vertical_velocity = 0.0;
+            }
+        } else if !started_on_castle && terrain_ground_y - terrain_resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
+            resolved_position.y = terrain_resolved_ground_y;
             jump_state.vertical_velocity = 0.0;
         }
     } else if resolved_position.y <= resolved_ground_y {

@@ -29,6 +29,7 @@
     "gen:loadout:check": "node ../scripts/gen-avatar-loadout.mjs --check"
   },
   "dependencies": {
+    "@dimforge/rapier3d-deterministic-compat": "^0.19.3",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "react": "^19.2.5",

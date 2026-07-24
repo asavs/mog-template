@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
+import {
+  CASTLE_GROUND_SNAP_DISTANCE,
+  castleGroundSupport,
+  resolveCastleCapsuleSweep,
+} from './castleController';
+import { castleCollisionAsset, isCastleCollisionReady } from './castleCollision';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
+import {
+  getRapierCastleGroundSupport,
+  resolveRapierCastleMovement,
+} from './rapierCastleBridge';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
   GRAVITY,
@@ -28,6 +38,7 @@ export {
   type LocomotionState,
 } from './locomotion';
 export const PLAYER_COLLISION_RADIUS = 0.45;
+export const PLAYER_CAPSULE_HEIGHT = 1.8;
 export const MAX_WALKABLE_SLOPE_DEGREES = 70;
 export const MAX_STEP_HEIGHT = 1.25;
 export const MAX_SNAP_DOWN_HEIGHT = 6.0;
@@ -39,24 +50,12 @@ const WORLD_MAX_Z = 1231.44;
 const MAX_WALKABLE_SLOPE = Math.tan(THREE.MathUtils.degToRad(MAX_WALKABLE_SLOPE_DEGREES));
 const SLOPE_SAMPLE_DISTANCE = 1.0;
 
-interface Aabb {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
-
-// Authored "-col" meshes were converted to broad rectangles and caused
-// false invisible walls in playable terrain. Keep horizontal movement open
-// for now and let the baked heightmap control where the player stands.
-const BLOCKERS: Aabb[] = [];
-
 export function isMoving(input: InputState): boolean {
   return isMovingInput(input);
 }
 
 export function isGroundedAt(position: THREE.Vector3): boolean {
-  return position.y <= terrainHeightAt(position) + GROUNDED_EPSILON;
+  return position.y <= groundHeightAt(position) + GROUNDED_EPSILON;
 }
 
 export function sprintActiveForState(
@@ -123,11 +122,11 @@ export function applyMovement(
   const desired = position.clone();
   desired.x += moveX * movementScale;
   desired.z += moveZ * movementScale;
-  const currentGround = terrainHeightAt(position);
+  const currentGround = groundHeightAt(position);
   const wasGrounded = position.y <= currentGround + GROUNDED_EPSILON;
   const resolved = resolvePlayerMovement(position, desired);
   if (wasGrounded) {
-    const resolvedGround = terrainHeightAt(resolved);
+    const resolvedGround = groundHeightAt(resolved);
     if (currentGround - resolvedGround <= MAX_SNAP_DOWN_HEIGHT) {
       resolved.y = resolvedGround;
     }
@@ -137,21 +136,30 @@ export function applyMovement(
 
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
-  if (canMoveTo(current, clampedDesired)) {
+  if (isCastleCollisionReady()
+    && (activeCastleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE)
+      || isInsideCastleCollisionBounds(current)
+      || isInsideCastleCollisionBounds(clampedDesired))) {
     return clampedDesired;
   }
-
-  const xOnly = clampToWorld(new THREE.Vector3(clampedDesired.x, clampedDesired.y, current.z));
-  if (canMoveTo(current, xOnly)) {
-    return xOnly;
+  let terrainResolved: THREE.Vector3;
+  if (canMoveTo(current, clampedDesired)) {
+    terrainResolved = clampedDesired;
+  } else {
+    const xOnly = clampToWorld(new THREE.Vector3(clampedDesired.x, clampedDesired.y, current.z));
+    if (canMoveTo(current, xOnly)) terrainResolved = xOnly;
+    else {
+      const zOnly = clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, clampedDesired.z));
+      terrainResolved = canMoveTo(current, zOnly)
+        ? zOnly
+        : clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, current.z));
+    }
   }
-
-  const zOnly = clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, clampedDesired.z));
-  if (canMoveTo(current, zOnly)) {
-    return zOnly;
-  }
-
-  return clampToWorld(new THREE.Vector3(current.x, clampedDesired.y, current.z));
+  // Castle collision is resolved once, at the end of simulateMovementTick,
+  // after jump/gravity have produced the complete desired XYZ displacement.
+  // Resolving it here as well would make prediction sweep a horizontal path
+  // and then a second, different combined path.
+  return terrainResolved;
 }
 
 function clampToWorld(position: THREE.Vector3): THREE.Vector3 {
@@ -170,12 +178,17 @@ function clampToWorld(position: THREE.Vector3): THREE.Vector3 {
   );
 }
 
-function collidesWithBlockers(position: THREE.Vector3): boolean {
-  return BLOCKERS.some(blocker => containsCapsuleFootprint(blocker, position));
+function canMoveTo(current: THREE.Vector3, desired: THREE.Vector3): boolean {
+  return isTerrainStepWalkable(current, desired);
 }
 
-function canMoveTo(current: THREE.Vector3, desired: THREE.Vector3): boolean {
-  return !collidesWithBlockers(desired) && isTerrainStepWalkable(current, desired);
+function isInsideCastleCollisionBounds(position: THREE.Vector3): boolean {
+  if (!isCastleCollisionReady()) return false;
+  const asset = castleCollisionAsset();
+  return position.x >= asset.min[0] - PLAYER_COLLISION_RADIUS
+    && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
+    && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
+    && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS;
 }
 
 export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vector3): boolean {
@@ -212,13 +225,6 @@ export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vec
   return true;
 }
 
-function containsCapsuleFootprint(blocker: Aabb, position: THREE.Vector3): boolean {
-  return position.x >= blocker.minX - PLAYER_COLLISION_RADIUS
-    && position.x <= blocker.maxX + PLAYER_COLLISION_RADIUS
-    && position.z >= blocker.minZ - PLAYER_COLLISION_RADIUS
-    && position.z <= blocker.maxZ + PLAYER_COLLISION_RADIUS;
-}
-
 export function applyJumpPhysics(
   position: THREE.Vector3,
   input: InputState,
@@ -227,7 +233,7 @@ export function applyJumpPhysics(
   wasJumpPressed: boolean,
   wasGrounded = isGroundedAt(position),
 ): { verticalVelocity: number; wasJumpPressed: boolean } {
-  const groundY = terrainHeightAt(position);
+  const groundY = groundHeightAt(position);
 
   let nextVerticalVelocity = verticalVelocity + GRAVITY * deltaSeconds;
 
@@ -251,6 +257,18 @@ export function applyJumpPhysics(
 export function lerpAngle(from: number, to: number, alpha: number): number {
   const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
   return from + delta * alpha;
+}
+
+export function groundHeightAt(position: THREE.Vector3): number {
+  const terrain = terrainHeightAt(position);
+  if (!isCastleCollisionReady()) return terrain;
+  const support = activeCastleGroundSupport(position, CASTLE_GROUND_SNAP_DISTANCE);
+  return support ? support.y : terrain;
+}
+
+function activeCastleGroundSupport(position: THREE.Vector3, maxDistance: number): THREE.Vector3 | null {
+  return getRapierCastleGroundSupport(position, maxDistance, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)
+    ?? castleGroundSupport(position, maxDistance, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
 }
 
 
@@ -295,6 +313,7 @@ export function simulateMovementTick(
     DEFAULT_LOCOMOTION_CONFIG,
   );
 
+  const fullTickStart = position.clone();
   applyMovement(
     position,
     rotationY,
@@ -310,11 +329,75 @@ export function simulateMovementTick(
     wasJumpPressed,
     movementStateBeforeTick.isGrounded,
   );
+  // Locomotion above deliberately remains unchanged. This is only the final
+  // full-XYZ reachability pass, so upward jumps and falls cannot bypass castle
+  // ceilings, undersides, or ramps after horizontal prediction has run.
+  let resolvedVerticalVelocity = jumpPhysicsAfterTick.verticalVelocity;
+  if (isCastleCollisionReady()) {
+    const wasGrounded = movementStateBeforeTick.isGrounded;
+    const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
+    const sweepTarget = position.clone();
+    if (wasGrounded && !isStartingJump) {
+      const endingTerrainY = terrainHeightAt(sweepTarget);
+      const endingCastleGround = activeCastleGroundSupport(
+        sweepTarget,
+        CASTLE_GROUND_SNAP_DISTANCE,
+      );
+      const endingGroundY = endingCastleGround ? endingCastleGround.y : endingTerrainY;
+      sweepTarget.y = Math.max(fullTickStart.y, endingGroundY);
+    }
+    const desiredBeforeCastle = sweepTarget.clone();
+    const collision = resolveRapierCastleMovement(
+      fullTickStart,
+      sweepTarget,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    ) ?? resolveCastleCapsuleSweep(
+      fullTickStart,
+      sweepTarget,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    );
+    position.copy(collision.position);
+    if ((collision.hitCeiling && resolvedVerticalVelocity > 0)
+      || (collision.groundNormal && resolvedVerticalVelocity < 0)) {
+      resolvedVerticalVelocity = 0;
+    }
+    const terrainGroundY = terrainHeightAt(fullTickStart);
+    const startedOnCastle = activeCastleGroundSupport(
+      fullTickStart,
+      CASTLE_GROUND_SNAP_DISTANCE,
+    ) !== null;
+    const terrainResolvedGroundY = terrainHeightAt(position);
+    const castleResolvedGround = activeCastleGroundSupport(
+      position,
+      CASTLE_GROUND_SNAP_DISTANCE,
+    );
+    const resolvedGroundY = castleResolvedGround ? castleResolvedGround.y : terrainResolvedGroundY;
+    if (wasGrounded && isStartingJump) {
+      if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
+        position.y = terrainResolvedGroundY + resolvedVerticalVelocity * deltaSeconds;
+      }
+    } else if (wasGrounded) {
+      if (castleResolvedGround) {
+        if (resolvedVerticalVelocity <= 0 && desiredBeforeCastle.y <= fullTickStart.y) {
+          position.y = castleResolvedGround.y;
+          resolvedVerticalVelocity = 0;
+        }
+      } else if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
+        position.y = terrainResolvedGroundY;
+        resolvedVerticalVelocity = 0;
+      }
+    } else if (position.y <= resolvedGroundY) {
+      position.y = resolvedGroundY;
+      resolvedVerticalVelocity = 0;
+    }
+  }
   const resolvedGrounded = isGroundedAt(position);
   const locomotionState = settleLocomotionAfterMove(
     {
       ...locomotionAfterTransition,
-      verticalVelocity: jumpPhysicsAfterTick.verticalVelocity,
+      verticalVelocity: resolvedVerticalVelocity,
       wasJumpPressed: jumpPhysicsAfterTick.wasJumpPressed,
     },
     input,
@@ -322,7 +405,7 @@ export function simulateMovementTick(
   );
 
   return {
-    verticalVelocity: jumpPhysicsAfterTick.verticalVelocity,
+    verticalVelocity: resolvedVerticalVelocity,
     wasJumpPressed: jumpPhysicsAfterTick.wasJumpPressed,
     movementState: movementStateFromLocomotion(
       locomotionState,
