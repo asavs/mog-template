@@ -231,6 +231,25 @@ async function waitForAuthorityMainHand(
 }
 
 /**
+ * Inventory sits under a full-viewport R3F canvas. While pointer lock is held,
+ * Playwright's normal click hits the canvas instead of the panel. Exit lock and
+ * force-click so equip/unequip is reachable mid-session.
+ */
+async function clickInventoryControl(
+  page: Page,
+  selector: string,
+  timeoutMs = 15_000,
+) {
+  await page.evaluate(() => {
+    if (document.pointerLockElement) document.exitPointerLock();
+  });
+  await page.waitForTimeout(80);
+  const control = page.locator(selector).first();
+  await control.waitFor({ state: 'visible', timeout: timeoutMs });
+  await control.click({ force: true, timeout: timeoutMs });
+}
+
+/**
  * Mid-session equip/unequip via InventoryPanel data-qa hooks.
  * Covers wand cast grants after equip and empty main_hand after unequip.
  * All presets that can join (catalog) run these — equip UI is class-agnostic.
@@ -249,7 +268,7 @@ export function generateEquipPhases(): PhaseDef[] {
         await equip.waitFor({ state: 'visible', timeout: 10_000 });
         // Already equipped (wizard/acolyte seed) — skip click when data-qa-equipped=1.
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-          await equip.click();
+          await clickInventoryControl(page, '[data-qa-equip="wand"]');
         }
         // UI strip + authority subscription (window.__qaEquipment).
         await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
@@ -268,12 +287,10 @@ export function generateEquipPhases(): PhaseDef[] {
         const equip = page.locator('[data-qa-equip="wand"]');
         await equip.waitFor({ state: 'visible', timeout: 10_000 });
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-          await equip.click();
+          await clickInventoryControl(page, '[data-qa-equip="wand"]');
         }
         await waitForAuthorityMainHand(page, 'wand');
-        // equip.click() left the virtual mouse on the inventory panel. Digit1 /
-        // combat clicks only apply under pointer lock and must hit the canvas —
-        // re-center then re-engage lock (same idea as lookAround / acquirePointerLock).
+        // Re-center + re-engage pointer lock so Digit1 and combat clicks hit the canvas.
         await page.mouse.move(640, 360, { steps: 1 });
         await page.waitForTimeout(50);
         if (!(await page.evaluate(() => document.pointerLockElement === document.body))) {
@@ -292,9 +309,7 @@ export function generateEquipPhases(): PhaseDef[] {
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        const unequip = page.locator('[data-qa-unequip="main_hand"]');
-        await unequip.waitFor({ state: 'visible', timeout: 10_000 });
-        await unequip.click();
+        await clickInventoryControl(page, '[data-qa-unequip="main_hand"]');
         // Slot empty: unequip control gone + authority has no main_hand row.
         await page.locator('[data-qa-unequip="main_hand"]').waitFor({
           state: 'hidden',
@@ -317,7 +332,7 @@ export function generateEquipPhases(): PhaseDef[] {
         const equip = page.locator('[data-qa-equip="sword_1h"]');
         await equip.waitFor({ state: 'visible', timeout: 10_000 });
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-          await equip.click();
+          await clickInventoryControl(page, '[data-qa-equip="sword_1h"]');
         }
         await page.locator('[data-qa-equip="sword_1h"][data-qa-equipped="1"]').waitFor({
           state: 'visible',
