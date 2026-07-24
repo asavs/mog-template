@@ -1,4 +1,5 @@
 use crate::common::Vector3;
+use std::cmp::Ordering;
 use std::sync::OnceLock;
 
 const MAGIC: &[u8; 4] = b"CC01";
@@ -31,6 +32,10 @@ pub const GROUND_SNAP_DISTANCE: f32 = 0.35;
 const CONTACT_EPSILON: f32 = 0.0001;
 const MAX_SLIDE_ITERATIONS: usize = 4;
 const MAX_SUBSTEP_DISTANCE: f32 = 0.2;
+const MAX_SUBSTEP_COUNT: usize = 32;
+const MAX_SWEEP_DISTANCE: f32 = MAX_SUBSTEP_DISTANCE * MAX_SUBSTEP_COUNT as f32;
+const MAX_CONTACTS: usize = 4;
+const CONTACT_NORMAL_SAME_DIRECTION: f32 = 0.98;
 
 #[derive(Clone, Debug)]
 pub struct CapsuleMoveResult {
@@ -171,9 +176,23 @@ pub fn resolve_capsule_sweep(
     radius: f32,
     height: f32,
 ) -> CapsuleMoveResult {
+    if !vector3_is_finite(current) || !vector3_is_finite(desired) || !is_valid_capsule(radius, height) {
+        return CapsuleMoveResult {
+            position: safe_move_position(current, desired),
+            ground_normal: None,
+            hit_ceiling: false,
+            hit_wall: false,
+        };
+    }
     let mut position = Point::from(current);
-    let target = Point::from(desired);
-    let mut remaining = target - position;
+    let mut target = Point::from(desired);
+    let initial_remaining = target - position;
+    let initial_distance = initial_remaining.length();
+    if initial_distance > MAX_SWEEP_DISTANCE
+        && swept_capsule_may_touch_castle(position, target, radius, height)
+    {
+        target = position + initial_remaining * (MAX_SWEEP_DISTANCE / initial_distance);
+    }
     let mut ground_normal = None;
     let mut hit_ceiling = false;
     let mut hit_wall = false;
@@ -181,19 +200,18 @@ pub fn resolve_capsule_sweep(
     // Spawn/reconciliation corrections can begin inside the static mesh even
     // with a zero desired displacement. Recover before the normal sweep.
     for _ in 0..MAX_SLIDE_ITERATIONS {
-        let Some(overlap) = capsule_contact(position, radius, height, Point::new(0.0, 0.0, 0.0)) else {
+        if !recover_capsule_overlap(&mut position, radius, height) {
             break;
-        };
-        position = position + overlap.normal * (overlap.penetration + CAPSULE_SKIN);
+        }
     }
-    remaining = target - position;
+    let mut remaining = target - position;
 
     for _ in 0..MAX_SLIDE_ITERATIONS {
         let distance = remaining.length();
         if distance <= CONTACT_EPSILON {
             break;
         }
-        let steps = (distance / MAX_SUBSTEP_DISTANCE).ceil().clamp(1.0, 32.0) as usize;
+        let steps = ((distance / MAX_SUBSTEP_DISTANCE).ceil() as usize).clamp(1, MAX_SUBSTEP_COUNT);
         let start = position;
         let mut previous = position;
         let mut hit = None;
@@ -222,30 +240,41 @@ pub fn resolve_capsule_sweep(
         }
         // A binary search can end on a different seam/corner contact than the
         // original blocked sample. Re-query before applying the slide normal.
-        let final_contact = capsule_contact(high, radius, height, remaining).unwrap_or(contact);
-        position = low + final_contact.normal * CAPSULE_SKIN;
+        let final_contacts = capsule_contacts(high, radius, height, remaining);
+        let contacts = if final_contacts.is_empty() {
+            vec![contact]
+        } else {
+            final_contacts
+        };
+        position = low;
+        for contact in &contacts {
+            position = position + contact.normal * CAPSULE_SKIN;
+        }
         let contact_motion = remaining;
-        if final_contact.normal.y >= MIN_WALKABLE_NORMAL_Y && contact_motion.y <= 0.0 {
-            ground_normal = Some(final_contact.normal.into());
-        }
-        if final_contact.normal.y < -CONTACT_EPSILON && contact_motion.y > 0.0 {
-            hit_ceiling = true;
-        }
-        if final_contact.normal.y.abs() < MIN_WALKABLE_NORMAL_Y {
-            hit_wall = true;
+        for contact in &contacts {
+            if contact.normal.y >= MIN_WALKABLE_NORMAL_Y && contact_motion.y <= 0.0 {
+                ground_normal = Some(contact.normal.into());
+            }
+            if contact.normal.y < -CONTACT_EPSILON && contact_motion.y > 0.0 {
+                hit_ceiling = true;
+            }
+            if contact.normal.y.abs() < MIN_WALKABLE_NORMAL_Y {
+                hit_wall = true;
+            }
         }
         remaining = target - position;
-        let into_surface = remaining.dot(final_contact.normal);
-        if into_surface < 0.0 {
-            remaining = remaining - final_contact.normal * into_surface;
+        for contact in &contacts {
+            let into_surface = remaining.dot(contact.normal);
+            if into_surface < 0.0 {
+                remaining = remaining - contact.normal * into_surface;
+            }
         }
     }
 
     for _ in 0..MAX_SLIDE_ITERATIONS {
-        let Some(overlap) = capsule_contact(position, radius, height, Point::new(0.0, 0.0, 0.0)) else {
+        if !recover_capsule_overlap(&mut position, radius, height) {
             break;
-        };
-        position = position + overlap.normal * (overlap.penetration + CAPSULE_SKIN);
+        }
     }
     CapsuleMoveResult { position: position.into(), ground_normal, hit_ceiling, hit_wall }
 }
@@ -259,15 +288,23 @@ pub fn snap_capsule_down(position: &Vector3, max_distance: f32, radius: f32, hei
 struct Contact {
     normal: Point,
     penetration: f32,
+    triangle_id: u32,
 }
 
 fn capsule_contact(position: Point, radius: f32, height: f32, motion: Point) -> Option<Contact> {
+    capsule_contacts(position, radius, height, motion).into_iter().next()
+}
+
+fn capsule_contacts(position: Point, radius: f32, height: f32, motion: Point) -> Vec<Contact> {
     let asset = castle_collision();
     let segment_start = position + Point::new(0.0, radius, 0.0);
     let segment_end = position + Point::new(0.0, height - radius, 0.0);
     let query_min = Point::min(segment_start, segment_end) - Point::splat(radius);
     let query_max = Point::max(segment_start, segment_end) + Point::splat(radius);
-    let mut deepest: Option<Contact> = None;
+    if !query_min.is_finite() || !query_max.is_finite() {
+        return Vec::new();
+    }
+    let mut contacts = Vec::new();
     for triangle_id in asset.triangle_candidates(
         [query_min.x, query_min.y, query_min.z],
         [query_max.x, query_max.y, query_max.z],
@@ -280,7 +317,7 @@ fn capsule_contact(position: Point, radius: f32, height: f32, motion: Point) -> 
         let delta = segment_point - triangle_point;
         let distance = delta.length();
         let penetration = radius - distance;
-        if penetration <= CONTACT_EPSILON {
+        if !penetration.is_finite() || penetration <= CONTACT_EPSILON {
             continue;
         }
         let triangle_normal = (b - a).cross(c - a);
@@ -294,12 +331,81 @@ fn capsule_contact(position: Point, radius: f32, height: f32, motion: Point) -> 
         if normal.dot((segment_start + segment_end) * 0.5 - (a + b + c) * (1.0 / 3.0)) < 0.0 {
             normal = normal * -1.0;
         }
-        let contact = Contact { normal, penetration };
-        if deepest.map(|existing| contact.penetration > existing.penetration).unwrap_or(true) {
-            deepest = Some(contact);
+        if !normal.is_finite() {
+            continue;
+        }
+        contacts.push(Contact { normal, penetration, triangle_id });
+    }
+    select_contacts(contacts)
+}
+
+fn recover_capsule_overlap(position: &mut Point, radius: f32, height: f32) -> bool {
+    let overlaps = capsule_contacts(*position, radius, height, Point::new(0.0, 0.0, 0.0));
+    if overlaps.is_empty() {
+        return false;
+    }
+    for overlap in overlaps {
+        *position = *position + overlap.normal * (overlap.penetration + CAPSULE_SKIN);
+    }
+    true
+}
+
+fn select_contacts(mut contacts: Vec<Contact>) -> Vec<Contact> {
+    contacts.sort_by(|left, right| {
+        let penetration_order = right
+            .penetration
+            .partial_cmp(&left.penetration)
+            .unwrap_or(Ordering::Equal);
+        if (right.penetration - left.penetration).abs() > CONTACT_EPSILON {
+            penetration_order
+        } else {
+            left.triangle_id.cmp(&right.triangle_id)
+        }
+    });
+    let mut selected: Vec<Contact> = Vec::new();
+    for contact in contacts {
+        if selected
+            .iter()
+            .all(|existing| contact.normal.dot(existing.normal) < CONTACT_NORMAL_SAME_DIRECTION)
+        {
+            selected.push(contact);
+            if selected.len() >= MAX_CONTACTS {
+                break;
+            }
         }
     }
-    deepest
+    selected
+}
+
+fn swept_capsule_may_touch_castle(current: Point, target: Point, radius: f32, height: f32) -> bool {
+    let asset = castle_collision();
+    let current_start = current + Point::new(0.0, radius, 0.0);
+    let current_end = current + Point::new(0.0, height - radius, 0.0);
+    let target_start = target + Point::new(0.0, radius, 0.0);
+    let target_end = target + Point::new(0.0, height - radius, 0.0);
+    let query_min = Point::min(Point::min(current_start, current_end), Point::min(target_start, target_end)) - Point::splat(radius);
+    let query_max = Point::max(Point::max(current_start, current_end), Point::max(target_start, target_end)) + Point::splat(radius);
+    query_max.x >= asset.min[0] && query_min.x <= asset.max[0]
+        && query_max.y >= asset.min[1] && query_min.y <= asset.max[1]
+        && query_max.z >= asset.min[2] && query_min.z <= asset.max[2]
+}
+
+fn vector3_is_finite(value: &Vector3) -> bool {
+    value.x.is_finite() && value.y.is_finite() && value.z.is_finite()
+}
+
+fn is_valid_capsule(radius: f32, height: f32) -> bool {
+    radius.is_finite() && height.is_finite() && radius > 0.0 && height >= radius * 2.0
+}
+
+fn safe_move_position(current: &Vector3, desired: &Vector3) -> Vector3 {
+    if vector3_is_finite(current) {
+        current.clone()
+    } else if vector3_is_finite(desired) {
+        desired.clone()
+    } else {
+        Vector3::zero()
+    }
 }
 
 fn vertex(asset: &CastleCollisionData, index: u32) -> Point {
@@ -407,6 +513,7 @@ impl Point {
     fn cross(self, other: Self) -> Self { Self::new(self.y * other.z - self.z * other.y, self.z * other.x - self.x * other.z, self.x * other.y - self.y * other.x) }
     fn length_squared(self) -> f32 { self.dot(self) }
     fn length(self) -> f32 { self.length_squared().sqrt() }
+    fn is_finite(self) -> bool { self.x.is_finite() && self.y.is_finite() && self.z.is_finite() }
 }
 impl From<&Vector3> for Point { fn from(value: &Vector3) -> Self { Self::new(value.x, value.y, value.z) } }
 impl From<Point> for Vector3 { fn from(value: Point) -> Self { Self { x: value.x, y: value.y, z: value.z } } }

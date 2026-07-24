@@ -142,6 +142,7 @@ pub fn update_transform(
 ) {
     let terrain_ground_y = heightmap::terrain_height_at(&transform.position);
     let castle_ground = collision::castle_ground_support(&transform.position, GROUND_SNAP_DISTANCE);
+    let started_on_castle = castle_ground.is_some();
     let current_ground_y = castle_ground
         .as_ref()
         .map(|support| support.y)
@@ -181,12 +182,17 @@ pub fn update_transform(
         .map(|support| support.y)
         .unwrap_or(terrain_resolved_ground_y);
     if was_grounded && is_starting_jump {
-        if current_ground_y - resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
-            resolved_position.y = resolved_ground_y + jump_state.vertical_velocity * DELTA_TIME;
+        if !started_on_castle && terrain_ground_y - terrain_resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
+            resolved_position.y = terrain_resolved_ground_y + jump_state.vertical_velocity * DELTA_TIME;
         }
     } else if was_grounded {
-        if current_ground_y - resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
-            resolved_position.y = resolved_ground_y;
+        if let Some(castle_support) = castle_resolved_ground.as_ref() {
+            if jump_state.vertical_velocity <= 0.0 && desired_position.y <= transform.position.y {
+                resolved_position.y = castle_support.y;
+                jump_state.vertical_velocity = 0.0;
+            }
+        } else if !started_on_castle && terrain_ground_y - terrain_resolved_ground_y <= MAX_SNAP_DOWN_HEIGHT {
+            resolved_position.y = terrain_resolved_ground_y;
             jump_state.vertical_velocity = 0.0;
         }
     } else if resolved_position.y <= resolved_ground_y {

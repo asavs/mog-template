@@ -97,51 +97,50 @@ input and locomotion state
 | Initial overlap | Both solvers perform bounded initial and final recovery passes. Incidental recovery contacts do not set landing or ceiling flags. |
 | Visual QA | `?qa` renders the actual baked collision mesh, not a proxy. |
 
+### Implemented hardening after the initial audit
+
+These items were promoted from audit findings into the controller implementation
+after the initial document was written:
+
+- **Deterministic contact set:** client and server now collect a small bounded
+  contact set, order contacts by penetration descending then triangle ID
+  ascending, skip duplicate same-direction normals, and use the set for
+  depenetration, collision flags, and slide projection.
+- **Conservative long-sweep policy:** when a movement query is longer than the
+  validated 32 samples at 0.2m each and the swept capsule bounds may touch the
+  castle asset, both runtimes cap that single query to the validated sweep
+  distance instead of increasing sample spacing and pretending it is still
+  tunnel-safe. Long movement that cannot touch the castle remains unchanged.
+- **Input/capsule validation:** both solvers now safely return without geometry
+  work for non-finite positions or invalid capsule dimensions, and runtime
+  contacts reject non-finite penetrations and normals.
+- **Castle/terrain snap separation:** the legacy 6m terrain downhill snap no
+  longer receives castle support heights. Castle support remains the short
+  direct capsule sweep aid, while terrain keeps the old terrain-only behavior.
+
 ### Definite hardening work still needed
 
 These are implementation gaps, not reasons to replace the architecture.
 
-1. **Deterministic contact manifold:** `capsule_contact` / `capsuleContact`
-   returns only one deepest contact. The chosen contact has no triangle-ID tie
-   breaker when penetrations are equal. Corners and ramp/wall joins can need
-   two materially independent constraints. Implement a small, bounded contact
-   set ordered by penetration descending then triangle ID ascending, and use it
-   for depenetration and slide projection.
+1. **Ground-snap fixtures and traceability:** the code now separates castle and
+   terrain snap behavior, but the final contract still needs small fixtures that
+   prove no sideways snap, no jump-start snap, direct vertical reachability, and
+   clearance at the snapped position across both runtimes.
 
-2. **Conservative long-displacement policy:** the sampled sweep has
-   `MAX_SUBSTEP_DISTANCE = 0.2` and a 32-step cap. Above 6.4 world units in one
-   query, its actual sample spacing grows; it must not claim protection against
-   tunnelling at those distances. Validate ordinary per-tick locomotion is below
-   that bound and add a conservative response for reconciliation/teleport-sized
-   movement (for example, cap, split, or explicitly bypass through a safe
-   reconciliation policy).
-
-3. **Input and capsule validation:** both solvers should reject or safely return
-   for non-finite positions, normals, and penetration depths, and assert the
-   shared invariant `height >= 2 * radius` before geometry work.
-
-4. **Ground-snap contract:** the short castle probe is good, but the final
-   snap decision should explicitly require: grounded at tick start (or a brief
-   coyote window), no newly started jump, non-positive vertical velocity,
-   non-upward desired movement, direct vertical reachability, unchanged X/Z,
-   and clearance at the snapped position. Keep the legacy terrain snap behavior
-   separate from this castle-specific rule; `MAX_STEP_HEIGHT` is currently
-   unused and must not imply autostep exists.
-
-5. **Debug trace and metrics:** current wireframe QA is useful, but it does not
+2. **Debug trace and metrics:** current wireframe QA is useful, but it does not
    expose candidate cells, triangle IDs, selected contacts, normals,
    penetrations, slide iterations, or client/server divergence. Add a
    QA-only comparable trace before diagnosing hard ramp bugs. Also instrument
    candidate-count percentiles so the uniform grid can be tuned from evidence.
 
-6. **Focused behavioral fixtures:** current tests cover asset parsing, sorted
+3. **Focused behavioral fixtures:** current tests cover asset parsing, sorted
    candidates, an unobstructed client path, and basic geometry. Before declaring
    this controller production-ready, add small fixtures for wall, floor,
    ceiling, initial overlap, no-sideways ground snap, and one shared Rust/TS
    parity fixture with tolerances. Do not use exact float equality for resolved
    positions.
 
-7. **Hot-loop allocations:** the current TypeScript controller creates many
+4. **Hot-loop allocations:** the current TypeScript controller creates many
    `Vector3` instances per query. The upstream browser examples reuse scratch
    vectors. Refactor only after correctness fixtures exist, while preserving the
    exact candidate/contact order and output contract.

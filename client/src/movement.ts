@@ -118,11 +118,11 @@ export function applyMovement(
   const desired = position.clone();
   desired.x += moveX * movementScale;
   desired.z += moveZ * movementScale;
-  const currentGround = groundHeightAt(position);
+  const currentGround = terrainHeightAt(position);
   const wasGrounded = position.y <= currentGround + GROUNDED_EPSILON;
   const resolved = resolvePlayerMovement(position, desired);
   if (wasGrounded) {
-    const resolvedGround = groundHeightAt(resolved);
+    const resolvedGround = terrainHeightAt(resolved);
     if (currentGround - resolvedGround <= MAX_SNAP_DOWN_HEIGHT) {
       resolved.y = resolvedGround;
     }

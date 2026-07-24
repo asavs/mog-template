@@ -9,6 +9,10 @@ export const CASTLE_GROUND_SNAP_DISTANCE = 0.35;
 const CONTACT_EPSILON = 0.0001;
 const MAX_SLIDE_ITERATIONS = 4;
 const MAX_SUBSTEP_DISTANCE = 0.2;
+const MAX_SUBSTEP_COUNT = 32;
+const MAX_SWEEP_DISTANCE = MAX_SUBSTEP_DISTANCE * MAX_SUBSTEP_COUNT;
+const MAX_CONTACTS = 4;
+const CONTACT_NORMAL_SAME_DIRECTION = 0.98;
 
 export interface CastleMoveResult {
   position: THREE.Vector3;
@@ -17,7 +21,7 @@ export interface CastleMoveResult {
   hitWall: boolean;
 }
 
-type Contact = { normal: THREE.Vector3; penetration: number };
+type Contact = { normal: THREE.Vector3; penetration: number; triangleId: number };
 
 /** Matches the Rust fixed-order broad-phase, substeps, triangle contacts, and slide projection. */
 export function resolveCastleCapsuleSweep(
@@ -26,9 +30,16 @@ export function resolveCastleCapsuleSweep(
   radius: number,
   height: number,
 ): CastleMoveResult {
+  if (!isFiniteVector(current) || !isFiniteVector(desired) || !isValidCapsule(radius, height)) {
+    return { position: safeMovePosition(current, desired), groundNormal: null, hitCeiling: false, hitWall: false };
+  }
   let position = current.clone();
-  const target = desired.clone();
-  let remaining = target.clone().sub(position);
+  let target = desired.clone();
+  const initialRemaining = target.clone().sub(position);
+  if (initialRemaining.length() > MAX_SWEEP_DISTANCE
+    && sweptCapsuleMayTouchCastle(position, target, radius, height)) {
+    target = position.clone().addScaledVector(initialRemaining, MAX_SWEEP_DISTANCE / initialRemaining.length());
+  }
   let groundNormal: THREE.Vector3 | null = null;
   let hitCeiling = false;
   let hitWall = false;
@@ -36,24 +47,22 @@ export function resolveCastleCapsuleSweep(
   // Reconciliation, spawns, and precision drift can start inside geometry even
   // with no movement request. Resolve a bounded amount before sweeping.
   for (let iteration = 0; iteration < MAX_SLIDE_ITERATIONS; iteration += 1) {
-    const overlap = capsuleContact(position, radius, height, new THREE.Vector3());
-    if (!overlap) break;
-    position.addScaledVector(overlap.normal, overlap.penetration + CASTLE_CAPSULE_SKIN);
+    if (!recoverCapsuleOverlap(position, radius, height)) break;
   }
-  remaining = target.clone().sub(position);
+  let remaining = target.clone().sub(position);
 
   for (let iteration = 0; iteration < MAX_SLIDE_ITERATIONS; iteration += 1) {
     const distance = remaining.length();
     if (distance <= CONTACT_EPSILON) break;
-    const steps = THREE.MathUtils.clamp(Math.ceil(distance / MAX_SUBSTEP_DISTANCE), 1, 32);
+    const steps = THREE.MathUtils.clamp(Math.ceil(distance / MAX_SUBSTEP_DISTANCE), 1, MAX_SUBSTEP_COUNT);
     const start = position.clone();
     let previous = position.clone();
-    let hit: { safe: THREE.Vector3; blocked: THREE.Vector3; normal: THREE.Vector3 } | null = null;
+    let hit: { safe: THREE.Vector3; blocked: THREE.Vector3; contact: Contact } | null = null;
     for (let step = 1; step <= steps; step += 1) {
       const candidate = start.clone().addScaledVector(remaining, step / steps);
       const contact = capsuleContact(candidate, radius, height, remaining);
       if (contact) {
-        hit = { safe: previous, blocked: candidate, normal: contact.normal };
+        hit = { safe: previous, blocked: candidate, contact };
         break;
       }
       previous = candidate;
@@ -71,27 +80,33 @@ export function resolveCastleCapsuleSweep(
     }
     // The binary search can cross a seam or corner, so use the contact at the
     // final blocked location rather than the stale sample that started it.
-    const finalContact = capsuleContact(high, radius, height, remaining) ?? { normal: hit.normal };
-    position = low.addScaledVector(finalContact.normal, CASTLE_CAPSULE_SKIN);
+    const finalContacts = capsuleContacts(high, radius, height, remaining);
+    const contacts = finalContacts.length > 0 ? finalContacts : [hit.contact];
+    position = low.clone();
+    for (const contact of contacts) {
+      position.addScaledVector(contact.normal, CASTLE_CAPSULE_SKIN);
+    }
     // Keep these classifications aligned with the authoritative Rust solver.
     // A contact is support only while moving down into it; a ceiling only
     // while moving up into it. This avoids treating an upward jump into a
     // slope as grounding on prediction.
     const contactMotion = remaining;
-    if (finalContact.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y && contactMotion.y <= 0) {
-      groundNormal = finalContact.normal;
+    for (const contact of contacts) {
+      if (contact.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y && contactMotion.y <= 0) {
+        groundNormal = contact.normal;
+      }
+      if (contact.normal.y < -CONTACT_EPSILON && contactMotion.y > 0) hitCeiling = true;
+      if (Math.abs(contact.normal.y) < CASTLE_MIN_WALKABLE_NORMAL_Y) hitWall = true;
     }
-    if (finalContact.normal.y < -CONTACT_EPSILON && contactMotion.y > 0) hitCeiling = true;
-    if (Math.abs(finalContact.normal.y) < CASTLE_MIN_WALKABLE_NORMAL_Y) hitWall = true;
     remaining = target.clone().sub(position);
-    const intoSurface = remaining.dot(finalContact.normal);
-    if (intoSurface < 0) remaining.addScaledVector(finalContact.normal, -intoSurface);
+    for (const contact of contacts) {
+      const intoSurface = remaining.dot(contact.normal);
+      if (intoSurface < 0) remaining.addScaledVector(contact.normal, -intoSurface);
+    }
   }
   // A final bounded recovery catches a contact created by the skin push itself.
   for (let iteration = 0; iteration < MAX_SLIDE_ITERATIONS; iteration += 1) {
-    const overlap = capsuleContact(position, radius, height, new THREE.Vector3());
-    if (!overlap) break;
-    position.addScaledVector(overlap.normal, overlap.penetration + CASTLE_CAPSULE_SKIN);
+    if (!recoverCapsuleOverlap(position, radius, height)) break;
   }
   return { position, groundNormal, hitCeiling, hitWall };
 }
@@ -115,12 +130,17 @@ export function castleGroundSupport(
 }
 
 function capsuleContact(position: THREE.Vector3, radius: number, height: number, motion: THREE.Vector3): Contact | null {
+  return capsuleContacts(position, radius, height, motion)[0] ?? null;
+}
+
+function capsuleContacts(position: THREE.Vector3, radius: number, height: number, motion: THREE.Vector3): Contact[] {
   const asset = castleCollisionAsset();
   const start = position.clone().add(new THREE.Vector3(0, radius, 0));
   const end = position.clone().add(new THREE.Vector3(0, height - radius, 0));
   const min = start.clone().min(end).addScalar(-radius);
   const max = start.clone().max(end).addScalar(radius);
-  let deepest: Contact | null = null;
+  if (!isFiniteVector(min) || !isFiniteVector(max)) return [];
+  const contacts: Contact[] = [];
   for (const triangleId of castleTriangleCandidates([min.x, min.y, min.z], [max.x, max.y, max.z])) {
     const base = triangleId * 3;
     const a = vertex(asset.vertices, asset.indices[base]);
@@ -130,7 +150,7 @@ function capsuleContact(position: THREE.Vector3, radius: number, height: number,
     const delta = segmentPoint.clone().sub(trianglePoint);
     const distance = delta.length();
     const penetration = radius - distance;
-    if (penetration <= CONTACT_EPSILON) continue;
+    if (!Number.isFinite(penetration) || penetration <= CONTACT_EPSILON) continue;
     const triangleNormal = b.clone().sub(a).cross(c.clone().sub(a));
     const normal = distance > CONTACT_EPSILON
       ? delta.multiplyScalar(1 / distance)
@@ -139,9 +159,62 @@ function capsuleContact(position: THREE.Vector3, radius: number, height: number,
         : fallbackNormal(motion);
     const centerDelta = start.clone().add(end).multiplyScalar(0.5).sub(a.clone().add(b).add(c).multiplyScalar(1 / 3));
     if (normal.dot(centerDelta) < 0) normal.multiplyScalar(-1);
-    if (!deepest || penetration > deepest.penetration) deepest = { normal, penetration };
+    if (!isFiniteVector(normal)) continue;
+    contacts.push({ normal, penetration, triangleId });
   }
-  return deepest;
+  return selectContacts(contacts);
+}
+
+function recoverCapsuleOverlap(position: THREE.Vector3, radius: number, height: number): boolean {
+  const overlaps = capsuleContacts(position, radius, height, new THREE.Vector3());
+  if (overlaps.length === 0) return false;
+  for (const overlap of overlaps) {
+    position.addScaledVector(overlap.normal, overlap.penetration + CASTLE_CAPSULE_SKIN);
+  }
+  return true;
+}
+
+function selectContacts(contacts: Contact[]): Contact[] {
+  contacts.sort((left, right) => {
+    const penetrationOrder = right.penetration - left.penetration;
+    if (Math.abs(penetrationOrder) > CONTACT_EPSILON) return penetrationOrder;
+    return left.triangleId - right.triangleId;
+  });
+  const selected: Contact[] = [];
+  for (const contact of contacts) {
+    if (selected.every(existing => contact.normal.dot(existing.normal) < CONTACT_NORMAL_SAME_DIRECTION)) {
+      selected.push(contact);
+      if (selected.length >= MAX_CONTACTS) break;
+    }
+  }
+  return selected;
+}
+
+function sweptCapsuleMayTouchCastle(current: THREE.Vector3, target: THREE.Vector3, radius: number, height: number): boolean {
+  const asset = castleCollisionAsset();
+  const currentStart = current.clone().add(new THREE.Vector3(0, radius, 0));
+  const currentEnd = current.clone().add(new THREE.Vector3(0, height - radius, 0));
+  const targetStart = target.clone().add(new THREE.Vector3(0, radius, 0));
+  const targetEnd = target.clone().add(new THREE.Vector3(0, height - radius, 0));
+  const min = currentStart.clone().min(currentEnd).min(targetStart).min(targetEnd).addScalar(-radius);
+  const max = currentStart.clone().max(currentEnd).max(targetStart).max(targetEnd).addScalar(radius);
+  return max.x >= asset.min[0] && min.x <= asset.max[0]
+    && max.y >= asset.min[1] && min.y <= asset.max[1]
+    && max.z >= asset.min[2] && min.z <= asset.max[2];
+}
+
+function isFiniteVector(value: THREE.Vector3): boolean {
+  return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
+}
+
+function isValidCapsule(radius: number, height: number): boolean {
+  return Number.isFinite(radius) && Number.isFinite(height) && radius > 0 && height >= radius * 2;
+}
+
+function safeMovePosition(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
+  if (isFiniteVector(current)) return current.clone();
+  if (isFiniteVector(desired)) return desired.clone();
+  return new THREE.Vector3();
 }
 
 function vertex(vertices: Float32Array, index: number): THREE.Vector3 {
