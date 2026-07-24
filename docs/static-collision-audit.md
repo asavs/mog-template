@@ -91,6 +91,7 @@ input and locomotion state
 | Narrow phase coverage | The controller checks segment/triangle face intersection, endpoints against faces, and segment-to-edge closest points. It is more complete than a bounding-box collider. |
 | Degenerate fallback | The baker rejects near-zero-area geometry, and the runtime fallback normal is aligned between Rust and TypeScript. |
 | Fixed collision margin | Both solvers use a small `0.002` skin/offset, consistent with the stability margin recommended by Rapier. |
+| Castle slope limit | Castle capsule support uses a stricter 60-degree walkable limit than the outdoor terrain heightmap, so low-poly wall faces are not treated as ramps. |
 | Contact classification | Ground, ceiling, and wall flags now consider both normal and entering movement direction on both runtimes. |
 | Full movement | Jumping and falling are included in the one final castle sweep; they cannot bypass roofs, ramp undersides, or walls through a horizontal-only query. |
 | Ground support | Castle support is elevation-aware, has a short `0.35` reach, and rejects lateral displacement. It does not select the highest triangle at X/Z. |

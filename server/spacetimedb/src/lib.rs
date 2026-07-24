@@ -2354,7 +2354,11 @@ fn respawn_ready_players(ctx: &ReducerContext, server_tick: u64) {
 }
 
 fn spawn_position() -> Vector3 {
-    let mut position = Vector3::zero();
+    let mut position = Vector3 {
+        x: 460.0,
+        y: 0.0,
+        z: -90.0,
+    };
     position.y = heightmap::terrain_height_at(&position);
     position
 }

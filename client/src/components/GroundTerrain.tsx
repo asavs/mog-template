@@ -10,6 +10,10 @@ import {
 
 const TERRAIN_PATH = publicAssetPath(TERRAIN_GLB_RELATIVE_PATH);
 
+function isHiddenCollisionNode(name: string): boolean {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '').includes('castlecollision');
+}
+
 export function GroundTerrain() {
   const { scene } = useGLTF(TERRAIN_PATH);
 
@@ -32,10 +36,10 @@ export function GroundTerrain() {
     scene.scale.setScalar(scale);
 
     scene.traverse(child => {
+      if (isHiddenCollisionNode(child.name)) {
+        child.visible = false;
+      }
       if (child instanceof THREE.Mesh) {
-        if (/castle collision/i.test(child.name)) {
-          child.visible = false;
-        }
         child.receiveShadow = true;
       }
     });

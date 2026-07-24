@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { castleCollisionAsset, castleTriangleCandidates } from './castleCollision';
 
 export const CASTLE_CAPSULE_SKIN = 0.002;
-/** cos(70°), shared with the Rust controller. */
-export const CASTLE_MIN_WALKABLE_NORMAL_Y = 0.34202015;
+/** cos(60 degrees), shared with the Rust controller. */
+export const CASTLE_MIN_WALKABLE_NORMAL_Y = 0.5;
 /** Short grounding aid only; falling motion itself is handled by the capsule sweep. */
 export const CASTLE_GROUND_SNAP_DISTANCE = 0.35;
 const CONTACT_EPSILON = 0.0001;

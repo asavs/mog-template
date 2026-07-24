@@ -26,8 +26,8 @@ pub struct CastleCollisionData {
 static CASTLE_COLLISION: OnceLock<CastleCollisionData> = OnceLock::new();
 
 pub const CAPSULE_SKIN: f32 = 0.002;
-/// cos(70°), kept in sync with `client/src/castleController.ts`.
-pub const MIN_WALKABLE_NORMAL_Y: f32 = 0.34202015;
+/// cos(60 degrees), kept in sync with `client/src/castleController.ts`.
+pub const MIN_WALKABLE_NORMAL_Y: f32 = 0.5;
 pub const GROUND_SNAP_DISTANCE: f32 = 0.35;
 const CONTACT_EPSILON: f32 = 0.0001;
 const MAX_SLIDE_ITERATIONS: usize = 4;
@@ -586,7 +586,7 @@ mod tests {
     }
 
     #[test]
-    fn walkable_normal_matches_the_seventy_degree_slope_limit() {
-        assert!((MIN_WALKABLE_NORMAL_Y - 0.34202015).abs() < 0.000001);
+    fn walkable_normal_matches_the_sixty_degree_slope_limit() {
+        assert!((MIN_WALKABLE_NORMAL_Y - 0.5).abs() < 0.000001);
     }
 }
