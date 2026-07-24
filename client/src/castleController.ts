@@ -119,7 +119,8 @@ export function castleGroundSupport(
   radius: number,
   height: number,
 ): THREE.Vector3 | null {
-  const probeStart = new THREE.Vector3(position.x, position.y + maxDistance, position.z);
+  const probeLift = CASTLE_CAPSULE_SKIN * 2;
+  const probeStart = new THREE.Vector3(position.x, position.y + probeLift, position.z);
   const result = resolveCastleCapsuleSweep(
     probeStart,
     new THREE.Vector3(position.x, position.y - maxDistance, position.z),
@@ -128,9 +129,11 @@ export function castleGroundSupport(
     false,
   );
   const movedSideways = Math.hypot(result.position.x - position.x, result.position.z - position.z) > CASTLE_CAPSULE_SKIN;
-  const movedVertically = Math.abs(result.position.y - position.y) > maxDistance + CASTLE_CAPSULE_SKIN;
+  const movedAboveProbe = result.position.y - position.y > probeLift + CASTLE_CAPSULE_SKIN;
+  const movedBelowSnap = position.y - result.position.y > maxDistance + CASTLE_CAPSULE_SKIN;
   return !movedSideways && result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y
-    && !movedVertically
+    && !movedAboveProbe
+    && !movedBelowSnap
     ? result.position
     : null;
 }

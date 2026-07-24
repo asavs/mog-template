@@ -43,17 +43,20 @@ pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_c
 /// It deliberately sweeps from the player's current elevation band instead of looking up a
 /// global X/Z height, so stacked spiral ramps remain distinct.
 pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Vector3> {
-    let probe_start = Vector3 { x: position.x, y: position.y + max_distance, z: position.z };
+    let probe_lift = castle_collision::CAPSULE_SKIN * 2.0;
+    let probe_start = Vector3 { x: position.x, y: position.y + probe_lift, z: position.z };
     let result = castle_collision::snap_capsule_down(
         &probe_start,
-        max_distance * 2.0,
+        max_distance + probe_lift,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
     );
     let moved_sideways = ((result.position.x - position.x).powi(2)
         + (result.position.z - position.z).powi(2))
     .sqrt() > castle_collision::CAPSULE_SKIN;
-    let moved_vertically = (result.position.y - position.y).abs()
+    let moved_above_probe = result.position.y - position.y
+        > probe_lift + castle_collision::CAPSULE_SKIN;
+    let moved_below_snap = position.y - result.position.y
         > max_distance + castle_collision::CAPSULE_SKIN;
     if moved_sideways {
         return None;
@@ -61,7 +64,7 @@ pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Ve
     result
         .ground_normal
         .filter(|normal| normal.y >= castle_collision::MIN_WALKABLE_NORMAL_Y)
-        .filter(|_| !moved_vertically)
+        .filter(|_| !moved_above_probe && !moved_below_snap)
         .map(|_| result.position)
 }
 
