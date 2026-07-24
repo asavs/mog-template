@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
 import {
+  collisionInputDebug,
+  collisionNumberDebug,
+  collisionVectorDebug,
+  logCollisionDebug,
+} from './collisionDebug';
+import {
   CASTLE_GROUND_SNAP_DISTANCE,
   castleGroundSupport,
   resolveCastleCapsuleSweep,
@@ -267,8 +273,34 @@ export function groundHeightAt(position: THREE.Vector3): number {
 }
 
 function activeCastleGroundSupport(position: THREE.Vector3, maxDistance: number): THREE.Vector3 | null {
-  return getRapierCastleGroundSupport(position, maxDistance, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)
-    ?? castleGroundSupport(position, maxDistance, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
+  return activeCastleGroundSupportDetailed(position, maxDistance).position;
+}
+
+function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance: number): {
+  position: THREE.Vector3 | null;
+  source: 'rapier' | 'custom' | 'none';
+} {
+  const rapierSupport = getRapierCastleGroundSupport(
+    position,
+    maxDistance,
+    PLAYER_COLLISION_RADIUS,
+    PLAYER_CAPSULE_HEIGHT,
+  );
+  if (rapierSupport) return { position: rapierSupport, source: 'rapier' };
+
+  const customSupport = castleGroundSupport(
+    position,
+    maxDistance,
+    PLAYER_COLLISION_RADIUS,
+    PLAYER_CAPSULE_HEIGHT,
+  );
+  return customSupport
+    ? { position: customSupport, source: 'custom' }
+    : { position: null, source: 'none' };
+}
+
+function movementDistance(from: THREE.Vector3, to: THREE.Vector3): number {
+  return from.distanceTo(to);
 }
 
 
@@ -314,6 +346,7 @@ export function simulateMovementTick(
   );
 
   const fullTickStart = position.clone();
+  const verticalVelocityBeforeTick = verticalVelocity;
   applyMovement(
     position,
     rotationY,
@@ -321,6 +354,7 @@ export function simulateMovementTick(
     deltaSeconds,
     locomotionAfterTransition.sprintActive,
   );
+  const afterHorizontalMovement = position.clone();
   const jumpPhysicsAfterTick = applyJumpPhysics(
     position,
     input,
@@ -329,6 +363,7 @@ export function simulateMovementTick(
     wasJumpPressed,
     movementStateBeforeTick.isGrounded,
   );
+  const afterJumpPhysics = position.clone();
   // Locomotion above deliberately remains unchanged. This is only the final
   // full-XYZ reachability pass, so upward jumps and falls cannot bypass castle
   // ceilings, undersides, or ramps after horizontal prediction has run.
@@ -336,52 +371,56 @@ export function simulateMovementTick(
   if (isCastleCollisionReady()) {
     const wasGrounded = movementStateBeforeTick.isGrounded;
     const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
+    const startingCastleSupport = activeCastleGroundSupportDetailed(
+      fullTickStart,
+      CASTLE_GROUND_SNAP_DISTANCE,
+    );
     const sweepTarget = position.clone();
     if (wasGrounded && !isStartingJump) {
       const endingTerrainY = terrainHeightAt(sweepTarget);
-      const endingCastleGround = activeCastleGroundSupport(
+      const endingCastleGround = activeCastleGroundSupportDetailed(
         sweepTarget,
         CASTLE_GROUND_SNAP_DISTANCE,
       );
-      const endingGroundY = endingCastleGround ? endingCastleGround.y : endingTerrainY;
+      const endingGroundY = endingCastleGround.position ? endingCastleGround.position.y : endingTerrainY;
       sweepTarget.y = Math.max(fullTickStart.y, endingGroundY);
     }
     const desiredBeforeCastle = sweepTarget.clone();
-    const collision = resolveRapierCastleMovement(
-      fullTickStart,
-      sweepTarget,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
-    ) ?? resolveCastleCapsuleSweep(
+    const rapierCollision = resolveRapierCastleMovement(
       fullTickStart,
       sweepTarget,
       PLAYER_COLLISION_RADIUS,
       PLAYER_CAPSULE_HEIGHT,
     );
+    const collisionSolver = rapierCollision ? 'rapier' : 'custom';
+    const collision = rapierCollision ?? resolveCastleCapsuleSweep(
+      fullTickStart,
+      sweepTarget,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    );
+    const collisionResolvedPosition = collision.position.clone();
     position.copy(collision.position);
     if ((collision.hitCeiling && resolvedVerticalVelocity > 0)
       || (collision.groundNormal && resolvedVerticalVelocity < 0)) {
       resolvedVerticalVelocity = 0;
     }
     const terrainGroundY = terrainHeightAt(fullTickStart);
-    const startedOnCastle = activeCastleGroundSupport(
-      fullTickStart,
-      CASTLE_GROUND_SNAP_DISTANCE,
-    ) !== null;
+    const startedOnCastle = startingCastleSupport.position !== null;
     const terrainResolvedGroundY = terrainHeightAt(position);
-    const castleResolvedGround = activeCastleGroundSupport(
+    const castleResolvedGround = activeCastleGroundSupportDetailed(
       position,
       CASTLE_GROUND_SNAP_DISTANCE,
     );
-    const resolvedGroundY = castleResolvedGround ? castleResolvedGround.y : terrainResolvedGroundY;
+    const resolvedGroundY = castleResolvedGround.position ? castleResolvedGround.position.y : terrainResolvedGroundY;
     if (wasGrounded && isStartingJump) {
       if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
         position.y = terrainResolvedGroundY + resolvedVerticalVelocity * deltaSeconds;
       }
     } else if (wasGrounded) {
-      if (castleResolvedGround) {
+      if (castleResolvedGround.position) {
         if (resolvedVerticalVelocity <= 0 && desiredBeforeCastle.y <= fullTickStart.y) {
-          position.y = castleResolvedGround.y;
+          position.y = castleResolvedGround.position.y;
           resolvedVerticalVelocity = 0;
         }
       } else if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
@@ -392,6 +431,40 @@ export function simulateMovementTick(
       position.y = resolvedGroundY;
       resolvedVerticalVelocity = 0;
     }
+    const finalGroundY = groundHeightAt(position);
+    logCollisionDebug({
+      at: performance.now(),
+      phase: 'movement:castle-sweep',
+      input: collisionInputDebug(input),
+      current: collisionVectorDebug(fullTickStart),
+      desired: collisionVectorDebug(desiredBeforeCastle),
+      position: collisionVectorDebug(position),
+      resolved: collisionVectorDebug(collisionResolvedPosition),
+      movementDelta: collisionVectorDebug(position.clone().sub(fullTickStart)),
+      groundNormal: collision.groundNormal ? collisionVectorDebug(collision.groundNormal) : null,
+      movementState: movementStateBeforeTick,
+      terrainY: collisionNumberDebug(terrainGroundY),
+      groundY: collisionNumberDebug(finalGroundY),
+      castleSupportY: collisionNumberDebug(castleResolvedGround.position?.y),
+      castleSupportSource: castleResolvedGround.source,
+      collisionSolver,
+      collisionMoved: collisionNumberDebug(movementDistance(fullTickStart, collisionResolvedPosition)),
+      desiredDistance: collisionNumberDebug(movementDistance(fullTickStart, desiredBeforeCastle)),
+      resolvedDistance: collisionNumberDebug(movementDistance(fullTickStart, position)),
+      blockedDistance: collisionNumberDebug(
+        movementDistance(fullTickStart, desiredBeforeCastle) - movementDistance(fullTickStart, position),
+      ),
+      verticalVelocityBefore: collisionNumberDebug(verticalVelocityBeforeTick),
+      verticalVelocityAfter: collisionNumberDebug(resolvedVerticalVelocity),
+      jumpWasPressedBefore: wasJumpPressed,
+      jumpWasPressedAfter: jumpPhysicsAfterTick.wasJumpPressed,
+      wasGrounded,
+      isStartingJump,
+      hitCeiling: collision.hitCeiling,
+      hitWall: collision.hitWall,
+      grounded: position.y <= finalGroundY + GROUNDED_EPSILON,
+      note: `afterHorizontal=${JSON.stringify(collisionVectorDebug(afterHorizontalMovement))}; afterJump=${JSON.stringify(collisionVectorDebug(afterJumpPhysics))}; startCastleSupport=${startingCastleSupport.source}:${collisionNumberDebug(startingCastleSupport.position?.y)}`,
+    });
   }
   const resolvedGrounded = isGroundedAt(position);
   const locomotionState = settleLocomotionAfterMove(
