@@ -106,7 +106,9 @@ export function InventoryPanel() {
                 ...btnStyle,
                 ...(isEquipped ? btnActiveStyle : {}),
               }}
-              onClick={() => callEquip(item.itemId)}
+              onClick={() => {
+                if (!isEquipped) callEquip(item.itemId);
+              }}
               title={`Equip ${item.label} (${item.slot})`}
             >
               {isEquipped ? `✓ ${item.label}` : `Equip ${item.label}`}
@@ -130,7 +132,9 @@ export function InventoryPanel() {
                     ...btnStyle,
                     ...(isEquipped ? btnActiveStyle : {}),
                   }}
-                  onClick={() => callEquip(item.itemId)}
+                  onClick={() => {
+                    if (!isEquipped) callEquip(item.itemId);
+                  }}
                   title={`Equip ${item.label} (${item.slot})`}
                 >
                   {isEquipped ? `✓ ${item.label}` : `Equip ${item.label}`}
