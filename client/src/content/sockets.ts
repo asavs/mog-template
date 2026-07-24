@@ -9,9 +9,20 @@
  *   - +Z out the "front" face — the shield's boss, the flat of a blade
  *
  * The grip transform that rotates that frame into a hand lives here, keyed by
- * prop and socket, so a drop-in GLB authored to the same convention is held
- * correctly with no code change — and so a prop that sits wrong is fixed by
- * editing three numbers in one table instead of hunting through mesh code.
+ * prop and socket, so a prop that sits wrong is fixed by editing three numbers
+ * in one table instead of hunting through mesh code.
+ *
+ * KNOWN LIMITATION, and it is the interesting one. These numbers are specific to
+ * the rig that is bound. Aliasing bone NAMES across rigs — which `rig.ts` does —
+ * does not align bone ORIENTATIONS: the procedural mannequin and the UE5
+ * skeleton agree about what a hand is called and disagree about which way it
+ * faces, so a grip calibrated for one is wrong on the other. They are currently
+ * calibrated for the UE5 / Quaternius rig, because that is what renders.
+ *
+ * The real fix is for a body to declare its own hand frame and for this table to
+ * express intent relative to it ("blade up, face forward") rather than a raw
+ * local rotation. That is a follow-up, not a hack to avoid — one correction
+ * quaternion per socket per rig would make these numbers portable.
  */
 
 import * as THREE from 'three';
@@ -33,8 +44,6 @@ export type Grip = {
   scale?: number;
 };
 
-const HALF_PI = Math.PI / 2;
-
 /**
  * Rest T-pose: the right arm runs along world −X, so the hand's local −X points
  * at the fingertips and +X back toward the wrist. With the arms hanging — the
@@ -44,30 +53,30 @@ const HALF_PI = Math.PI / 2;
  * the fist" hold points +Y → +X. The left hand mirrors in X.
  */
 const GRIPS: Partial<Record<PropKey, Partial<Record<SocketId, Grip>>>> = {
+  // Measured, not guessed. Each rotation is `inverse(handWorldQuat) * desired`
+  // read off the actual rig while wearing the stance that holds the prop — so
+  // the prop reads correctly at rest and then follows the hand, which is what a
+  // held object does. Re-derive these with the grip probe if the rig changes;
+  // they encode that rig's hand orientation and nothing else.
   [PROP_KEYS.staff]: {
-    rightHand: { position: [-0.03, 0.06, 0.04], rotation: [0.12, 0, HALF_PI] },
-    leftHand: { position: [0.03, 0.06, 0.04], rotation: [0.12, 0, -HALF_PI] },
+    // Carried tip-down, like a walking staff.
+    rightHand: { position: [0, 0, 0], rotation: [-0.0834, -0.3923, 0.6379] },
+    leftHand: { position: [0, 0, 0], rotation: [0.0834, 0.3923, 0.6379] },
   },
   [PROP_KEYS.sword]: {
-    rightHand: { position: [0.02, 0.05, 0.03], rotation: [0, 0.35, -HALF_PI] },
-    leftHand: { position: [-0.02, 0.05, 0.03], rotation: [0, -0.35, HALF_PI] },
+    // Blade up out of the fist.
+    rightHand: { position: [0, 0, 0], rotation: [-0.5051, -0.5855, -2.9189] },
+    leftHand: { position: [0, 0, 0], rotation: [0.5051, 0.5855, -2.9189] },
   },
   [PROP_KEYS.shield]: {
-    // Strapped across the forearm, not gripped out of the fist: seat the disc
-    // toward the wrist (−X on the left hand, +X on the right — fingertips are
-    // the other way), and leave rotation identity.
-    //
-    // Authoring +Z is the boss. In a presentation stance the hand's local +Z
-    // already faces world-forward, so identity keeps the face on the threat.
-    // The previous [±π/2, ∓π/2] spin mapped the boss onto hand ±X — the axis
-    // that hangs down once the arm is posed — which is why the shield read as
-    // a plank stabbed through the torso.
-    rightHand: { position: [0.1, 0.02, 0.06], rotation: [0, 0, 0] },
-    leftHand: { position: [-0.1, 0.02, 0.06], rotation: [0, 0, 0] },
+    // Face and boss toward the threat, top rim up.
+    leftHand: { position: [0, 0, 0], rotation: [-1.665, -1.4449, 3.1137] },
+    rightHand: { position: [0, 0, 0], rotation: [1.665, 1.4449, 3.1137] },
   },
   [PROP_KEYS.potion]: {
-    rightHand: { position: [0.02, 0.05, 0.03], rotation: [0, 0.35, -HALF_PI] },
-    leftHand: { position: [-0.02, 0.05, 0.03], rotation: [0, -0.35, HALF_PI] },
+    // Mouth up, so the raise-to-drink reads.
+    rightHand: { position: [0, 0, 0], rotation: [-0.0834, -0.3923, -2.5037] },
+    leftHand: { position: [0, 0, 0], rotation: [0.0834, 0.3923, -2.5037] },
   },
 };
 

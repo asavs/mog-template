@@ -41,7 +41,14 @@ export {
   type ClipBindingReport,
   type RigBindingReport,
 } from './inspect';
-export { resolveBody, resolveMotion, resolveProp } from './resolve';
+export {
+  proceduralBody,
+  proceduralMotion,
+  proceduralProp,
+  resolveBody,
+  resolveMotion,
+  resolveProp,
+} from './resolve';
 export { MOG_BONE_ORDER, MOG_REST_POSE } from './restPose';
 export {
   registerBodyGenerator,
