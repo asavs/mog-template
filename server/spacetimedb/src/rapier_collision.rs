@@ -1,6 +1,7 @@
 use crate::castle_collision::{self, CapsuleMoveResult};
 use crate::common::{DELTA_TIME, Vector3};
 use rapier3d::control::{CharacterLength, KinematicCharacterController};
+use rapier3d::na::Isometry3;
 use rapier3d::prelude::*;
 use std::sync::OnceLock;
 
@@ -36,11 +37,11 @@ pub fn resolve_capsule_sweep(
         desired.z - current.z,
     ];
     let capsule = SharedShape::capsule_y(capsule_segment_half_height(radius, height), radius);
-    let character_pos = Pose::from_translation(vector![
+    let character_pos = Isometry3::translation(
         current.x,
         current.y + height * 0.5,
         current.z,
-    ]);
+    );
     let query_pipeline = world.broad_phase.as_query_pipeline(
         world.narrow_phase.query_dispatcher(),
         &world.bodies,
@@ -107,7 +108,7 @@ fn build_rapier_castle_world() -> Option<RapierCastleWorld> {
     let vertices = asset
         .vertices
         .chunks_exact(3)
-        .map(|vertex| vector![vertex[0], vertex[1], vertex[2]])
+        .map(|vertex| point![vertex[0], vertex[1], vertex[2]])
         .collect::<Vec<_>>();
     let indices = asset
         .indices
@@ -131,7 +132,7 @@ fn build_rapier_castle_world() -> Option<RapierCastleWorld> {
     let mut narrow_phase = NarrowPhase::new();
     colliders.insert(collider);
     PhysicsPipeline::new().step(
-        &Vector::ZERO,
+        &vector![0.0, 0.0, 0.0],
         &IntegrationParameters::default(),
         &mut IslandManager::new(),
         &mut broad_phase,
@@ -151,7 +152,7 @@ fn build_rapier_castle_world() -> Option<RapierCastleWorld> {
         broad_phase,
         narrow_phase,
         controller: KinematicCharacterController {
-            up: Vector::Y,
+            up: vector![0.0, 1.0, 0.0],
             offset: CharacterLength::Absolute(castle_collision::CAPSULE_SKIN),
             slide: true,
             autostep: None,
