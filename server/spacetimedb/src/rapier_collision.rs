@@ -1,7 +1,7 @@
 use crate::castle_collision::{self, CapsuleMoveResult};
 use crate::common::{DELTA_TIME, Vector3};
 use rapier3d::control::{CharacterLength, KinematicCharacterController};
-use rapier3d::na::Isometry3;
+use rapier3d::na::{Isometry3, Unit};
 use rapier3d::prelude::*;
 use std::sync::OnceLock;
 
@@ -152,7 +152,7 @@ fn build_rapier_castle_world() -> Option<RapierCastleWorld> {
         broad_phase,
         narrow_phase,
         controller: KinematicCharacterController {
-            up: vector![0.0, 1.0, 0.0],
+            up: Unit::new_normalize(vector![0.0, 1.0, 0.0]),
             offset: CharacterLength::Absolute(castle_collision::CAPSULE_SKIN),
             slide: true,
             autostep: None,
