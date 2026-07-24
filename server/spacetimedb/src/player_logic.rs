@@ -1,4 +1,5 @@
 use crate::collision::{self, MAX_SNAP_DOWN_HEIGHT};
+use crate::castle_collision::GROUND_SNAP_DISTANCE;
 use crate::common::{
     DELTA_TIME, GROUNDED_EPSILON, InputState, MovementState, PLAYER_SPEED,
     POSE_POSITION_EPSILON, POSE_ROTATION_EPSILON, SPRINT_MULTIPLIER, Vector3,
@@ -140,7 +141,7 @@ pub fn update_transform(
     rotation_y: f32,
 ) {
     let terrain_ground_y = heightmap::terrain_height_at(&transform.position);
-    let castle_ground = collision::castle_ground_support(&transform.position, MAX_SNAP_DOWN_HEIGHT);
+    let castle_ground = collision::castle_ground_support(&transform.position, GROUND_SNAP_DISTANCE);
     let current_ground_y = castle_ground
         .as_ref()
         .map(|support| support.y.max(terrain_ground_y))
@@ -167,7 +168,7 @@ pub fn update_transform(
     let terrain_resolved_ground_y = heightmap::terrain_height_at(&resolved_position);
     let castle_resolved_ground = collision::castle_ground_support(
         &resolved_position,
-        MAX_SNAP_DOWN_HEIGHT,
+        GROUND_SNAP_DISTANCE,
     );
     let resolved_ground_y = castle_resolved_ground
         .as_ref()

@@ -76,6 +76,10 @@ export function loadCastleCollisionFromArrayBuffer(buffer: ArrayBuffer): void {
   const sourceHash = readHash(view, 136);
   const sourceNodeName = readAscii(view, 168, 64);
   const cellCount = gridX * gridY * gridZ;
+  if (!Number.isSafeInteger(cellCount)) throw new Error('Castle collision grid dimensions overflow');
+  if (!min.every(Number.isFinite) || !max.every(Number.isFinite) || min.some((value, axis) => value >= max[axis])) {
+    throw new Error('Castle collision bounds are not finite and ordered');
+  }
   const verticesOffset = headerBytes;
   const indicesOffset = verticesOffset + vertexCount * 3 * 4;
   const offsetsOffset = indicesOffset + triangleCount * 3 * 4;
@@ -85,7 +89,7 @@ export function loadCastleCollisionFromArrayBuffer(buffer: ArrayBuffer): void {
   }
   const triangleIdCount = view.getUint32(offsetsOffset + cellCount * 4, true);
   const requiredBytes = triangleIdsOffset + triangleIdCount * 4;
-  if (buffer.byteLength < requiredBytes) {
+  if (buffer.byteLength !== requiredBytes) {
     throw new Error(`Castle collision buffer truncated: need ${requiredBytes}, got ${buffer.byteLength}`);
   }
 
@@ -99,6 +103,11 @@ export function loadCastleCollisionFromArrayBuffer(buffer: ArrayBuffer): void {
   for (let index = 0; index < triangleIds.length; index += 1) triangleIds[index] = view.getUint32(triangleIdsOffset + index * 4, true);
   if (offsets[offsets.length - 1] !== triangleIds.length) {
     throw new Error('Castle collision grid offset count does not match triangle ids');
+  }
+  if (indices.some(index => index >= vertexCount)) throw new Error('Castle collision index outside vertex array');
+  if (triangleIds.some(id => id >= triangleCount)) throw new Error('Castle collision grid references a missing triangle');
+  if (offsets.some((offset, index) => index > 0 && offset < offsets[index - 1])) {
+    throw new Error('Castle collision grid offsets are not monotonic');
   }
 
   collision = { sourceNodeName, sourceHash, min, max, terrainScale, terrainOffset, sourceNodeMatrix, vertices, indices, grid: { x: gridX, y: gridY, z: gridZ, offsets, triangleIds } };

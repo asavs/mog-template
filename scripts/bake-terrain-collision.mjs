@@ -27,6 +27,7 @@ const MAX_WALKABLE_SLOPE = Math.tan((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180
 const MIN_WALKABLE_NORMAL_Y = Math.cos((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180);
 const MIN_TOP_NORMAL_Y = 0.02;
 const CASTLE_GRID_CELL_SIZE = 3;
+const CASTLE_MIN_DOUBLE_AREA_SQUARED = 1e-12;
 
 const COMPONENT_BYTE_SIZE = {
   5120: 1,
@@ -500,6 +501,9 @@ function collectCastleCollision(gltf, bin, instances, scale, offset, sourceHash)
     const vertexBase = vertices.length / 3;
     for (let index = 0; index < positions.count; index += 1) {
       const point = finalTransform(transformPoint(instance.matrix, positions.read(index)), scale, offset);
+      if (!point.every(Number.isFinite)) {
+        throw new Error(`Castle Collision has a non-finite transformed vertex at ${index}`);
+      }
       vertices.push(point[0], point[1], point[2]);
       for (let axis = 0; axis < 3; axis += 1) {
         min[axis] = Math.min(min[axis], point[axis]);
@@ -512,11 +516,21 @@ function collectCastleCollision(gltf, bin, instances, scale, offset, sourceHash)
       : getAccessorReader(gltf, bin, primitive.indices);
     const indexCount = sourceIndices ? sourceIndices.count : positions.count;
     for (let index = 0; index + 2 < indexCount; index += 3) {
-      indices.push(
-        vertexBase + (sourceIndices ? sourceIndices.read(index) : index),
-        vertexBase + (sourceIndices ? sourceIndices.read(index + 1) : index + 1),
-        vertexBase + (sourceIndices ? sourceIndices.read(index + 2) : index + 2),
-      );
+      const sourceTriangle = [
+        sourceIndices ? sourceIndices.read(index) : index,
+        sourceIndices ? sourceIndices.read(index + 1) : index + 1,
+        sourceIndices ? sourceIndices.read(index + 2) : index + 2,
+      ];
+      if (sourceTriangle.some(sourceIndex => !Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= positions.count)) {
+        throw new Error(`Castle Collision has an out-of-range triangle index at ${index}`);
+      }
+      const triangle = sourceTriangle.map(sourceIndex => vertexBase + sourceIndex);
+      const a = vertices.slice(triangle[0] * 3, triangle[0] * 3 + 3);
+      const b = vertices.slice(triangle[1] * 3, triangle[1] * 3 + 3);
+      const c = vertices.slice(triangle[2] * 3, triangle[2] * 3 + 3);
+      const area = cross([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+      if (area[0] ** 2 + area[1] ** 2 + area[2] ** 2 <= CASTLE_MIN_DOUBLE_AREA_SQUARED) continue;
+      indices.push(...triangle);
     }
   }
 

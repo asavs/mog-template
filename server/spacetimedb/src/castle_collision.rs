@@ -27,6 +27,7 @@ static CASTLE_COLLISION: OnceLock<CastleCollisionData> = OnceLock::new();
 pub const CAPSULE_SKIN: f32 = 0.002;
 /// cos(70°), kept in sync with `client/src/castleController.ts`.
 pub const MIN_WALKABLE_NORMAL_Y: f32 = 0.34202015;
+pub const GROUND_SNAP_DISTANCE: f32 = 0.35;
 const CONTACT_EPSILON: f32 = 0.0001;
 const MAX_SLIDE_ITERATIONS: usize = 4;
 const MAX_SUBSTEP_DISTANCE: f32 = 0.2;
@@ -109,6 +110,11 @@ fn parse_castle_collision_bin(bytes: &[u8]) -> Result<CastleCollisionData, Strin
     }
     if triangle_ids.iter().any(|&id| id as usize >= triangle_count) {
         return Err("castle collision grid references a missing triangle".into());
+    }
+    if !min.iter().chain(max.iter()).all(|value| value.is_finite())
+        || min.iter().zip(max.iter()).any(|(min, max)| min >= max)
+    {
+        return Err("castle collision bounds are not finite and ordered".into());
     }
 
     Ok(CastleCollisionData { min, max, vertices, indices, grid_x, grid_y, grid_z, offsets, triangle_ids })
@@ -200,14 +206,17 @@ pub fn resolve_capsule_sweep(
                 low = middle;
             }
         }
-        position = low + contact.normal * CAPSULE_SKIN;
-        if contact.normal.y >= MIN_WALKABLE_NORMAL_Y {
-            ground_normal = Some(contact.normal.into());
+        // A binary search can end on a different seam/corner contact than the
+        // original blocked sample. Re-query before applying the slide normal.
+        let final_contact = capsule_contact(high, radius, height, remaining).unwrap_or(contact);
+        position = low + final_contact.normal * CAPSULE_SKIN;
+        if final_contact.normal.y >= MIN_WALKABLE_NORMAL_Y {
+            ground_normal = Some(final_contact.normal.into());
         }
         remaining = target - position;
-        let into_surface = remaining.dot(contact.normal);
+        let into_surface = remaining.dot(final_contact.normal);
         if into_surface < 0.0 {
-            remaining = remaining - contact.normal * into_surface;
+            remaining = remaining - final_contact.normal * into_surface;
         }
     }
 
@@ -247,12 +256,16 @@ fn capsule_contact(position: Point, radius: f32, height: f32, motion: Point) -> 
         if penetration <= CONTACT_EPSILON {
             continue;
         }
-        let mut normal = if distance > CONTACT_EPSILON { delta * (1.0 / distance) } else { (b - a).cross(c - a).normalized() };
+        let triangle_normal = (b - a).cross(c - a);
+        let mut normal = if distance > CONTACT_EPSILON {
+            delta * (1.0 / distance)
+        } else if triangle_normal.length_squared() > CONTACT_EPSILON * CONTACT_EPSILON {
+            triangle_normal * (1.0 / triangle_normal.length())
+        } else {
+            fallback_normal(motion)
+        };
         if normal.dot((segment_start + segment_end) * 0.5 - (a + b + c) * (1.0 / 3.0)) < 0.0 {
             normal = normal * -1.0;
-        }
-        if normal.length() <= CONTACT_EPSILON {
-            normal = motion.normalized() * -1.0;
         }
         let contact = Contact { normal, penetration };
         if deepest.map(|existing| contact.penetration > existing.penetration).unwrap_or(true) {
@@ -290,12 +303,24 @@ fn closest_segment_triangle(start: Point, end: Point, a: Point, b: Point, c: Poi
 
 fn segment_triangle_intersection(start: Point, end: Point, a: Point, b: Point, c: Point) -> Option<Point> {
     let normal = (b - a).cross(c - a);
-    let denominator = normal.dot(end - start);
-    if denominator.abs() <= CONTACT_EPSILON { return None; }
+    let delta = end - start;
+    let normal_length = normal.length();
+    let delta_length = delta.length();
+    if normal_length <= CONTACT_EPSILON || delta_length <= CONTACT_EPSILON { return None; }
+    let denominator = normal.dot(delta);
+    if denominator.abs() <= CONTACT_EPSILON * normal_length * delta_length { return None; }
     let t = normal.dot(a - start) / denominator;
     if !(0.0..=1.0).contains(&t) { return None; }
     let point = start + (end - start) * t;
     point_in_triangle(point, a, b, c).then_some(point)
+}
+
+fn fallback_normal(motion: Point) -> Point {
+    if motion.length_squared() > CONTACT_EPSILON * CONTACT_EPSILON {
+        motion * (-1.0 / motion.length())
+    } else {
+        Point::new(0.0, 1.0, 0.0)
+    }
 }
 
 fn point_in_triangle(point: Point, a: Point, b: Point, c: Point) -> bool {
@@ -355,7 +380,6 @@ impl Point {
     fn cross(self, other: Self) -> Self { Self::new(self.y * other.z - self.z * other.y, self.z * other.x - self.x * other.z, self.x * other.y - self.y * other.x) }
     fn length_squared(self) -> f32 { self.dot(self) }
     fn length(self) -> f32 { self.length_squared().sqrt() }
-    fn normalized(self) -> Self { let length = self.length(); if length > CONTACT_EPSILON { self * (1.0 / length) } else { Self::new(0.0, 1.0, 0.0) } }
 }
 impl From<&Vector3> for Point { fn from(value: &Vector3) -> Self { Self::new(value.x, value.y, value.z) } }
 impl From<Point> for Vector3 { fn from(value: Point) -> Self { Self { x: value.x, y: value.y, z: value.z } } }

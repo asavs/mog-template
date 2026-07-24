@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
-import { castleGroundSupport, resolveCastleCapsuleSweep } from './castleController';
+import {
+  CASTLE_GROUND_SNAP_DISTANCE,
+  castleGroundSupport,
+  resolveCastleCapsuleSweep,
+} from './castleController';
 import { isCastleCollisionReady } from './castleCollision';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
 import {
@@ -237,7 +241,7 @@ export function lerpAngle(from: number, to: number, alpha: number): number {
 function groundHeightAt(position: THREE.Vector3): number {
   const terrain = terrainHeightAt(position);
   if (!isCastleCollisionReady()) return terrain;
-  const support = castleGroundSupport(position, MAX_SNAP_DOWN_HEIGHT, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
+  const support = castleGroundSupport(position, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT);
   return support ? Math.max(terrain, support.y) : terrain;
 }
 

@@ -4,6 +4,8 @@ import { castleCollisionAsset, castleTriangleCandidates } from './castleCollisio
 export const CASTLE_CAPSULE_SKIN = 0.002;
 /** cos(70°), shared with the Rust controller. */
 export const CASTLE_MIN_WALKABLE_NORMAL_Y = 0.34202015;
+/** Short grounding aid only; falling motion itself is handled by the capsule sweep. */
+export const CASTLE_GROUND_SNAP_DISTANCE = 0.35;
 const CONTACT_EPSILON = 0.0001;
 const MAX_SLIDE_ITERATIONS = 4;
 const MAX_SUBSTEP_DISTANCE = 0.2;
@@ -52,11 +54,14 @@ export function resolveCastleCapsuleSweep(
       if (capsuleContact(middle, radius, height, remaining)) high = middle;
       else low = middle;
     }
-    position = low.addScaledVector(hit.normal, CASTLE_CAPSULE_SKIN);
-    if (hit.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y) groundNormal = hit.normal;
+    // The binary search can cross a seam or corner, so use the contact at the
+    // final blocked location rather than the stale sample that started it.
+    const finalContact = capsuleContact(high, radius, height, remaining) ?? { normal: hit.normal };
+    position = low.addScaledVector(finalContact.normal, CASTLE_CAPSULE_SKIN);
+    if (finalContact.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y) groundNormal = finalContact.normal;
     remaining = target.clone().sub(position);
-    const intoSurface = remaining.dot(hit.normal);
-    if (intoSurface < 0) remaining.addScaledVector(hit.normal, -intoSurface);
+    const intoSurface = remaining.dot(finalContact.normal);
+    if (intoSurface < 0) remaining.addScaledVector(finalContact.normal, -intoSurface);
   }
   return { position, groundNormal };
 }
@@ -73,7 +78,8 @@ export function castleGroundSupport(
     radius,
     height,
   );
-  return result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y
+  const movedSideways = Math.hypot(result.position.x - position.x, result.position.z - position.z) > CASTLE_CAPSULE_SKIN;
+  return !movedSideways && result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y
     ? result.position
     : null;
 }
@@ -95,12 +101,14 @@ function capsuleContact(position: THREE.Vector3, radius: number, height: number,
     const distance = delta.length();
     const penetration = radius - distance;
     if (penetration <= CONTACT_EPSILON) continue;
+    const triangleNormal = b.clone().sub(a).cross(c.clone().sub(a));
     const normal = distance > CONTACT_EPSILON
       ? delta.multiplyScalar(1 / distance)
-      : b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+      : triangleNormal.lengthSq() > CONTACT_EPSILON * CONTACT_EPSILON
+        ? triangleNormal.normalize()
+        : fallbackNormal(motion);
     const centerDelta = start.clone().add(end).multiplyScalar(0.5).sub(a.clone().add(b).add(c).multiplyScalar(1 / 3));
     if (normal.dot(centerDelta) < 0) normal.multiplyScalar(-1);
-    if (normal.lengthSq() <= CONTACT_EPSILON) normal.copy(motion).normalize().multiplyScalar(-1);
     if (!deepest || penetration > deepest.penetration) deepest = { normal, penetration };
   }
   return deepest;
@@ -131,12 +139,22 @@ function closestSegmentTriangle(start: THREE.Vector3, end: THREE.Vector3, a: THR
 
 function segmentTriangleIntersection(start: THREE.Vector3, end: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3): THREE.Vector3 | null {
   const normal = b.clone().sub(a).cross(c.clone().sub(a));
-  const denominator = normal.dot(end.clone().sub(start));
-  if (Math.abs(denominator) <= CONTACT_EPSILON) return null;
+  const delta = end.clone().sub(start);
+  const normalLength = normal.length();
+  const deltaLength = delta.length();
+  if (normalLength <= CONTACT_EPSILON || deltaLength <= CONTACT_EPSILON) return null;
+  const denominator = normal.dot(delta);
+  if (Math.abs(denominator) <= CONTACT_EPSILON * normalLength * deltaLength) return null;
   const t = normal.dot(a.clone().sub(start)) / denominator;
   if (t < 0 || t > 1) return null;
   const point = start.clone().lerp(end, t);
   return pointInTriangle(point, a, b, c) ? point : null;
+}
+
+function fallbackNormal(motion: THREE.Vector3): THREE.Vector3 {
+  return motion.lengthSq() > CONTACT_EPSILON * CONTACT_EPSILON
+    ? motion.clone().normalize().multiplyScalar(-1)
+    : new THREE.Vector3(0, 1, 0);
 }
 
 function pointInTriangle(point: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3): boolean {

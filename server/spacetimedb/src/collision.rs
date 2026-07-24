@@ -44,6 +44,12 @@ pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Ve
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
     );
+    let moved_sideways = ((result.position.x - position.x).powi(2)
+        + (result.position.z - position.z).powi(2))
+    .sqrt() > castle_collision::CAPSULE_SKIN;
+    if moved_sideways {
+        return None;
+    }
     result
         .ground_normal
         .filter(|normal| normal.y >= castle_collision::MIN_WALKABLE_NORMAL_Y)
