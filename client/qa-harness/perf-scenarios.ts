@@ -83,7 +83,11 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
   if (!url.searchParams.has('qa')) url.searchParams.set('qa', '');
 
   const t0 = Date.now();
-  await page.goto(url.toString(), { waitUntil: 'networkidle' });
+  // networkidle never settles with live SpacetimeDB websockets on preview/prod.
+  await page.goto(url.toString(), {
+    waitUntil: 'domcontentloaded',
+    timeout: Math.max(cfg.joinTimeoutMs, 60_000),
+  });
   await page.waitForSelector('#username', { timeout: cfg.joinTimeoutMs });
   const tJoinScreen = Date.now();
 
