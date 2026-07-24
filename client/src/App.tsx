@@ -20,7 +20,7 @@ import { GameOverlays } from './components/GameOverlays';
 import { CombatFeedbackEffect, type ActiveCombatFeedback } from './components/CombatFeedbackEffect';
 import { FireballProjectileEffects, LightningEffectPreloader, LightningStrikeEffects } from './components/SpellEffects';
 import type { WizardSpell } from './components/BasePlayer';
-import { getCharacterCapabilities } from './components/characterConfig';
+import { resolvePlayerCapabilities } from './components/characterConfig';
 import { presetIdFromLegacyClass } from './avatar/catalog';
 import type { PendingFireballCosmeticCast } from './components/fireballVisuals';
 import type { SpellCasterVisualOrigin } from './components/spellVisualOrigins';
@@ -315,9 +315,30 @@ export default function App() {
   });
 
 
-  const localSpellsEnabled = getCharacterCapabilities(
-    identity ? playerClasses.get(identity.toHexString()) : undefined,
-  ).spells.length > 0;
+  // Spell hotkeys follow resolved grants (appearance + equipment + baseline),
+  // not the raw character_class string alone — mid-session gear changes apply.
+  const localCapabilities = useMemo(() => {
+    const identityKey = identity?.toHexString();
+    if (!identityKey) {
+      return resolvePlayerCapabilities({});
+    }
+    const appearanceRow = playerAppearances.get(identityKey);
+    const equipmentRows = playerEquipment.get(identityKey);
+    return resolvePlayerCapabilities({
+      legacyClass: playerClasses.get(identityKey),
+      appearance: appearanceRow
+        ? {
+            bodyId: appearanceRow.bodyId,
+            scale: appearanceRow.scale,
+            loadoutPreset: appearanceRow.loadoutPreset,
+          }
+        : null,
+      equipment: equipmentRows?.map(row => ({
+        slot: row.slot,
+        itemId: row.itemId,
+      })),
+    });
+  }, [identity, playerAppearances, playerClasses, playerEquipment]);
 
   useKeyboardInput({
     identity,
@@ -325,7 +346,7 @@ export default function App() {
     onSelectWizardSpell: setSelectedWizardSpell,
     playerRuntimeRef,
     sendInputNow,
-    spellsEnabled: localSpellsEnabled,
+    availableSpells: localCapabilities.spells,
   });
 
   const gameState = useMemo<GameState>(() => ({

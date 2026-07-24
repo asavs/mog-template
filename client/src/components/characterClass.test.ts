@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canSelectSpell,
   getCharacterCapabilities,
+  hasSpellSelectHotkeys,
   normalizeCharacterClass,
+  resolvePlayerCapabilities,
 } from './characterConfig';
 
 describe('normalizeCharacterClass legacy remapping', () => {
@@ -53,5 +56,82 @@ describe('class capabilities', () => {
   it('resolves legacy stored classes through the same table', () => {
     expect(getCharacterCapabilities('paladin').melee).toBe(true);
     expect(getCharacterCapabilities('wizard2').spells.length).toBe(2);
+  });
+});
+
+describe('resolvePlayerCapabilities (HUD / hotkey path)', () => {
+  it('paladin class string with no cast grants → no spell hotkeys', () => {
+    const caps = resolvePlayerCapabilities({
+      legacyClass: 'paladin',
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+        { slot: 'utility_potion', itemId: 'potion' },
+      ],
+    });
+    expect(caps.melee).toBe(true);
+    expect(caps.block).toBe(true);
+    expect(caps.spells.length).toBe(0);
+    expect(hasSpellSelectHotkeys(caps)).toBe(false);
+    expect(canSelectSpell(caps, 'fireball')).toBe(false);
+    expect(canSelectSpell(caps, 'lightning')).toBe(false);
+  });
+
+  it('staff equipment grants spells even when class string is paladin', () => {
+    const caps = resolvePlayerCapabilities({
+      legacyClass: 'paladin',
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'utility_potion', itemId: 'potion' },
+      ],
+    });
+    // Grant-driven: staff cast_* abilities enable spell hotkeys regardless of class string.
+    expect([...caps.spells]).toEqual(['fireball', 'lightning']);
+    expect(hasSpellSelectHotkeys(caps)).toBe(true);
+    expect(canSelectSpell(caps, 'fireball')).toBe(true);
+    expect(canSelectSpell(caps, 'lightning')).toBe(true);
+    // main_hand is staff, not sword — melee_slash is not granted from gear.
+    expect(caps.melee).toBe(false);
+  });
+
+  it('wizard equipment-derived cast grants still enable spells', () => {
+    const caps = resolvePlayerCapabilities({
+      legacyClass: 'wizard',
+      appearance: { bodyId: 'body_f', scale: 1, loadoutPreset: 'wizard' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'utility_potion', itemId: 'potion' },
+      ],
+    });
+    expect([...caps.spells]).toEqual(['fireball', 'lightning']);
+    expect(hasSpellSelectHotkeys(caps)).toBe(true);
+    expect(caps.melee).toBe(false);
+  });
+
+  it('falls back to preset capabilities when equipment rows are missing', () => {
+    const paladinFallback = resolvePlayerCapabilities({ legacyClass: 'paladin' });
+    expect(paladinFallback.spells.length).toBe(0);
+    expect(paladinFallback.melee).toBe(true);
+
+    const wizardFallback = resolvePlayerCapabilities({ legacyClass: 'wizard' });
+    expect(wizardFallback.spells.length).toBe(2);
+  });
+
+  it('sword-only loadout does not enable spell select regardless of loadoutPreset label', () => {
+    // Appearance still says wizard, but live gear is melee-only.
+    const caps = resolvePlayerCapabilities({
+      legacyClass: 'wizard',
+      appearance: { bodyId: 'body_f', scale: 1, loadoutPreset: 'wizard' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+    });
+    expect(caps.melee).toBe(true);
+    expect(caps.block).toBe(true);
+    expect(caps.spells.length).toBe(0);
+    expect(hasSpellSelectHotkeys(caps)).toBe(false);
   });
 });

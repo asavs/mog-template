@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldSuppressGameKeyDefault } from './useInputManager';
+import { shouldSuppressGameKeyDefault, spellForSelectHotkey } from './useInputManager';
 
 function keyboardEvent(code: string, target?: object): KeyboardEvent {
   return { code, target: target ?? null } as KeyboardEvent;
@@ -28,5 +28,29 @@ describe('shouldSuppressGameKeyDefault', () => {
 
   it('does not suppress unrelated browser keys', () => {
     expect(shouldSuppressGameKeyDefault(keyboardEvent('ArrowDown'), true)).toBe(false);
+  });
+});
+
+describe('spellForSelectHotkey', () => {
+  it('disables Digit1/Digit2 when no spells are granted', () => {
+    expect(spellForSelectHotkey('Digit1', [])).toBeNull();
+    expect(spellForSelectHotkey('Digit2', [])).toBeNull();
+  });
+
+  it('maps Digit1/Digit2 only for granted spells', () => {
+    expect(spellForSelectHotkey('Digit1', ['fireball', 'lightning'])).toBe('fireball');
+    expect(spellForSelectHotkey('Digit2', ['fireball', 'lightning'])).toBe('lightning');
+  });
+
+  it('gates each hotkey by membership, not a class-wide flag', () => {
+    expect(spellForSelectHotkey('Digit1', ['lightning'])).toBeNull();
+    expect(spellForSelectHotkey('Digit2', ['lightning'])).toBe('lightning');
+    expect(spellForSelectHotkey('Digit1', ['fireball'])).toBe('fireball');
+    expect(spellForSelectHotkey('Digit2', ['fireball'])).toBeNull();
+  });
+
+  it('ignores non-spell keys', () => {
+    expect(spellForSelectHotkey('KeyW', ['fireball', 'lightning'])).toBeNull();
+    expect(spellForSelectHotkey('Digit4', ['fireball'])).toBeNull();
   });
 });
