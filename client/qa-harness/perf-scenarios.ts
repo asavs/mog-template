@@ -17,6 +17,7 @@
  * Perf numbers are reported against budgets; failures only gate with QA_PERF_ENFORCE=1.
  */
 import type { Browser, Page } from 'playwright';
+import { joinPresetButtonLabel } from '../src/components/characterConfig';
 import type { CharacterClass, LoadLandmarks, RunData } from './trace-types';
 import { summarizeWsByPhase } from './perf-stats';
 import {
@@ -88,7 +89,7 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
 
   await page.locator('#username').fill(`QaBot-${characterClass}-${Date.now()}`);
   await page
-    .getByRole('button', { name: characterClass === 'wizard' ? 'Wizard' : 'Paladin', exact: true })
+    .getByRole('button', { name: joinPresetButtonLabel(characterClass), exact: true })
     .click();
 
   const tClick = Date.now();

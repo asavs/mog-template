@@ -178,7 +178,10 @@ Useful env vars:
   jump/turn cases; full runs all 48 combinations. Handwritten phases and
   generated capability phases run in both tiers. An explicitly named phase in
   `QA_PHASES` always runs regardless of tier.
-- `QA_CLASSES=wizard` — run only one character class (default `wizard,paladin`).
+- `QA_CLASSES=wizard` — run only named loadout presets (default: **every
+  catalog preset**, e.g. `wizard,paladin` and `acolyte` when that preset
+  exists). Join UI clicks the catalog **label** button (not a hardcoded
+  wizard/paladin branch).
 - `QA_RUN_LABEL=before-refactor` — tag output filenames, e.g. for diffing
   `before-refactor` vs `after-refactor` runs.
 - `QA_HEADLESS=1` — run headless (movement only is reliable; see caveat above).

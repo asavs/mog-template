@@ -35,7 +35,7 @@ jobs:
     # so the approval that triggers it must come from a trusted role
     # (OWNER/MEMBER/COLLABORATOR) or the allowlisted reviewer bot. Without this
     # gate any GitHub user could approve a PR on this PUBLIC repo and run
-    # untrusted code with our credentials. goob-reviewer[bot]'s author_association
+    # untrusted code with our credentials. angry-linus[bot]'s author_association
     # is NONE (not a collaborator), so it is allowlisted by login explicitly.
     # workflow_dispatch requires write access to the repo, so it is trusted here;
     # the fork guard below still applies to BOTH paths.
@@ -45,7 +45,7 @@ jobs:
        github.event.pull_request.state == 'open' &&
        github.event.pull_request.draft == false &&
        (contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association) ||
-        github.event.review.user.login == 'goob-reviewer[bot]'))
+        github.event.review.user.login == 'angry-linus[bot]'))
     timeout-minutes: 25
     permissions:
       id-token: write        # required for Workload Identity Federation
