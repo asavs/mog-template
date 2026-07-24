@@ -45,6 +45,10 @@ export interface NetMetrics {
   localClientTick: number;
   serverPredictedPositionDelta: number;
   visualCorrectionOffset: number;
+  castleCollisionQueryHz: number;
+  castleCollisionFrameMs: number;
+  castleCollisionMaxMs: number;
+  castleCollisionLastMs: number;
 }
 
 export function createMetrics(): NetMetrics {
@@ -73,6 +77,10 @@ export function createMetrics(): NetMetrics {
     localClientTick: 0,
     serverPredictedPositionDelta: 0,
     visualCorrectionOffset: 0,
+    castleCollisionQueryHz: 0,
+    castleCollisionFrameMs: 0,
+    castleCollisionMaxMs: 0,
+    castleCollisionLastMs: 0,
   };
 }
 

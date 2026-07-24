@@ -19,6 +19,7 @@ import {
   getRapierCastleGroundSupport,
   resolveRapierCastleMovement,
 } from './rapierCastleBridge';
+import { recordCastleCollisionQuery } from './collisionPerf';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
   GRAVITY,
@@ -357,22 +358,26 @@ function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance:
     return writeCastleSupportCache(position, maxDistance, { position: null, source: 'none' });
   }
 
+  const supportStartedAt = performance.now();
   const rapierSupport = getRapierCastleGroundSupport(
     position,
     maxDistance,
     PLAYER_COLLISION_RADIUS,
     PLAYER_CAPSULE_HEIGHT,
   );
+  recordCastleCollisionQuery(performance.now() - supportStartedAt);
   if (rapierSupport) {
     return writeCastleSupportCache(position, maxDistance, { position: rapierSupport, source: 'rapier' });
   }
 
+  const customStartedAt = performance.now();
   const customSupport = castleGroundSupport(
     position,
     maxDistance,
     PLAYER_COLLISION_RADIUS,
     PLAYER_CAPSULE_HEIGHT,
   );
+  recordCastleCollisionQuery(performance.now() - customStartedAt);
   return writeCastleSupportCache(position, maxDistance, customSupport
     ? { position: customSupport, source: 'custom' }
     : { position: null, source: 'none' });
@@ -502,23 +507,30 @@ export function simulateMovementTick(
     }
     const desiredBeforeCastle = sweepTarget.clone();
     const shouldSweepCastle = castleMovementMayTouch(fullTickStart, sweepTarget);
-    const rapierCollision = shouldSweepCastle
-      ? resolveRapierCastleMovement(
+    let rapierCollision = null;
+    if (shouldSweepCastle) {
+      const sweepStartedAt = performance.now();
+      rapierCollision = resolveRapierCastleMovement(
         fullTickStart,
         sweepTarget,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
-      )
-      : null;
+      );
+      recordCastleCollisionQuery(performance.now() - sweepStartedAt);
+    }
     const collisionSolver = rapierCollision ? 'rapier' : (shouldSweepCastle ? 'custom' : 'none');
-    const collision = rapierCollision ?? (shouldSweepCastle
-      ? resolveCastleCapsuleSweep(
+    let collision = rapierCollision;
+    if (!collision && shouldSweepCastle) {
+      const customSweepStartedAt = performance.now();
+      collision = resolveCastleCapsuleSweep(
         fullTickStart,
         sweepTarget,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
-      )
-      : { position: sweepTarget.clone(), groundNormal: null, hitCeiling: false, hitWall: false });
+      );
+      recordCastleCollisionQuery(performance.now() - customSweepStartedAt);
+    }
+    collision ??= { position: sweepTarget.clone(), groundNormal: null, hitCeiling: false, hitWall: false };
     const collisionResolvedPosition = shouldTraceCollision ? collision.position.clone() : null;
     position.copy(collision.position);
     if ((collision.hitCeiling && resolvedVerticalVelocity > 0)

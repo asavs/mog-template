@@ -30,13 +30,25 @@ pub fn resolve_player_movement(
     current: &Vector3,
     desired: &Vector3,
 ) -> castle_collision::CapsuleMoveResult {
+    let current_castle_supported = castle_support_probe_may_touch(
+        current,
+        castle_collision::GROUND_SNAP_DISTANCE,
+    ) && castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some();
+    resolve_player_movement_with_castle_support(current, desired, current_castle_supported)
+}
+
+pub fn resolve_player_movement_with_castle_support(
+    current: &Vector3,
+    desired: &Vector3,
+    current_castle_supported: bool,
+) -> castle_collision::CapsuleMoveResult {
     let clamped_desired = clamp_to_world(desired);
     let may_touch_castle = castle_movement_may_touch(current, &clamped_desired)
         || castle_support_probe_may_touch(current, castle_collision::GROUND_SNAP_DISTANCE);
     let terrain_resolved = if may_touch_castle
-        && (castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some()
-        || is_inside_castle_collision_bounds(current)
-        || is_inside_castle_collision_bounds(&clamped_desired))
+        && (current_castle_supported
+            || is_inside_castle_collision_bounds(current)
+            || is_inside_castle_collision_bounds(&clamped_desired))
     {
         clamped_desired
     } else {
