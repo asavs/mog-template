@@ -25,10 +25,14 @@ pub struct Aabb {
 }
 
 pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_collision::CapsuleMoveResult {
-    let terrain_resolved = if castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some() {
-        clamp_to_world(desired)
+    let clamped_desired = clamp_to_world(desired);
+    let terrain_resolved = if castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some()
+        || is_inside_castle_collision_bounds(current)
+        || is_inside_castle_collision_bounds(&clamped_desired)
+    {
+        clamped_desired
     } else {
-        resolve_player_movement_against(current, desired, &[])
+        resolve_player_movement_against(current, &clamped_desired, &[])
     };
     castle_collision::resolve_capsule_sweep(
         current,
@@ -120,6 +124,14 @@ fn collides_with_blockers(position: &Vector3, blockers: &[Aabb]) -> bool {
 fn can_move_to(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> bool {
     !collides_with_blockers(desired, blockers)
         && is_terrain_step_walkable(current, desired)
+}
+
+fn is_inside_castle_collision_bounds(position: &Vector3) -> bool {
+    let asset = castle_collision::castle_collision();
+    position.x >= asset.min[0] - PLAYER_COLLISION_RADIUS
+        && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
+        && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
+        && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS
 }
 
 pub fn is_terrain_step_walkable(current: &Vector3, desired: &Vector3) -> bool {

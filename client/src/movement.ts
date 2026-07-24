@@ -5,7 +5,7 @@ import {
   castleGroundSupport,
   resolveCastleCapsuleSweep,
 } from './castleController';
-import { isCastleCollisionReady } from './castleCollision';
+import { castleCollisionAsset, isCastleCollisionReady } from './castleCollision';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
@@ -133,7 +133,9 @@ export function applyMovement(
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
   if (isCastleCollisionReady()
-    && castleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)) {
+    && (castleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)
+      || isInsideCastleCollisionBounds(current)
+      || isInsideCastleCollisionBounds(clampedDesired))) {
     return clampedDesired;
   }
   let terrainResolved: THREE.Vector3;
@@ -174,6 +176,15 @@ function clampToWorld(position: THREE.Vector3): THREE.Vector3 {
 
 function canMoveTo(current: THREE.Vector3, desired: THREE.Vector3): boolean {
   return isTerrainStepWalkable(current, desired);
+}
+
+function isInsideCastleCollisionBounds(position: THREE.Vector3): boolean {
+  if (!isCastleCollisionReady()) return false;
+  const asset = castleCollisionAsset();
+  return position.x >= asset.min[0] - PLAYER_COLLISION_RADIUS
+    && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
+    && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
+    && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS;
 }
 
 export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vector3): boolean {
@@ -316,23 +327,22 @@ export function simulateMovementTick(
   if (isCastleCollisionReady()) {
     const wasGrounded = movementStateBeforeTick.isGrounded;
     const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
+    const sweepTarget = position.clone();
     if (wasGrounded && !isStartingJump) {
-      const endingTerrainY = terrainHeightAt(position);
+      const endingTerrainY = terrainHeightAt(sweepTarget);
       const endingCastleGround = castleGroundSupport(
-        position,
+        sweepTarget,
         CASTLE_GROUND_SNAP_DISTANCE,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
       );
       const endingGroundY = endingCastleGround ? endingCastleGround.y : endingTerrainY;
-      if (endingGroundY > position.y) {
-        position.y = endingGroundY;
-      }
+      sweepTarget.y = Math.max(fullTickStart.y, endingGroundY);
     }
-    const desiredBeforeCastle = position.clone();
+    const desiredBeforeCastle = sweepTarget.clone();
     const collision = resolveCastleCapsuleSweep(
       fullTickStart,
-      position,
+      sweepTarget,
       PLAYER_COLLISION_RADIUS,
       PLAYER_CAPSULE_HEIGHT,
     );
