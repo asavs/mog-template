@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
 import {
+  collisionDebugEnabled,
   collisionInputDebug,
   collisionNumberDebug,
   collisionVectorDebug,
@@ -346,6 +347,7 @@ export function simulateMovementTick(
   );
 
   const fullTickStart = position.clone();
+  const shouldTraceCollision = collisionDebugEnabled();
   const verticalVelocityBeforeTick = verticalVelocity;
   applyMovement(
     position,
@@ -354,7 +356,7 @@ export function simulateMovementTick(
     deltaSeconds,
     locomotionAfterTransition.sprintActive,
   );
-  const afterHorizontalMovement = position.clone();
+  const afterHorizontalMovement = shouldTraceCollision ? position.clone() : null;
   const jumpPhysicsAfterTick = applyJumpPhysics(
     position,
     input,
@@ -363,7 +365,7 @@ export function simulateMovementTick(
     wasJumpPressed,
     movementStateBeforeTick.isGrounded,
   );
-  const afterJumpPhysics = position.clone();
+  const afterJumpPhysics = shouldTraceCollision ? position.clone() : null;
   // Locomotion above deliberately remains unchanged. This is only the final
   // full-XYZ reachability pass, so upward jumps and falls cannot bypass castle
   // ceilings, undersides, or ramps after horizontal prediction has run.
@@ -399,7 +401,7 @@ export function simulateMovementTick(
       PLAYER_COLLISION_RADIUS,
       PLAYER_CAPSULE_HEIGHT,
     );
-    const collisionResolvedPosition = collision.position.clone();
+    const collisionResolvedPosition = shouldTraceCollision ? collision.position.clone() : null;
     position.copy(collision.position);
     if ((collision.hitCeiling && resolvedVerticalVelocity > 0)
       || (collision.groundNormal && resolvedVerticalVelocity < 0)) {
@@ -431,40 +433,42 @@ export function simulateMovementTick(
       position.y = resolvedGroundY;
       resolvedVerticalVelocity = 0;
     }
-    const finalGroundY = groundHeightAt(position);
-    logCollisionDebug({
-      at: performance.now(),
-      phase: 'movement:castle-sweep',
-      input: collisionInputDebug(input),
-      current: collisionVectorDebug(fullTickStart),
-      desired: collisionVectorDebug(desiredBeforeCastle),
-      position: collisionVectorDebug(position),
-      resolved: collisionVectorDebug(collisionResolvedPosition),
-      movementDelta: collisionVectorDebug(position.clone().sub(fullTickStart)),
-      groundNormal: collision.groundNormal ? collisionVectorDebug(collision.groundNormal) : null,
-      movementState: movementStateBeforeTick,
-      terrainY: collisionNumberDebug(terrainGroundY),
-      groundY: collisionNumberDebug(finalGroundY),
-      castleSupportY: collisionNumberDebug(castleResolvedGround.position?.y),
-      castleSupportSource: castleResolvedGround.source,
-      collisionSolver,
-      collisionMoved: collisionNumberDebug(movementDistance(fullTickStart, collisionResolvedPosition)),
-      desiredDistance: collisionNumberDebug(movementDistance(fullTickStart, desiredBeforeCastle)),
-      resolvedDistance: collisionNumberDebug(movementDistance(fullTickStart, position)),
-      blockedDistance: collisionNumberDebug(
-        movementDistance(fullTickStart, desiredBeforeCastle) - movementDistance(fullTickStart, position),
-      ),
-      verticalVelocityBefore: collisionNumberDebug(verticalVelocityBeforeTick),
-      verticalVelocityAfter: collisionNumberDebug(resolvedVerticalVelocity),
-      jumpWasPressedBefore: wasJumpPressed,
-      jumpWasPressedAfter: jumpPhysicsAfterTick.wasJumpPressed,
-      wasGrounded,
-      isStartingJump,
-      hitCeiling: collision.hitCeiling,
-      hitWall: collision.hitWall,
-      grounded: position.y <= finalGroundY + GROUNDED_EPSILON,
-      note: `afterHorizontal=${JSON.stringify(collisionVectorDebug(afterHorizontalMovement))}; afterJump=${JSON.stringify(collisionVectorDebug(afterJumpPhysics))}; startCastleSupport=${startingCastleSupport.source}:${collisionNumberDebug(startingCastleSupport.position?.y)}`,
-    });
+    if (shouldTraceCollision && collisionResolvedPosition && afterHorizontalMovement && afterJumpPhysics) {
+      const finalGroundY = groundHeightAt(position);
+      const desiredDistance = movementDistance(fullTickStart, desiredBeforeCastle);
+      const resolvedDistance = movementDistance(fullTickStart, position);
+      logCollisionDebug({
+        at: performance.now(),
+        phase: 'movement:castle-sweep',
+        input: collisionInputDebug(input),
+        current: collisionVectorDebug(fullTickStart),
+        desired: collisionVectorDebug(desiredBeforeCastle),
+        position: collisionVectorDebug(position),
+        resolved: collisionVectorDebug(collisionResolvedPosition),
+        movementDelta: collisionVectorDebug(position.clone().sub(fullTickStart)),
+        groundNormal: collision.groundNormal ? collisionVectorDebug(collision.groundNormal) : null,
+        movementState: movementStateBeforeTick,
+        terrainY: collisionNumberDebug(terrainGroundY),
+        groundY: collisionNumberDebug(finalGroundY),
+        castleSupportY: collisionNumberDebug(castleResolvedGround.position?.y),
+        castleSupportSource: castleResolvedGround.source,
+        collisionSolver,
+        collisionMoved: collisionNumberDebug(movementDistance(fullTickStart, collisionResolvedPosition)),
+        desiredDistance: collisionNumberDebug(desiredDistance),
+        resolvedDistance: collisionNumberDebug(resolvedDistance),
+        blockedDistance: collisionNumberDebug(desiredDistance - resolvedDistance),
+        verticalVelocityBefore: collisionNumberDebug(verticalVelocityBeforeTick),
+        verticalVelocityAfter: collisionNumberDebug(resolvedVerticalVelocity),
+        jumpWasPressedBefore: wasJumpPressed,
+        jumpWasPressedAfter: jumpPhysicsAfterTick.wasJumpPressed,
+        wasGrounded,
+        isStartingJump,
+        hitCeiling: collision.hitCeiling,
+        hitWall: collision.hitWall,
+        grounded: position.y <= finalGroundY + GROUNDED_EPSILON,
+        note: `afterHorizontal=${JSON.stringify(collisionVectorDebug(afterHorizontalMovement))}; afterJump=${JSON.stringify(collisionVectorDebug(afterJumpPhysics))}; startCastleSupport=${startingCastleSupport.source}:${collisionNumberDebug(startingCastleSupport.position?.y)}`,
+      });
+    }
   }
   const resolvedGrounded = isGroundedAt(position);
   const locomotionState = settleLocomotionAfterMove(

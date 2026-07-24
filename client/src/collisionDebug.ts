@@ -3,6 +3,7 @@ import type { InputState, MovementState } from './generated/types';
 import { shouldEnableQaGameDebug } from './qaGate';
 
 const COLLISION_DEBUG_RING_SIZE = 600;
+let cachedQaDebugEnabled: boolean | null = null;
 
 export type CollisionDebugVec3 = {
   x: number;
@@ -64,11 +65,19 @@ declare global {
   }
 }
 
-function collisionDebugEnabled() {
+export function collisionDebugEnabled() {
   if (typeof window === 'undefined') return false;
   if (window.__collisionDebugEnabled === false) return false;
   if (window.__collisionDebugEnabled === true) return true;
-  return shouldEnableQaGameDebug();
+  if (cachedQaDebugEnabled === null) {
+    cachedQaDebugEnabled = shouldEnableQaGameDebug();
+  }
+  return cachedQaDebugEnabled;
+}
+
+if (typeof window !== 'undefined') {
+  window.__collisionDebugDump = () => [...(window.__collisionDebugLog ?? [])];
+  window.__collisionDebugCopy = () => JSON.stringify(window.__collisionDebugLog ?? [], null, 2);
 }
 
 function round(value: number) {
@@ -113,8 +122,6 @@ export function logCollisionDebug(entry: CollisionDebugEntry) {
     log.splice(0, log.length - COLLISION_DEBUG_RING_SIZE);
   }
   window.__collisionDebugLog = log;
-  window.__collisionDebugDump = () => [...log];
-  window.__collisionDebugCopy = () => JSON.stringify(log, null, 2);
 
   if (window.__collisionDebugConsole !== false) {
     console.log(`[CollisionDebug] ${JSON.stringify(normalized)}`);
