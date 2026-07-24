@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "sandbox": "vite --open /sandbox.html",
     "dev:beta": "vite --base=/beta/",
     "build": "tsc -b && vite build",
     "build:beta": "tsc -b && vite build --base=/beta/",
