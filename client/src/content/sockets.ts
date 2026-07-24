@@ -60,8 +60,8 @@ const GRIPS: Partial<Record<PropKey, Partial<Record<SocketId, Grip>>>> = {
   // they encode that rig's hand orientation and nothing else.
   [PROP_KEYS.staff]: {
     // Carried tip-down, like a walking staff.
-    rightHand: { position: [0, 0, 0], rotation: [-0.0834, -0.3923, 0.6379] },
-    leftHand: { position: [0, 0, 0], rotation: [0.0834, 0.3923, 0.6379] },
+    rightHand: { position: [0, 0, 0], rotation: [2.5682, 0.0261, 2.9942] },
+    leftHand: { position: [0, 0, 0], rotation: [-2.5682, -0.0261, 2.9942] },
   },
   [PROP_KEYS.sword]: {
     // Blade up out of the fist.
@@ -75,8 +75,8 @@ const GRIPS: Partial<Record<PropKey, Partial<Record<SocketId, Grip>>>> = {
   },
   [PROP_KEYS.potion]: {
     // Mouth up, so the raise-to-drink reads.
-    rightHand: { position: [0, 0, 0], rotation: [-0.0834, -0.3923, -2.5037] },
-    leftHand: { position: [0, 0, 0], rotation: [0.0834, 0.3923, -2.5037] },
+    rightHand: { position: [0, 0, 0], rotation: [-0.5734, -0.0261, -2.9942] },
+    leftHand: { position: [0, 0, 0], rotation: [0.5734, 0.0261, -2.9942] },
   },
 };
 

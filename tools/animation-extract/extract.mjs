@@ -37,7 +37,7 @@ const BINDINGS = {
   'motion.act_guard_hold': [UAL2, 'Sword_Block'],
   'motion.act_drink': [UAL2, 'Consume'],
   // stances — held poses, masked to the upper band at runtime
-  'motion.stance_staff': [UAL1, 'Spell_Simple_Idle_Loop'],
+  'motion.stance_staff': [UAL1, 'Idle_Torch_Loop'],
   'motion.stance_sword_shield': [UAL2, 'Idle_Shield_Loop'],
 };
 
