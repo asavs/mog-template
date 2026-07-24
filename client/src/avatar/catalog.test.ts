@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  appearanceBodyClipsKey,
+  appearanceEquipmentKey,
   appearanceFromPreset,
   assetUrlsForAppearance,
   BASELINE_ABILITY_GRANTS,
@@ -160,6 +162,32 @@ describe('avatar catalog', () => {
       legacyClass: 'paladin',
     });
     expect(presentationAssemblyKey(normal)).not.toBe(presentationAssemblyKey(scaled));
+  });
+
+  it('splits body/clips vs equipment keys for partial reassemble gating', () => {
+    const withSword = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'sword_1h' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+      legacyClass: 'paladin',
+    });
+    const withStaff = resolveFromServerState({
+      appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
+      equipment: [
+        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'off_hand', itemId: 'shield' },
+      ],
+      legacyClass: 'paladin',
+    });
+    const wizard = resolvePreset('wizard');
+
+    expect(appearanceBodyClipsKey(withSword)).toBe(appearanceBodyClipsKey(withStaff));
+    expect(appearanceEquipmentKey(withSword)).not.toBe(appearanceEquipmentKey(withStaff));
+    expect(presentationAssemblyKey(withSword)).not.toBe(presentationAssemblyKey(withStaff));
+
+    expect(appearanceBodyClipsKey(withSword)).not.toBe(appearanceBodyClipsKey(wizard));
   });
 
   it('follows mid-session equipment rows without re-injecting preset utility', () => {

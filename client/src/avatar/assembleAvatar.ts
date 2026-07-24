@@ -32,8 +32,17 @@ export type AssembledAvatar = {
   root: THREE.Group;
   mixer: THREE.AnimationMixer;
   animations: Record<string, THREE.AnimationAction>;
+  /** Mutable: partial equipment sync updates this map in place. */
   equipment: Map<string, THREE.Object3D>;
   dispose: () => void;
+};
+
+export type SyncAvatarEquipmentOptions = {
+  assembled: AssembledAvatar;
+  resolved: ResolvedAppearance;
+  loaders: Pick<AvatarLoaders, 'loadModel'>;
+  desiredEquipmentVisibility: Map<string, boolean>;
+  signal?: { disposed: boolean };
 };
 
 /**
@@ -65,58 +74,18 @@ export async function assembleAvatar(options: AssembleAvatarOptions): Promise<As
   group.add(root);
 
   const equipment = new Map<string, THREE.Object3D>();
-  const loadedWeapons: THREE.Object3D[] = [];
 
-  await Promise.all(
-    resolved.equipped.map(async (item) => {
-      if (item.attach !== 'socket' || !item.socket) return;
-      // Grants-only placeholder — no mesh attach (see ItemDef.grantsOnly).
-      if (item.grantsOnly) return;
-
-      try {
-        const assetRoot = await loaders.loadModel(item.url);
-        if (isDisposed()) {
-          disposeObjectMeshes(assetRoot);
-          return;
-        }
-
-        const sourceWeapon = item.objectNames
-          ? findObjectByNames(assetRoot, item.objectNames)
-          : assetRoot;
-        const targetBone = findObjectByNames(root, item.socket.boneNames);
-        if (!sourceWeapon || !targetBone) {
-          console.warn('Failed to attach equipment', {
-            itemId: item.id,
-            sourceWeapon: sourceWeapon?.name ?? null,
-            targetBone: targetBone?.name ?? null,
-            url: item.url,
-          });
-          disposeObjectMeshes(assetRoot);
-          return;
-        }
-
-        sourceWeapon.parent?.remove(sourceWeapon);
-        if (sourceWeapon !== assetRoot) {
-          disposeObjectMeshes(assetRoot);
-        }
-
-        configureWeaponObject(sourceWeapon, item);
-        sourceWeapon.visible =
-          desiredEquipmentVisibility.get(item.id) ?? item.visibleByDefault ?? true;
-        targetBone.add(sourceWeapon);
-        loadedWeapons.push(sourceWeapon);
-        equipment.set(item.id, sourceWeapon);
-      } catch (error) {
-        console.warn(`Failed to load equipment ${item.id}`, error);
-      }
-    }),
-  );
+  await attachResolvedEquipment({
+    root,
+    equipment,
+    resolved,
+    loadModel: loaders.loadModel,
+    desiredEquipmentVisibility,
+    isDisposed,
+  });
 
   if (isDisposed()) {
-    loadedWeapons.forEach(weapon => {
-      disposeObjectMeshes(weapon);
-      weapon.parent?.remove(weapon);
-    });
+    clearEquipmentMeshes(equipment);
     group.remove(root);
     disposeObjectMeshes(root);
     throw new Error('Avatar assemble aborted');
@@ -153,10 +122,7 @@ export async function assembleAvatar(options: AssembleAvatarOptions): Promise<As
   if (isDisposed()) {
     mixer.stopAllAction();
     mixer.uncacheRoot(mixer.getRoot());
-    loadedWeapons.forEach(weapon => {
-      disposeObjectMeshes(weapon);
-      weapon.parent?.remove(weapon);
-    });
+    clearEquipmentMeshes(equipment);
     group.remove(root);
     disposeObjectMeshes(root);
     throw new Error('Avatar assemble aborted');
@@ -172,14 +138,120 @@ export async function assembleAvatar(options: AssembleAvatarOptions): Promise<As
     dispose: () => {
       mixer.stopAllAction();
       mixer.uncacheRoot(mixer.getRoot());
-      loadedWeapons.forEach(weapon => {
-        disposeObjectMeshes(weapon);
-        weapon.parent?.remove(weapon);
-      });
+      // Use the live equipment map so mid-session partial sync is cleaned up too.
+      clearEquipmentMeshes(equipment);
       group.remove(root);
       disposeObjectMeshes(root);
     },
   };
+}
+
+/**
+ * Equipment-only refresh: drop current gear meshes and attach the new set.
+ * Does not reload body skeleton, re-scale, or rebind animation clips.
+ * Mutates `assembled.equipment` in place.
+ */
+export async function syncAvatarEquipment(
+  options: SyncAvatarEquipmentOptions,
+): Promise<void> {
+  const {
+    assembled,
+    resolved,
+    loaders,
+    desiredEquipmentVisibility,
+    signal,
+  } = options;
+
+  const isDisposed = () => signal?.disposed === true;
+
+  clearEquipmentMeshes(assembled.equipment);
+
+  if (isDisposed()) {
+    return;
+  }
+
+  await attachResolvedEquipment({
+    root: assembled.root,
+    equipment: assembled.equipment,
+    resolved,
+    loadModel: loaders.loadModel,
+    desiredEquipmentVisibility,
+    isDisposed,
+  });
+
+  if (isDisposed()) {
+    clearEquipmentMeshes(assembled.equipment);
+  }
+}
+
+async function attachResolvedEquipment(options: {
+  root: THREE.Group;
+  equipment: Map<string, THREE.Object3D>;
+  resolved: ResolvedAppearance;
+  loadModel: AvatarLoaders['loadModel'];
+  desiredEquipmentVisibility: Map<string, boolean>;
+  isDisposed: () => boolean;
+}): Promise<void> {
+  const {
+    root,
+    equipment,
+    resolved,
+    loadModel,
+    desiredEquipmentVisibility,
+    isDisposed,
+  } = options;
+
+  await Promise.all(
+    resolved.equipped.map(async (item) => {
+      if (item.attach !== 'socket' || !item.socket) return;
+      // Grants-only placeholder — no mesh attach (see ItemDef.grantsOnly).
+      if (item.grantsOnly) return;
+
+      try {
+        const assetRoot = await loadModel(item.url);
+        if (isDisposed()) {
+          disposeObjectMeshes(assetRoot);
+          return;
+        }
+
+        const sourceWeapon = item.objectNames
+          ? findObjectByNames(assetRoot, item.objectNames)
+          : assetRoot;
+        const targetBone = findObjectByNames(root, item.socket.boneNames);
+        if (!sourceWeapon || !targetBone) {
+          console.warn('Failed to attach equipment', {
+            itemId: item.id,
+            sourceWeapon: sourceWeapon?.name ?? null,
+            targetBone: targetBone?.name ?? null,
+            url: item.url,
+          });
+          disposeObjectMeshes(assetRoot);
+          return;
+        }
+
+        sourceWeapon.parent?.remove(sourceWeapon);
+        if (sourceWeapon !== assetRoot) {
+          disposeObjectMeshes(assetRoot);
+        }
+
+        configureWeaponObject(sourceWeapon, item);
+        sourceWeapon.visible =
+          desiredEquipmentVisibility.get(item.id) ?? item.visibleByDefault ?? true;
+        targetBone.add(sourceWeapon);
+        equipment.set(item.id, sourceWeapon);
+      } catch (error) {
+        console.warn(`Failed to load equipment ${item.id}`, error);
+      }
+    }),
+  );
+}
+
+function clearEquipmentMeshes(equipment: Map<string, THREE.Object3D>) {
+  equipment.forEach(weapon => {
+    disposeObjectMeshes(weapon);
+    weapon.parent?.remove(weapon);
+  });
+  equipment.clear();
 }
 
 /** Preload all URLs for an appearance (body, gear, clips) into the model/anim caches. */

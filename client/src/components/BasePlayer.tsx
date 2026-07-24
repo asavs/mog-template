@@ -23,7 +23,7 @@ import {
   triggerOneShotAnimation,
 } from './playerAnimation';
 import { ANIMATIONS, getCharacterPresentationFromServer, type WizardSpell } from './characterConfig';
-import { loadPlayerModelAssets } from './playerModelLoader';
+import { createPlayerModelBinding } from './playerModelLoader';
 import { presentationAssemblyKey } from '../avatar/catalog';
 import { useGameState } from '../state/useGameState';
 import {
@@ -351,15 +351,15 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
   }, [characterConfig, groupRef, isLocalPlayer]);
 
   // Content key — not object identity. Join often resolves preset first, then
-  // identical seeded server rows; skip dispose/rebuild when the loadout is unchanged.
+  // identical seeded server rows; skip apply when the loadout is unchanged.
+  // Binding chooses full assemble vs equipment-only sync from body/clips vs gear keys.
   const assemblyKey = presentationAssemblyKey(characterConfig.resolved);
+  const modelBindingRef = useRef<ReturnType<typeof createPlayerModelBinding> | null>(null);
 
+  // Binding outlives equipment-only presentation changes so partial sync can keep the body.
   useEffect(() => {
-    lastHandledDrinkingSeqRef.current = null;
-    return loadPlayerModelAssets({
+    const binding = createPlayerModelBinding({
       actionAnimationNames: ACTION_ANIMATION_NAMES,
-      resolved: characterConfig.resolved,
-      presetId: characterConfig.presetId,
       currentAnimationRef,
       desiredEquipmentVisibilityRef,
       equipmentItemsRef,
@@ -370,7 +370,20 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
       onModelLoaded: setModelLoaded,
       visualModelRef,
     });
+    modelBindingRef.current = binding;
+    return () => {
+      binding.dispose();
+      if (modelBindingRef.current === binding) {
+        modelBindingRef.current = null;
+      }
+    };
+  }, [groupRef]);
+
+  useEffect(() => {
+    lastHandledDrinkingSeqRef.current = null;
+    modelBindingRef.current?.applyResolved(characterConfig.resolved);
     // assemblyKey is the content gate; characterConfig is from the render that changed the key.
+    // groupRef ensures apply after a rebind if the scene group identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-assemble on new object identity
   }, [assemblyKey, groupRef]);
 
