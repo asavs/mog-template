@@ -778,10 +778,12 @@ export function runLocalPlayerFrame({
     previousPredictedTickPositionRef.current.copy(currentPredictedTickPositionRef.current);
 
     const jumpPressed = tickInput.jump;
+    const isGroundedForJumpStart = localMovementStateRef.current?.isGrounded
+      ?? (localPositionRef.current.y <= groundHeightAt(localPositionRef.current) + JUMP_START_GROUNDED_EPSILON);
     const startsGroundedJump =
       jumpPressed &&
       !localJumpWasPressedRef.current &&
-      localPositionRef.current.y <= groundHeightAt(localPositionRef.current) + JUMP_START_GROUNDED_EPSILON;
+      isGroundedForJumpStart;
 
     if (startsGroundedJump) {
       jumpAnimationUntilRef.current = performance.now() + jumpAnimationDurationMs;

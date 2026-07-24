@@ -39,6 +39,12 @@ export function useHudMetrics({ metricsRef, snapshotBuffersRef }: UseHudMetricsO
       metrics.castleCollisionFrameMs = castleCollisionPerf.totalMs;
       metrics.castleCollisionMaxMs = castleCollisionPerf.maxMs;
       metrics.castleCollisionLastMs = castleCollisionPerf.lastMs;
+      metrics.castleCollisionSupportQueryHz = castleCollisionPerf.supportQueryHz;
+      metrics.castleCollisionSupportFrameMs = castleCollisionPerf.supportTotalMs;
+      metrics.castleCollisionSupportMaxMs = castleCollisionPerf.supportMaxMs;
+      metrics.castleCollisionSweepQueryHz = castleCollisionPerf.sweepQueryHz;
+      metrics.castleCollisionSweepFrameMs = castleCollisionPerf.sweepTotalMs;
+      metrics.castleCollisionSweepMaxMs = castleCollisionPerf.sweepMaxMs;
       setHudMetrics({ ...metrics });
     }, 500);
 
