@@ -220,18 +220,16 @@ export function generateEquipPhases(): PhaseDef[] {
         await page.waitForSelector('[data-qa="inventory-panel"]', { timeout: 10_000 });
         const equip = page.locator('[data-qa-equip="wand"]');
         await equip.waitFor({ state: 'visible', timeout: 10_000 });
-        // Already equipped (wizard/acolyte seed) → still click is a no-op when data-qa-equipped=1
+        // Already equipped (wizard/acolyte seed) — skip click when data-qa-equipped=1.
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
           await equip.click();
         }
-        await page.waitForTimeout(settleMs);
-        // Confirm UI shows wand equipped or main_hand unequip available.
-        const wandOn = page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]');
-        const mainUnequip = page.locator('[data-qa-unequip="main_hand"]');
-        await Promise.race([
-          wandOn.waitFor({ state: 'visible', timeout: 8_000 }),
-          mainUnequip.waitFor({ state: 'visible', timeout: 8_000 }),
-        ]);
+        // Must verify *wand* is equipped. Do not race with main_hand unequip visibility:
+        // every preset seeds a main-hand item, so that control is already visible.
+        await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
+          state: 'visible',
+          timeout: 8_000,
+        });
       },
     },
     {
@@ -239,14 +237,16 @@ export function generateEquipPhases(): PhaseDef[] {
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        // Ensure wand is equipped (idempotent).
+        // Ensure wand is equipped (idempotent) before casting.
         const equip = page.locator('[data-qa-equip="wand"]');
-        if (await equip.count()) {
-          if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-            await equip.click();
-            await page.waitForTimeout(settleMs);
-          }
+        await equip.waitFor({ state: 'visible', timeout: 10_000 });
+        if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
+          await equip.click();
         }
+        await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
+          state: 'visible',
+          timeout: 8_000,
+        });
         await tapKey(page, 'Digit1');
         await click(page);
         await page.waitForTimeout(400);
@@ -262,19 +262,16 @@ export function generateEquipPhases(): PhaseDef[] {
         const unequip = page.locator('[data-qa-unequip="main_hand"]');
         await unequip.waitFor({ state: 'visible', timeout: 10_000 });
         await unequip.click();
-        await page.waitForTimeout(settleMs);
-        // Wand equip button should no longer show equipped.
-        const wandBtn = page.locator('[data-qa-equip="wand"]');
-        if (await wandBtn.count()) {
-          await page.waitForFunction(
-            () => {
-              const el = document.querySelector('[data-qa-equip="wand"]');
-              return el?.getAttribute('data-qa-equipped') === '0';
-            },
-            { timeout: 8_000 },
-          ).catch(() => {
-            /* sword/dagger may remain; main_hand empty is enough */
-          });
+        // Slot is empty when the main_hand unequip control is gone (not when wand is merely "0",
+        // which is also true if sword still occupies main_hand).
+        await page.locator('[data-qa-unequip="main_hand"]').waitFor({
+          state: 'hidden',
+          timeout: 8_000,
+        });
+        // If wand exists in the catalog strip, it must not still show equipped.
+        const wandUnequipped = page.locator('[data-qa-equip="wand"][data-qa-equipped="0"]');
+        if ((await page.locator('[data-qa-equip="wand"]').count()) > 0) {
+          await wandUnequipped.waitFor({ state: 'visible', timeout: 8_000 });
         }
       },
     },
@@ -288,7 +285,6 @@ export function generateEquipPhases(): PhaseDef[] {
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
           await equip.click();
         }
-        await page.waitForTimeout(settleMs);
         await page.locator('[data-qa-equip="sword_1h"][data-qa-equipped="1"]').waitFor({
           state: 'visible',
           timeout: 8_000,
