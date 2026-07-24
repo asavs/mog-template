@@ -26,6 +26,7 @@ const MAX_WALKABLE_SLOPE_DEGREES = 70;
 const MAX_WALKABLE_SLOPE = Math.tan((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180);
 const MIN_WALKABLE_NORMAL_Y = Math.cos((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180);
 const MIN_TOP_NORMAL_Y = 0.02;
+const MIN_TERRAIN_FOOTPRINT = 100;
 const CASTLE_GRID_CELL_SIZE = 3;
 const CASTLE_MIN_DOUBLE_AREA_SQUARED = 1e-12;
 
@@ -179,7 +180,7 @@ function getAccessorReader(gltf, bin, accessorIndex) {
 
 function isTerrainMesh(label) {
   return /(Landscape|Mesh_0|Object_)/i.test(label)
-    && !/(-col|PSX|Tree|Grass|Dandelion|Lavender|Reed|Rock|Pine|Cone|Cylinder|Plane|Cube)/i.test(label);
+    && !/(-col|Castle|Wall|Tower|PSX|Tree|Grass|Dandelion|Lavender|Reed|Rock|Pine|Cone|Cylinder|Plane|Cube|Bush|Mushroom)/i.test(label);
 }
 
 function isStaticBlockerMesh(label) {
@@ -239,6 +240,35 @@ function computeRawBounds(gltf, bin, instances) {
   }
 
   return { min, max };
+}
+
+function computeInstanceBounds(gltf, bin, instance) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+
+  for (const primitive of instance.mesh.primitives ?? []) {
+    const positionAccessor = primitive.attributes?.POSITION;
+    if (positionAccessor === undefined) continue;
+
+    const positions = getAccessorReader(gltf, bin, positionAccessor);
+    for (let i = 0; i < positions.count; i += 1) {
+      const point = transformPoint(instance.matrix, positions.read(i));
+      for (let axis = 0; axis < 3; axis += 1) {
+        min[axis] = Math.min(min[axis], point[axis]);
+        max[axis] = Math.max(max[axis], point[axis]);
+      }
+    }
+  }
+
+  return { min, max };
+}
+
+function hasTerrainFootprint(bounds) {
+  const sizeX = bounds.max[0] - bounds.min[0];
+  const sizeZ = bounds.max[2] - bounds.min[2];
+  return Number.isFinite(sizeX)
+    && Number.isFinite(sizeZ)
+    && Math.max(sizeX, sizeZ) >= MIN_TERRAIN_FOOTPRINT;
 }
 
 function cross(a, b) {
@@ -420,8 +450,13 @@ function buildHeightmap() {
 
   let triangles = 0;
   let rasterHits = 0;
+  let skippedSmallTerrainCandidates = 0;
   for (const instance of instances) {
     if (!isTerrainMesh(instance.label)) continue;
+    if (!hasTerrainFootprint(computeInstanceBounds(gltf, bin, instance))) {
+      skippedSmallTerrainCandidates += 1;
+      continue;
+    }
 
     for (const primitive of instance.mesh.primitives ?? []) {
       if (primitive.mode !== undefined && primitive.mode !== 4) continue;
@@ -466,6 +501,7 @@ function buildHeightmap() {
       scale,
       triangles,
       rasterHits,
+      skippedSmallTerrainCandidates,
       missingBeforeFill,
       filled,
       minHeight,
