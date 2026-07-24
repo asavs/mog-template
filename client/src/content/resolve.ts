@@ -190,12 +190,38 @@ function mapCanonicalBones(root: THREE.Object3D): Record<string, THREE.Bone> {
  */
 function normalizeHeight(root: THREE.Object3D, target: number): void {
   root.updateMatrixWorld(true);
-  const height = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y;
+
+  // Measure the CHARACTER, not the file. `setFromObject(root)` would fold in a
+  // camera, a light, or a helper an artist left in the export, and one stray
+  // object away from the origin shrinks the body to a speck. Skinned meshes are
+  // the character by definition, so prefer them.
+  const box = new THREE.Box3();
+  const measure = (predicate: (child: THREE.Object3D) => boolean): boolean => {
+    box.makeEmpty();
+    root.traverse(child => {
+      if (predicate(child)) box.expandByObject(child);
+    });
+    return !box.isEmpty();
+  };
+
+  const measured =
+    measure(child => (child as THREE.SkinnedMesh).isSkinnedMesh === true)
+    || measure(child => (child as THREE.Mesh).isMesh === true);
+  if (!measured) return;
+
+  const height = box.getSize(new THREE.Vector3()).y;
   if (!Number.isFinite(height) || height <= 1e-4) return;
 
   const factor = target / height;
   // Leave near-correct assets untouched; a 1.02x scale is noise, not units.
   if (Math.abs(factor - 1) < 0.02) return;
+  // Unit mismatches span millimetres to kilometres, so about 1000x either way.
+  // Past that the measurement is wrong rather than the units, and guessing is
+  // worse than leaving the asset visibly the wrong size.
+  if (factor < 1e-3 || factor > 1e3) {
+    console.warn(`[content] implausible body scale ${factor.toFixed(4)}; leaving unscaled`);
+    return;
+  }
 
   root.scale.multiplyScalar(factor);
   root.updateMatrixWorld(true);

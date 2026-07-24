@@ -104,6 +104,17 @@ export class AnimationController {
    * audible would dip it to zero first, so every transition goes through here.
    */
   private readonly audible = new WeakMap<THREE.AnimationAction, boolean>();
+  /**
+   * Weight ramps we drive ourselves. three's fadeIn/fadeOut hardcode the START
+   * of the fade at 0 and 1, so reversing one mid-flight snaps the weight to the
+   * far end before moving — a layer at 0.4 asked to become audible drops to 0
+   * and then rises. Band claims can flip faster than a blend finishes, so the
+   * ramp has to start from wherever the weight actually is.
+   */
+  private readonly ramps = new Map<
+    THREE.AnimationAction,
+    { from: number; to: number; elapsed: number; duration: number }
+  >();
 
   constructor(
     root: THREE.Object3D,
@@ -120,11 +131,20 @@ export class AnimationController {
   update(deltaSeconds: number): void {
     if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
 
+    for (const [action, ramp] of [...this.ramps]) {
+      ramp.elapsed += deltaSeconds;
+      const t = ramp.duration > 0 ? Math.min(1, ramp.elapsed / ramp.duration) : 1;
+      const eased = t * t * (3 - 2 * t);
+      action.setEffectiveWeight(ramp.from + (ramp.to - ramp.from) * eased);
+      if (t >= 1) this.ramps.delete(action);
+    }
+
     this.pendingStops = this.pendingStops.filter((pending) => {
       pending.remainingSeconds -= deltaSeconds;
       if (pending.remainingSeconds > 0) return true;
       pending.action.stop();
       this.audible.delete(pending.action);
+      this.ramps.delete(pending.action);
       return false;
     });
     this.mixer.update(deltaSeconds);
@@ -303,6 +323,7 @@ export class AnimationController {
     this.mixer.removeEventListener('finished', this.onActionFinished);
     this.mixer.stopAllAction();
     this.pendingStops = [];
+    this.ramps.clear();
   }
 
   // -------------------------------------------------------------------------
@@ -362,14 +383,19 @@ export class AnimationController {
     }
 
     if (seconds <= 0) {
-      action.setEffectiveWeight(audible ? 1 : 0).play();
+      this.ramps.delete(action);
+      action.setEffectiveWeight(audible ? 1 : 0);
+      if (audible) action.play();
       return;
     }
-    if (audible) {
-      action.setEffectiveWeight(1).fadeIn(seconds).play();
-    } else {
-      action.fadeOut(seconds);
-    }
+
+    this.ramps.set(action, {
+      from: action.getEffectiveWeight(),
+      to: audible ? 1 : 0,
+      elapsed: 0,
+      duration: seconds,
+    });
+    if (audible) action.play();
   }
 
   // -------------------------------------------------------------------------
@@ -450,6 +476,7 @@ export class AnimationController {
   private armAction(clip: THREE.AnimationClip, rule: MotionRule): THREE.AnimationAction {
     const action = this.mixer.clipAction(clip);
     this.cancelPendingStop(action);
+    this.ramps.delete(action);
     action.stopFading();
     action
       .reset()
@@ -509,6 +536,7 @@ export class AnimationController {
   private playAction(action: THREE.AnimationAction | null, rule: MotionRule): void {
     if (!action) return;
     this.cancelPendingStop(action);
+    this.ramps.delete(action);
     action.stopFading();
     action
       .reset()
@@ -545,6 +573,7 @@ export class AnimationController {
 
   private fadeAndStop(action: THREE.AnimationAction | null, seconds: number): void {
     if (!action) return;
+    this.ramps.delete(action);
     action.fadeOut(seconds);
     this.audible.set(action, false);
     this.pendingStops = this.pendingStops.filter((pending) => pending.action !== action);

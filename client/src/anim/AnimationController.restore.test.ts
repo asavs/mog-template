@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { AnimationController } from './AnimationController';
+import { maskClipToBands } from './mask';
 
 /** Clip touching one upper-body and one lower-body bone. */
 function clip(name: string, duration: number): THREE.AnimationClip {
@@ -59,21 +60,23 @@ describe('base upper layer after an overlay finishes', () => {
     // Past the clip, its exit blend, and the base upper's fade back in.
     advance(controller, 1.5);
 
-    const upper = controller.mixer
-      .clipAction(clips.get('loco')!)
-      .getMixer()
-      // Inspect every action bound to this mixer's root for a live upper track.
-      && controller.mixer.existingAction(
-        controller.mixer.clipAction(clips.get('loco')!).getClip(),
-      );
+    // Ask for the action the controller actually plays. It never plays the
+    // unmasked clip — only the per-band clips derived from it — so querying by
+    // the source clip finds nothing, and `clipAction` would quietly mint a dead
+    // action to hand back.
+    const upperAction = controller.mixer.existingAction(
+      maskClipToBands(clips.get('loco')!, ['upper']),
+    );
 
-    // The overlay is done, so something must still be driving the upper body.
     const state = controller.getState();
     expect(state.overlayMotion).toBeNull();
     expect(state.baseMotion).toBe('loco');
 
-    const driving = (upper?.isRunning() ?? false) || false;
-    expect(driving || state.baseMotion === 'loco').toBe(true);
+    // The overlay is done, so the base upper band must be driving again — and
+    // driving audibly, not merely scheduled. Both halves matter: the bug being
+    // guarded leaves the action running at zero weight forever.
+    expect(upperAction?.isRunning()).toBe(true);
+    expect(upperAction?.getEffectiveWeight() ?? 0).toBeGreaterThan(0.9);
   });
 
   it('leaves the upper bone away from its rest pose after an ability ends', () => {
