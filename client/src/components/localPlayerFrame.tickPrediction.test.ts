@@ -640,7 +640,8 @@ describe('LocalPlayerRuntime tick prediction', () => {
     const { runtime } = createRuntime();
     const metrics = createMetrics();
     const currentInput = input(100);
-    const startPosition = new THREE.Vector3();
+    // Flat-ish origin is fine; this test is about reconcile policy, not a specific slope.
+    const startPosition = new THREE.Vector3(0, 0, 0);
     startPosition.y = terrainHeightAt(startPosition);
     const initialTransform = transformFromPosition({
       clientTick: 100,
@@ -680,10 +681,21 @@ describe('LocalPlayerRuntime tick prediction', () => {
     });
 
     const beforeAck = runtime.getPredictionDebugState();
+    expect(beforeAck.movementState?.isAirborne).toBe(true);
+    expect(beforeAck.localPosition.y).toBeGreaterThan(
+      terrainHeightAt(beforeAck.localPosition) + 0.2,
+    );
+
+    // Force a reconcile (horizontal error >> RECONCILIATION_EPSILON) while the
+    // server claims grounded but still reports a pose above terrain. Vertical
+    // delta alone of 0.12 sits on the epsilon boundary and used to flakily
+    // skip correction — then render stayed on the previous tick sample (ground)
+    // with tickAlpha=0, falsely failing render≈local even though sim was fine.
     const authoritativePosition = beforeAck.localPosition.clone();
-    authoritativePosition.y -= 0.12;
-    const groundY = terrainHeightAt(authoritativePosition);
-    authoritativePosition.y = Math.max(authoritativePosition.y, groundY + 0.2);
+    authoritativePosition.x += 0.5;
+    const groundUnderAuth = terrainHeightAt(authoritativePosition);
+    authoritativePosition.y = groundUnderAuth + 0.25;
+    expect(authoritativePosition.y).toBeLessThan(beforeAck.localPosition.y - 0.05);
 
     runtime.runFrame({
       currentInput,
@@ -693,7 +705,7 @@ describe('LocalPlayerRuntime tick prediction', () => {
       latestTransform: transformFromPosition({
         clientTick: 101,
         inputSeq: 100,
-        movementState: initialMovementState(),
+        movementState: initialMovementState(), // grounded flags — the desync under test
         position: authoritativePosition,
         serverTick: 101,
       }),
@@ -708,10 +720,16 @@ describe('LocalPlayerRuntime tick prediction', () => {
     });
 
     const afterAck = runtime.getPredictionDebugState();
+    // Contract: stay airborne on local prediction; do not adopt server grounded
+    // snap or leave a vertical visual correction while mid-jump.
     expect(afterAck.movementState?.isAirborne).toBe(true);
+    expect(afterAck.localPosition.y).toBeCloseTo(beforeAck.localPosition.y, 5);
     expect(afterAck.localPosition.y).toBeGreaterThan(terrainHeightAt(afterAck.localPosition) + 0.05);
+    expect(afterAck.localPosition.x).toBeCloseTo(authoritativePosition.x, 5);
     expect(afterAck.visualCorrectionOffset.y).toBe(0);
-    expect(afterAck.renderPosition.y).toBeCloseTo(afterAck.localPosition.y, 6);
+    // After a real correction both predicted samples share local Y, so render Y
+    // matches even when tickAlpha is 0 (accumulator empty).
+    expect(afterAck.renderPosition.y).toBeCloseTo(afterAck.localPosition.y, 5);
   });
 
   it('clears visual y offset while sprinting across steep terrain height changes', () => {
