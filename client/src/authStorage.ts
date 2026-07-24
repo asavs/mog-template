@@ -26,13 +26,8 @@ function browserStorage(): TokenStorage | undefined {
   }
 }
 
-/**
- * Join dialog only offers wizard/paladin. Collapse other presets (e.g. acolyte
- * from server-side identity) so localStorage / JoinPreferences stay UI-safe.
- */
 function normalizeStoredCharacterClass(value: string | null): StoredCharacterClass {
-  const normalized = normalizeCharacterClass(value);
-  return normalized === 'paladin' ? 'paladin' : 'wizard';
+  return normalizeCharacterClass(value);
 }
 
 export function loadSavedAuthToken(storage = browserStorage()): string | undefined {
