@@ -70,6 +70,8 @@ node scripts/gen-avatar-loadout.mjs
 2. **Presentation** for a new item → `ITEM_PRESENTATION` (and body mesh / clips) in `catalog.ts`
 3. **New preset** → JSON row + `PRESET_CLIPS` entry in `catalog.ts`
 
+See also: recipe for adding an item end-to-end — [`docs/avatar-add-item.md`](../../../docs/avatar-add-item.md).
+
 ### Guardrail
 
 `loadoutParity.test.ts` checks the default catalog against `LOADOUT_DERIVED` from the generated authority. If parity fails, regenerate or fix the JSON — do not hand-edit generated files.
