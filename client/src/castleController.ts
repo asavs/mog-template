@@ -29,6 +29,7 @@ export function resolveCastleCapsuleSweep(
   desired: THREE.Vector3,
   radius: number,
   height: number,
+  slide = true,
 ): CastleMoveResult {
   if (!isFiniteVector(current) || !isFiniteVector(desired) || !isValidCapsule(radius, height)) {
     return { position: safeMovePosition(current, desired), groundNormal: null, hitCeiling: false, hitWall: false };
@@ -98,6 +99,7 @@ export function resolveCastleCapsuleSweep(
       if (contact.normal.y < -CONTACT_EPSILON && contactMotion.y > 0) hitCeiling = true;
       if (Math.abs(contact.normal.y) < CASTLE_MIN_WALKABLE_NORMAL_Y) hitWall = true;
     }
+    if (!slide) break;
     remaining = target.clone().sub(position);
     for (const contact of contacts) {
       const intoSurface = remaining.dot(contact.normal);
@@ -122,6 +124,7 @@ export function castleGroundSupport(
     new THREE.Vector3(position.x, position.y - maxDistance, position.z),
     radius,
     height,
+    false,
   );
   const movedSideways = Math.hypot(result.position.x - position.x, result.position.z - position.z) > CASTLE_CAPSULE_SKIN;
   return !movedSideways && result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y

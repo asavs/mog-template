@@ -310,6 +310,7 @@ export function simulateMovementTick(
   // ceilings, undersides, or ramps after horizontal prediction has run.
   let resolvedVerticalVelocity = jumpPhysicsAfterTick.verticalVelocity;
   if (isCastleCollisionReady()) {
+    const desiredBeforeCastle = position.clone();
     const collision = resolveCastleCapsuleSweep(
       fullTickStart,
       position,
@@ -319,6 +320,41 @@ export function simulateMovementTick(
     position.copy(collision.position);
     if ((collision.hitCeiling && resolvedVerticalVelocity > 0)
       || (collision.groundNormal && resolvedVerticalVelocity < 0)) {
+      resolvedVerticalVelocity = 0;
+    }
+    const terrainGroundY = terrainHeightAt(fullTickStart);
+    const startedOnCastle = castleGroundSupport(
+      fullTickStart,
+      CASTLE_GROUND_SNAP_DISTANCE,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    ) !== null;
+    const wasGrounded = movementStateBeforeTick.isGrounded;
+    const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
+    const terrainResolvedGroundY = terrainHeightAt(position);
+    const castleResolvedGround = castleGroundSupport(
+      position,
+      CASTLE_GROUND_SNAP_DISTANCE,
+      PLAYER_COLLISION_RADIUS,
+      PLAYER_CAPSULE_HEIGHT,
+    );
+    const resolvedGroundY = castleResolvedGround ? castleResolvedGround.y : terrainResolvedGroundY;
+    if (wasGrounded && isStartingJump) {
+      if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
+        position.y = terrainResolvedGroundY + resolvedVerticalVelocity * deltaSeconds;
+      }
+    } else if (wasGrounded) {
+      if (castleResolvedGround) {
+        if (resolvedVerticalVelocity <= 0 && desiredBeforeCastle.y <= fullTickStart.y) {
+          position.y = castleResolvedGround.y;
+          resolvedVerticalVelocity = 0;
+        }
+      } else if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
+        position.y = terrainResolvedGroundY;
+        resolvedVerticalVelocity = 0;
+      }
+    } else if (position.y <= resolvedGroundY) {
+      position.y = resolvedGroundY;
       resolvedVerticalVelocity = 0;
     }
   }

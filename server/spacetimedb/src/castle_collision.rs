@@ -175,6 +175,7 @@ pub fn resolve_capsule_sweep(
     desired: &Vector3,
     radius: f32,
     height: f32,
+    slide: bool,
 ) -> CapsuleMoveResult {
     if !vector3_is_finite(current) || !vector3_is_finite(desired) || !is_valid_capsule(radius, height) {
         return CapsuleMoveResult {
@@ -262,6 +263,9 @@ pub fn resolve_capsule_sweep(
                 hit_wall = true;
             }
         }
+        if !slide {
+            break;
+        }
         remaining = target - position;
         for contact in &contacts {
             let into_surface = remaining.dot(contact.normal);
@@ -281,7 +285,7 @@ pub fn resolve_capsule_sweep(
 
 pub fn snap_capsule_down(position: &Vector3, max_distance: f32, radius: f32, height: f32) -> CapsuleMoveResult {
     let desired = Vector3 { x: position.x, y: position.y - max_distance, z: position.z };
-    resolve_capsule_sweep(position, &desired, radius, height)
+    resolve_capsule_sweep(position, &desired, radius, height, false)
 }
 
 #[derive(Clone, Copy)]

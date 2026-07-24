@@ -117,15 +117,23 @@ after the initial document was written:
 - **Castle/terrain snap separation:** the legacy 6m terrain downhill snap no
   longer receives castle support heights. Castle support remains the short
   direct capsule sweep aid, while terrain keeps the old terrain-only behavior.
+- **Non-sliding castle support probes:** the short downward castle grounding
+  sweep no longer projects remaining motion along slope normals. This keeps
+  support checks directly beneath the capsule so spiral ramps can ground the
+  player instead of being rejected as sideways movement.
+- **Client/server castle snap parity:** client prediction now mirrors the
+  server's post-sweep castle snap decision for grounded, non-jumping downward
+  movement, preventing downhill ramp prediction drift.
 
 ### Definite hardening work still needed
 
 These are implementation gaps, not reasons to replace the architecture.
 
 1. **Ground-snap fixtures and traceability:** the code now separates castle and
-   terrain snap behavior, but the final contract still needs small fixtures that
-   prove no sideways snap, no jump-start snap, direct vertical reachability, and
-   clearance at the snapped position across both runtimes.
+   terrain snap behavior and keeps support probes non-sliding, but the final
+   contract still needs small fixtures that prove no sideways snap, no
+   jump-start snap, direct vertical reachability, and clearance at the snapped
+   position across both runtimes.
 
 2. **Debug trace and metrics:** current wireframe QA is useful, but it does not
    expose candidate cells, triangle IDs, selected contacts, normals,

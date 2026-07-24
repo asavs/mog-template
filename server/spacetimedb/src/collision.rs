@@ -31,6 +31,7 @@ pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_c
         &terrain_resolved,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
+        true,
     )
 }
 
