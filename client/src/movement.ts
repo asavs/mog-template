@@ -8,6 +8,7 @@ import {
   logCollisionDebug,
 } from './collisionDebug';
 import {
+  CASTLE_CAPSULE_SKIN,
   CASTLE_GROUND_SNAP_DISTANCE,
   castleGroundSupport,
   resolveCastleCapsuleSweep,
@@ -56,6 +57,20 @@ const WORLD_MIN_Z = -1231.44;
 const WORLD_MAX_Z = 1231.44;
 const MAX_WALKABLE_SLOPE = Math.tan(THREE.MathUtils.degToRad(MAX_WALKABLE_SLOPE_DEGREES));
 const SLOPE_SAMPLE_DISTANCE = 1.0;
+const CASTLE_SUPPORT_PROBE_LIFT = CASTLE_CAPSULE_SKIN * 2;
+
+type CastleGroundSupportDetails = {
+  position: THREE.Vector3 | null;
+  source: 'rapier' | 'custom' | 'none';
+};
+
+let lastCastleSupportQuery: {
+  x: number;
+  y: number;
+  z: number;
+  maxDistance: number;
+  result: CastleGroundSupportDetails;
+} | null = null;
 
 export function isMoving(input: InputState): boolean {
   return isMovingInput(input);
@@ -154,7 +169,9 @@ export function applyMovement(
 
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
-  if (isCastleCollisionReady()
+  const mayTouchCastle = castleMovementMayTouch(current, clampedDesired)
+    || castleSupportProbeMayTouch(current, CASTLE_GROUND_SNAP_DISTANCE);
+  if (mayTouchCastle
     && (activeCastleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE)
       || isInsideCastleCollisionBounds(current)
       || isInsideCastleCollisionBounds(clampedDesired))) {
@@ -207,6 +224,48 @@ function isInsideCastleCollisionBounds(position: THREE.Vector3): boolean {
     && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
     && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
     && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS;
+}
+
+function castleAabbMayTouch(
+  minX: number,
+  minY: number,
+  minZ: number,
+  maxX: number,
+  maxY: number,
+  maxZ: number,
+): boolean {
+  if (!isCastleCollisionReady()) return false;
+  const asset = castleCollisionAsset();
+  return maxX >= asset.min[0] - CASTLE_CAPSULE_SKIN
+    && minX <= asset.max[0] + CASTLE_CAPSULE_SKIN
+    && maxY >= asset.min[1] - CASTLE_CAPSULE_SKIN
+    && minY <= asset.max[1] + CASTLE_CAPSULE_SKIN
+    && maxZ >= asset.min[2] - CASTLE_CAPSULE_SKIN
+    && minZ <= asset.max[2] + CASTLE_CAPSULE_SKIN;
+}
+
+function castleMovementMayTouch(current: THREE.Vector3, desired: THREE.Vector3): boolean {
+  const radius = PLAYER_COLLISION_RADIUS + CASTLE_CAPSULE_SKIN;
+  return castleAabbMayTouch(
+    Math.min(current.x, desired.x) - radius,
+    Math.min(current.y, desired.y) - CASTLE_CAPSULE_SKIN,
+    Math.min(current.z, desired.z) - radius,
+    Math.max(current.x, desired.x) + radius,
+    Math.max(current.y, desired.y) + PLAYER_CAPSULE_HEIGHT + CASTLE_CAPSULE_SKIN,
+    Math.max(current.z, desired.z) + radius,
+  );
+}
+
+function castleSupportProbeMayTouch(position: THREE.Vector3, maxDistance: number): boolean {
+  const radius = PLAYER_COLLISION_RADIUS + CASTLE_CAPSULE_SKIN;
+  return castleAabbMayTouch(
+    position.x - radius,
+    position.y - maxDistance - CASTLE_CAPSULE_SKIN,
+    position.z - radius,
+    position.x + radius,
+    position.y + CASTLE_SUPPORT_PROBE_LIFT + PLAYER_CAPSULE_HEIGHT + CASTLE_CAPSULE_SKIN,
+    position.z + radius,
+  );
 }
 
 export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vector3): boolean {
@@ -288,11 +347,15 @@ function activeCastleGroundSupport(position: THREE.Vector3, maxDistance: number)
   return activeCastleGroundSupportDetailed(position, maxDistance).position;
 }
 
-function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance: number): {
-  position: THREE.Vector3 | null;
-  source: 'rapier' | 'custom' | 'none';
-} {
-  if (!isCastleCollisionReady()) return { position: null, source: 'none' };
+function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance: number): CastleGroundSupportDetails {
+  const cached = readCastleSupportCache(position, maxDistance);
+  if (cached) return cached;
+  if (!isCastleCollisionReady()) {
+    return writeCastleSupportCache(position, maxDistance, { position: null, source: 'none' });
+  }
+  if (!castleSupportProbeMayTouch(position, maxDistance)) {
+    return writeCastleSupportCache(position, maxDistance, { position: null, source: 'none' });
+  }
 
   const rapierSupport = getRapierCastleGroundSupport(
     position,
@@ -300,7 +363,9 @@ function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance:
     PLAYER_COLLISION_RADIUS,
     PLAYER_CAPSULE_HEIGHT,
   );
-  if (rapierSupport) return { position: rapierSupport, source: 'rapier' };
+  if (rapierSupport) {
+    return writeCastleSupportCache(position, maxDistance, { position: rapierSupport, source: 'rapier' });
+  }
 
   const customSupport = castleGroundSupport(
     position,
@@ -308,9 +373,42 @@ function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance:
     PLAYER_COLLISION_RADIUS,
     PLAYER_CAPSULE_HEIGHT,
   );
-  return customSupport
+  return writeCastleSupportCache(position, maxDistance, customSupport
     ? { position: customSupport, source: 'custom' }
-    : { position: null, source: 'none' };
+    : { position: null, source: 'none' });
+}
+
+function readCastleSupportCache(position: THREE.Vector3, maxDistance: number): CastleGroundSupportDetails | null {
+  if (!lastCastleSupportQuery
+    || lastCastleSupportQuery.x !== position.x
+    || lastCastleSupportQuery.y !== position.y
+    || lastCastleSupportQuery.z !== position.z
+    || lastCastleSupportQuery.maxDistance !== maxDistance) {
+    return null;
+  }
+  return cloneCastleSupportDetails(lastCastleSupportQuery.result);
+}
+
+function writeCastleSupportCache(
+  position: THREE.Vector3,
+  maxDistance: number,
+  result: CastleGroundSupportDetails,
+): CastleGroundSupportDetails {
+  lastCastleSupportQuery = {
+    x: position.x,
+    y: position.y,
+    z: position.z,
+    maxDistance,
+    result: cloneCastleSupportDetails(result),
+  };
+  return cloneCastleSupportDetails(result);
+}
+
+function cloneCastleSupportDetails(result: CastleGroundSupportDetails): CastleGroundSupportDetails {
+  return {
+    position: result.position?.clone() ?? null,
+    source: result.source,
+  };
 }
 
 function movementDistance(from: THREE.Vector3, to: THREE.Vector3): number {
@@ -383,7 +481,9 @@ export function simulateMovementTick(
   // full-XYZ reachability pass, so upward jumps and falls cannot bypass castle
   // ceilings, undersides, or ramps after horizontal prediction has run.
   let resolvedVerticalVelocity = jumpPhysicsAfterTick.verticalVelocity;
-  if (isCastleCollisionReady()) {
+  if (castleMovementMayTouch(fullTickStart, position)
+    || castleSupportProbeMayTouch(fullTickStart, CASTLE_GROUND_SNAP_DISTANCE)
+    || castleSupportProbeMayTouch(position, CASTLE_GROUND_SNAP_DISTANCE)) {
     const wasGrounded = movementStateBeforeTick.isGrounded;
     const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
     const startingCastleSupport = activeCastleGroundSupportDetailed(
@@ -401,19 +501,24 @@ export function simulateMovementTick(
       sweepTarget.y = Math.max(fullTickStart.y, endingGroundY);
     }
     const desiredBeforeCastle = sweepTarget.clone();
-    const rapierCollision = resolveRapierCastleMovement(
-      fullTickStart,
-      sweepTarget,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
-    );
-    const collisionSolver = rapierCollision ? 'rapier' : 'custom';
-    const collision = rapierCollision ?? resolveCastleCapsuleSweep(
-      fullTickStart,
-      sweepTarget,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
-    );
+    const shouldSweepCastle = castleMovementMayTouch(fullTickStart, sweepTarget);
+    const rapierCollision = shouldSweepCastle
+      ? resolveRapierCastleMovement(
+        fullTickStart,
+        sweepTarget,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+      )
+      : null;
+    const collisionSolver = rapierCollision ? 'rapier' : (shouldSweepCastle ? 'custom' : 'none');
+    const collision = rapierCollision ?? (shouldSweepCastle
+      ? resolveCastleCapsuleSweep(
+        fullTickStart,
+        sweepTarget,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+      )
+      : { position: sweepTarget.clone(), groundNormal: null, hitCeiling: false, hitWall: false });
     const collisionResolvedPosition = shouldTraceCollision ? collision.position.clone() : null;
     position.copy(collision.position);
     if ((collision.hitCeiling && resolvedVerticalVelocity > 0)

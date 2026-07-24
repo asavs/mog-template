@@ -16,6 +16,7 @@ const WORLD_MIN_Z: f32 = -1231.44;
 const WORLD_MAX_Z: f32 = 1231.44;
 const MAX_WALKABLE_SLOPE: f32 = 2.7474775; // tan(70 degrees)
 const SLOPE_SAMPLE_DISTANCE: f32 = 1.0;
+const CASTLE_SUPPORT_PROBE_LIFT: f32 = castle_collision::CAPSULE_SKIN * 2.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Aabb {
@@ -25,16 +26,31 @@ pub struct Aabb {
     pub max_z: f32,
 }
 
-pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_collision::CapsuleMoveResult {
+pub fn resolve_player_movement(
+    current: &Vector3,
+    desired: &Vector3,
+) -> castle_collision::CapsuleMoveResult {
     let clamped_desired = clamp_to_world(desired);
-    let terrain_resolved = if castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some()
+    let may_touch_castle = castle_movement_may_touch(current, &clamped_desired)
+        || castle_support_probe_may_touch(current, castle_collision::GROUND_SNAP_DISTANCE);
+    let terrain_resolved = if may_touch_castle
+        && (castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some()
         || is_inside_castle_collision_bounds(current)
-        || is_inside_castle_collision_bounds(&clamped_desired)
+        || is_inside_castle_collision_bounds(&clamped_desired))
     {
         clamped_desired
     } else {
         resolve_player_movement_against(current, &clamped_desired, &[])
     };
+    if !castle_movement_may_touch(current, &terrain_resolved) {
+        return castle_collision::CapsuleMoveResult {
+            position: terrain_resolved,
+            ground_normal: None,
+            hit_ceiling: false,
+            hit_wall: false,
+        };
+    }
+
     rapier_collision::resolve_capsule_sweep(
         current,
         &terrain_resolved,
@@ -56,18 +72,24 @@ pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_c
 /// It deliberately sweeps from the player's current elevation band instead of looking up a
 /// global X/Z height, so stacked spiral ramps remain distinct.
 pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Vector3> {
-    let probe_lift = castle_collision::CAPSULE_SKIN * 2.0;
-    let probe_start = Vector3 { x: position.x, y: position.y + probe_lift, z: position.z };
+    if !castle_support_probe_may_touch(position, max_distance) {
+        return None;
+    }
+    let probe_start = Vector3 {
+        x: position.x,
+        y: position.y + CASTLE_SUPPORT_PROBE_LIFT,
+        z: position.z,
+    };
     let result = rapier_collision::snap_capsule_down(
         &probe_start,
-        max_distance + probe_lift,
+        max_distance + CASTLE_SUPPORT_PROBE_LIFT,
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
     )
     .unwrap_or_else(|| {
         castle_collision::snap_capsule_down(
             &probe_start,
-            max_distance + probe_lift,
+            max_distance + CASTLE_SUPPORT_PROBE_LIFT,
             PLAYER_COLLISION_RADIUS,
             PLAYER_CAPSULE_HEIGHT,
         )
@@ -76,7 +98,7 @@ pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Ve
         + (result.position.z - position.z).powi(2))
     .sqrt() > castle_collision::CAPSULE_SKIN;
     let moved_above_probe = result.position.y - position.y
-        > probe_lift + castle_collision::CAPSULE_SKIN;
+        > CASTLE_SUPPORT_PROBE_LIFT + castle_collision::CAPSULE_SKIN;
     let moved_below_snap = position.y - result.position.y
         > max_distance + castle_collision::CAPSULE_SKIN;
     if moved_sideways {
@@ -149,6 +171,50 @@ fn is_inside_castle_collision_bounds(position: &Vector3) -> bool {
         && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
         && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
         && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS
+}
+
+fn castle_aabb_may_touch(
+    min_x: f32,
+    min_y: f32,
+    min_z: f32,
+    max_x: f32,
+    max_y: f32,
+    max_z: f32,
+) -> bool {
+    let asset = castle_collision::castle_collision();
+    max_x >= asset.min[0] - castle_collision::CAPSULE_SKIN
+        && min_x <= asset.max[0] + castle_collision::CAPSULE_SKIN
+        && max_y >= asset.min[1] - castle_collision::CAPSULE_SKIN
+        && min_y <= asset.max[1] + castle_collision::CAPSULE_SKIN
+        && max_z >= asset.min[2] - castle_collision::CAPSULE_SKIN
+        && min_z <= asset.max[2] + castle_collision::CAPSULE_SKIN
+}
+
+fn castle_movement_may_touch(current: &Vector3, desired: &Vector3) -> bool {
+    let radius = PLAYER_COLLISION_RADIUS + castle_collision::CAPSULE_SKIN;
+    castle_aabb_may_touch(
+        current.x.min(desired.x) - radius,
+        current.y.min(desired.y) - castle_collision::CAPSULE_SKIN,
+        current.z.min(desired.z) - radius,
+        current.x.max(desired.x) + radius,
+        current.y.max(desired.y) + PLAYER_CAPSULE_HEIGHT + castle_collision::CAPSULE_SKIN,
+        current.z.max(desired.z) + radius,
+    )
+}
+
+fn castle_support_probe_may_touch(position: &Vector3, max_distance: f32) -> bool {
+    let radius = PLAYER_COLLISION_RADIUS + castle_collision::CAPSULE_SKIN;
+    castle_aabb_may_touch(
+        position.x - radius,
+        position.y - max_distance - castle_collision::CAPSULE_SKIN,
+        position.z - radius,
+        position.x + radius,
+        position.y
+            + CASTLE_SUPPORT_PROBE_LIFT
+            + PLAYER_CAPSULE_HEIGHT
+            + castle_collision::CAPSULE_SKIN,
+        position.z + radius,
+    )
 }
 
 pub fn is_terrain_step_walkable(current: &Vector3, desired: &Vector3) -> bool {

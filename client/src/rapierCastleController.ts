@@ -14,6 +14,9 @@ let rapierWorld: World | null = null;
 let characterCollider: Collider | null = null;
 let characterController: KinematicCharacterController | null = null;
 let initPromise: Promise<void> | null = null;
+let characterShapeRadius = Number.NaN;
+let characterShapeHalfHeight = Number.NaN;
+const excludeCharacterCollider = (collider: Collider) => collider.handle !== characterCollider?.handle;
 
 /**
  * Builds the Rapier castle scene from the same canonical baked triangle asset
@@ -75,7 +78,11 @@ export function resolveRapierCastleCapsuleMovement(
   }
 
   const halfHeight = capsuleSegmentHalfHeight(radius, height);
-  characterCollider.setShape(new RAPIER.Capsule(halfHeight, radius));
+  if (radius !== characterShapeRadius || halfHeight !== characterShapeHalfHeight) {
+    characterCollider.setShape(new RAPIER.Capsule(halfHeight, radius));
+    characterShapeRadius = radius;
+    characterShapeHalfHeight = halfHeight;
+  }
   characterCollider.setTranslation({ x: current.x, y: current.y + height * 0.5, z: current.z });
 
   const desiredDelta = {
@@ -88,7 +95,7 @@ export function resolveRapierCastleCapsuleMovement(
     desiredDelta,
     undefined,
     undefined,
-    collider => collider.handle !== characterCollider?.handle,
+    excludeCharacterCollider,
   );
 
   const movement = characterController.computedMovement();
