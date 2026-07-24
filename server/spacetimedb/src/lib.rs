@@ -1,10 +1,10 @@
 mod collision;
+mod castle_collision;
 mod common;
 mod heightmap;
 mod loadout;
 mod locomotion;
 mod player_logic;
-mod terrain_collision;
 
 use crate::common::{
     default_input, GROUNDED_EPSILON, InputState, MovementState, Vector3, TICK_RATE,

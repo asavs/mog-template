@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
-import { STATIC_TERRAIN_BLOCKERS } from './terrainCollision';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
   GRAVITY,
@@ -39,17 +38,6 @@ const WORLD_MIN_Z = -1231.44;
 const WORLD_MAX_Z = 1231.44;
 const MAX_WALKABLE_SLOPE = Math.tan(THREE.MathUtils.degToRad(MAX_WALKABLE_SLOPE_DEGREES));
 const SLOPE_SAMPLE_DISTANCE = 1.0;
-
-interface Aabb {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
-
-// Generated from the dedicated Castle Collision mesh. The same bounds are
-// enforced by the authoritative server.
-const BLOCKERS: readonly Aabb[] = STATIC_TERRAIN_BLOCKERS;
 
 export function isMoving(input: InputState): boolean {
   return isMovingInput(input);
@@ -170,12 +158,8 @@ function clampToWorld(position: THREE.Vector3): THREE.Vector3 {
   );
 }
 
-function collidesWithBlockers(position: THREE.Vector3): boolean {
-  return BLOCKERS.some(blocker => containsCapsuleFootprint(blocker, position));
-}
-
 function canMoveTo(current: THREE.Vector3, desired: THREE.Vector3): boolean {
-  return !collidesWithBlockers(desired) && isTerrainStepWalkable(current, desired);
+  return isTerrainStepWalkable(current, desired);
 }
 
 export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vector3): boolean {
@@ -210,13 +194,6 @@ export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vec
   }
 
   return true;
-}
-
-function containsCapsuleFootprint(blocker: Aabb, position: THREE.Vector3): boolean {
-  return position.x >= blocker.minX - PLAYER_COLLISION_RADIUS
-    && position.x <= blocker.maxX + PLAYER_COLLISION_RADIUS
-    && position.z >= blocker.minZ - PLAYER_COLLISION_RADIUS
-    && position.z <= blocker.maxZ + PLAYER_COLLISION_RADIUS;
 }
 
 export function applyJumpPhysics(

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import type { InputState } from './generated/types';
 import { sampleHeight } from './heightmap';
-import { STATIC_TERRAIN_BLOCKERS } from './terrainCollision';
 import {
   PLAYER_COLLISION_RADIUS,
   PLAYER_SPEED,
@@ -49,21 +48,6 @@ describe('movement collision prediction', () => {
     expect(resolved.x).toBeCloseTo(1574.03 - PLAYER_COLLISION_RADIUS);
     expect(resolved.y).toBeCloseTo(4);
     expect(resolved.z).toBeCloseTo(0);
-  });
-
-  it('blocks predicted movement against the generated castle collider', () => {
-    const [castle] = STATIC_TERRAIN_BLOCKERS;
-    const current = new THREE.Vector3(
-      castle.minX - PLAYER_COLLISION_RADIUS - 0.1,
-      4,
-      (castle.minZ + castle.maxZ) / 2,
-    );
-    const desired = new THREE.Vector3(castle.minX, 4, current.z);
-
-    const resolved = resolvePlayerMovement(current, desired);
-
-    expect(resolved.x).toBeCloseTo(current.x);
-    expect(resolved.z).toBeCloseTo(current.z);
   });
 
   it('lands on sampled terrain height instead of flat zero', () => {

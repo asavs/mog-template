@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { encodeHeightmapBinary, writeHeightmapMeta } from './heightmap-binary-format.mjs';
+import { encodeCastleCollisionBinary, writeCastleCollisionMeta } from './castle-collision-binary-format.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 /** Keep in sync with `client/src/terrainConfig.ts` (TERRAIN_GLB_RELATIVE_PATH). */
@@ -12,9 +14,10 @@ const CLIENT_BIN_OUT = path.join(ROOT, 'client/public/models/terrain/heightmap.b
 const SERVER_BIN_OUT = path.join(ROOT, 'server/spacetimedb/src/heightmap.bin');
 /** Thin TS bounds for the client loader — not the giant sample grid. */
 const CLIENT_META_OUT = path.join(ROOT, 'client/src/heightmapMeta.ts');
-/** Shared client/server building blockers derived from the active GLB. */
-const CLIENT_COLLISION_OUT = path.join(ROOT, 'client/src/terrainCollision.ts');
-const SERVER_COLLISION_OUT = path.join(ROOT, 'server/spacetimedb/src/terrain_collision.rs');
+/** Canonical static triangle asset, fetched by the client and embedded by the server. */
+const CLIENT_CASTLE_COLLISION_OUT = path.join(ROOT, 'client/public/models/terrain/castle-collision.bin');
+const SERVER_CASTLE_COLLISION_OUT = path.join(ROOT, 'server/spacetimedb/src/castle_collision.bin');
+const CLIENT_CASTLE_COLLISION_META_OUT = path.join(ROOT, 'client/src/castleCollisionMeta.ts');
 
 /** Keep in sync with `client/src/terrainConfig.ts` (TERRAIN_TARGET_SIZE). */
 const TERRAIN_TARGET_SIZE = 3148.07;
@@ -23,6 +26,7 @@ const MAX_WALKABLE_SLOPE_DEGREES = 70;
 const MAX_WALKABLE_SLOPE = Math.tan((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180);
 const MIN_WALKABLE_NORMAL_Y = Math.cos((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180);
 const MIN_TOP_NORMAL_Y = 0.02;
+const CASTLE_GRID_CELL_SIZE = 3;
 
 const COMPONENT_BYTE_SIZE = {
   5120: 1,
@@ -73,7 +77,11 @@ function readGlb(filePath) {
     throw new Error('GLB must contain JSON and BIN chunks');
   }
 
-  return { json, bin };
+  return {
+    json,
+    bin,
+    sourceHash: createHash('sha256').update(data).digest(),
+  };
 }
 
 function identity() {
@@ -377,7 +385,7 @@ function fillMissingHeights(heights, normalYs, hitCounts) {
 }
 
 function buildHeightmap() {
-  const { json: gltf, bin } = readGlb(GLB_PATH);
+  const { json: gltf, bin, sourceHash } = readGlb(GLB_PATH);
   const instances = collectMeshInstances(gltf);
   const rawBounds = computeRawBounds(gltf, bin, instances);
   const rawSizeX = rawBounds.max[0] - rawBounds.min[0];
@@ -402,7 +410,7 @@ function buildHeightmap() {
     cellX: (maxX - minX) / (HEIGHTMAP_SIZE - 1),
     cellZ: (maxZ - minZ) / (HEIGHTMAP_SIZE - 1),
   };
-  const staticBlockers = collectStaticBlockers(gltf, bin, instances, scale, offset);
+  const castleCollision = collectCastleCollision(gltf, bin, instances, scale, offset, sourceHash);
 
   const heights = new Float64Array(HEIGHTMAP_SIZE * HEIGHTMAP_SIZE);
   const normalYs = new Float64Array(HEIGHTMAP_SIZE * HEIGHTMAP_SIZE);
@@ -452,7 +460,7 @@ function buildHeightmap() {
     heights,
     walkable,
     bounds,
-    staticBlockers,
+    castleCollision,
     stats: {
       scale,
       triangles,
@@ -467,42 +475,115 @@ function buildHeightmap() {
   };
 }
 
-function collectStaticBlockers(gltf, bin, instances, scale, offset) {
-  const blockers = [];
+/**
+ * Bake the collision node separately from the outdoor heightmap. Its grid only
+ * accelerates broad-phase lookup; every final contact is against these exact
+ * transformed source triangles.
+ */
+function collectCastleCollision(gltf, bin, instances, scale, offset, sourceHash) {
+  const matching = instances.filter(instance => isStaticBlockerMesh(instance.label));
+  if (matching.length !== 1) {
+    throw new Error(`Expected exactly one Castle Collision mesh, found ${matching.length}`);
+  }
 
-  for (const instance of instances) {
-    if (!isStaticBlockerMesh(instance.label)) continue;
+  const [instance] = matching;
+  const vertices = [];
+  const indices = [];
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
 
-    const min = [Infinity, Infinity, Infinity];
-    const max = [-Infinity, -Infinity, -Infinity];
-    for (const primitive of instance.mesh.primitives ?? []) {
-      const positionAccessor = primitive.attributes?.POSITION;
-      if (positionAccessor === undefined) continue;
-
-      const positions = getAccessorReader(gltf, bin, positionAccessor);
-      for (let index = 0; index < positions.count; index += 1) {
-        const point = finalTransform(
-          transformPoint(instance.matrix, positions.read(index)),
-          scale,
-          offset,
-        );
-        for (let axis = 0; axis < 3; axis += 1) {
-          min[axis] = Math.min(min[axis], point[axis]);
-          max[axis] = Math.max(max[axis], point[axis]);
-        }
+  for (const primitive of instance.mesh.primitives ?? []) {
+    if (primitive.mode !== undefined && primitive.mode !== 4) continue;
+    const positionAccessor = primitive.attributes?.POSITION;
+    if (positionAccessor === undefined) continue;
+    const positions = getAccessorReader(gltf, bin, positionAccessor);
+    const vertexBase = vertices.length / 3;
+    for (let index = 0; index < positions.count; index += 1) {
+      const point = finalTransform(transformPoint(instance.matrix, positions.read(index)), scale, offset);
+      vertices.push(point[0], point[1], point[2]);
+      for (let axis = 0; axis < 3; axis += 1) {
+        min[axis] = Math.min(min[axis], point[axis]);
+        max[axis] = Math.max(max[axis], point[axis]);
       }
     }
 
-    if (Number.isFinite(min[0])) {
-      blockers.push({ minX: min[0], maxX: max[0], minZ: min[2], maxZ: max[2] });
+    const sourceIndices = primitive.indices === undefined
+      ? null
+      : getAccessorReader(gltf, bin, primitive.indices);
+    const indexCount = sourceIndices ? sourceIndices.count : positions.count;
+    for (let index = 0; index + 2 < indexCount; index += 3) {
+      indices.push(
+        vertexBase + (sourceIndices ? sourceIndices.read(index) : index),
+        vertexBase + (sourceIndices ? sourceIndices.read(index + 1) : index + 1),
+        vertexBase + (sourceIndices ? sourceIndices.read(index + 2) : index + 2),
+      );
     }
   }
 
-  if (blockers.length !== 1) {
-    throw new Error(`Expected exactly one Castle Collision mesh, found ${blockers.length}`);
+  if (!Number.isFinite(min[0]) || indices.length === 0) {
+    throw new Error('Castle Collision mesh has no triangle primitives');
+  }
+  const grid = buildCastleGrid(vertices, indices, min, max);
+  return {
+    vertices: new Float32Array(vertices),
+    indices: new Uint32Array(indices),
+    grid,
+    min,
+    max,
+    terrainScale: scale,
+    terrainOffset: offset,
+    sourceNodeMatrix: instance.matrix,
+    sourceHash,
+    sourceNodeName: instance.label.split('/').filter(Boolean)[0] ?? instance.label,
+  };
+}
+
+function buildCastleGrid(vertices, indices, min, max) {
+  const dimensions = [0, 1, 2].map(axis => Math.max(1, Math.ceil((max[axis] - min[axis]) / CASTLE_GRID_CELL_SIZE)));
+  const [gridX, gridY, gridZ] = dimensions;
+  const cells = Array.from({ length: gridX * gridY * gridZ }, () => new Set());
+  const cellIndex = (x, y, z) => (z * gridY + y) * gridX + x;
+  const gridCoordinate = (value, axis) => Math.min(
+    dimensions[axis] - 1,
+    Math.max(0, Math.floor((value - min[axis]) / CASTLE_GRID_CELL_SIZE)),
+  );
+
+  for (let triangleId = 0; triangleId < indices.length / 3; triangleId += 1) {
+    const triangleMin = [Infinity, Infinity, Infinity];
+    const triangleMax = [-Infinity, -Infinity, -Infinity];
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertex = indices[triangleId * 3 + corner] * 3;
+      for (let axis = 0; axis < 3; axis += 1) {
+        const value = vertices[vertex + axis];
+        triangleMin[axis] = Math.min(triangleMin[axis], value);
+        triangleMax[axis] = Math.max(triangleMax[axis], value);
+      }
+    }
+    const start = triangleMin.map(gridCoordinate);
+    const end = triangleMax.map(gridCoordinate);
+    for (let z = start[2]; z <= end[2]; z += 1) {
+      for (let y = start[1]; y <= end[1]; y += 1) {
+        for (let x = start[0]; x <= end[0]; x += 1) {
+          cells[cellIndex(x, y, z)].add(triangleId);
+        }
+      }
+    }
   }
 
-  return blockers;
+  const offsets = new Uint32Array(cells.length + 1);
+  const triangleIds = [];
+  for (let index = 0; index < cells.length; index += 1) {
+    offsets[index] = triangleIds.length;
+    triangleIds.push(...[...cells[index]].sort((a, b) => a - b));
+  }
+  offsets[cells.length] = triangleIds.length;
+  return {
+    x: gridX,
+    y: gridY,
+    z: gridZ,
+    offsets,
+    triangleIds: new Uint32Array(triangleIds),
+  };
 }
 
 function buildWalkableMask(heights, normalYs, hitCounts, bounds) {
@@ -586,28 +667,20 @@ function writeBinaryOutputs({ heights, walkable, bounds, stats }) {
   return { bytes: bin.length, clientBin: CLIENT_BIN_OUT, serverBin: SERVER_BIN_OUT, meta: CLIENT_META_OUT };
 }
 
-function writeStaticCollisionOutputs(blockers) {
-  const client = `// Generated from Castle Collision in ${TERRAIN_GLB_RELATIVE_PATH}. Do not edit by hand.\n`
-    + `export interface StaticTerrainBlocker {\n`
-    + `  minX: number;\n`
-    + `  maxX: number;\n`
-    + `  minZ: number;\n`
-    + `  maxZ: number;\n`
-    + `}\n\n`
-    + `export const STATIC_TERRAIN_BLOCKERS: readonly StaticTerrainBlocker[] = [\n`
-    + blockers.map(blocker => `  { minX: ${formatNumber(blocker.minX)}, maxX: ${formatNumber(blocker.maxX)}, minZ: ${formatNumber(blocker.minZ)}, maxZ: ${formatNumber(blocker.maxZ)} },`).join('\n')
-    + `\n];\n`;
-  const server = `// Generated from Castle Collision in ${TERRAIN_GLB_RELATIVE_PATH}. Do not edit by hand.\n`
-    + `pub const STATIC_TERRAIN_BLOCKERS: &[(f32, f32, f32, f32)] = &[\n`
-    + blockers.map(blocker => `    (${formatNumber(blocker.minX)}, ${formatNumber(blocker.maxX)}, ${formatNumber(blocker.minZ)}, ${formatNumber(blocker.maxZ)}),`).join('\n')
-    + `\n];\n`;
-
-  fs.writeFileSync(CLIENT_COLLISION_OUT, client);
-  fs.writeFileSync(SERVER_COLLISION_OUT, server);
-  return { clientCollision: CLIENT_COLLISION_OUT, serverCollision: SERVER_COLLISION_OUT };
+function writeCastleCollisionOutputs(collision) {
+  const bin = encodeCastleCollisionBinary(collision);
+  fs.writeFileSync(CLIENT_CASTLE_COLLISION_OUT, bin);
+  fs.writeFileSync(SERVER_CASTLE_COLLISION_OUT, bin);
+  writeCastleCollisionMeta(CLIENT_CASTLE_COLLISION_META_OUT, collision);
+  return {
+    castleCollisionBytes: bin.length,
+    clientCastleCollision: CLIENT_CASTLE_COLLISION_OUT,
+    serverCastleCollision: SERVER_CASTLE_COLLISION_OUT,
+    castleCollisionMeta: CLIENT_CASTLE_COLLISION_META_OUT,
+  };
 }
 
 const result = buildHeightmap();
 const written = writeBinaryOutputs(result);
-const collisionWritten = writeStaticCollisionOutputs(result.staticBlockers);
+const collisionWritten = writeCastleCollisionOutputs(result.castleCollision);
 console.log(JSON.stringify({ ...result.stats, ...written, ...collisionWritten }, null, 2));
