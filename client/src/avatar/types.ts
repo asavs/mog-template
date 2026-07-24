@@ -12,7 +12,6 @@ import type { SoundId } from '../audio/soundRegistry';
 import type {
   AbilityId as GeneratedAbilityId,
   AuthorityEquipSlot,
-  AuthorityItemSlot,
   AuthorityUtilitySlot,
   BodyId as GeneratedBodyId,
   ItemId as GeneratedItemId,
