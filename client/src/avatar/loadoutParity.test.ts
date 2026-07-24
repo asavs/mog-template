@@ -21,11 +21,11 @@ describe('loadout id parity (client catalog ↔ shared authority)', () => {
     expect(client.bodies).toEqual(sortedStrings(SERVER_LOADOUT_IDS.bodies));
   });
 
-  it('exposes the same item ids as the server (via preset resolve)', () => {
+  it('exposes the same item ids as the server (catalog presentation + presets)', () => {
     expect(client.items).toEqual(sortedStrings(SERVER_LOADOUT_IDS.items));
   });
 
-  it('exposes the same grant ids as the server (via preset resolve)', () => {
+  it('exposes the same grant ids as the server (catalog presentation + presets)', () => {
     expect(client.grants).toEqual(sortedStrings(SERVER_LOADOUT_IDS.grants));
   });
 

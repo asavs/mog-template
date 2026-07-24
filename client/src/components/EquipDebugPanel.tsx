@@ -52,8 +52,11 @@ export function EquipDebugPanel() {
         <button type="button" style={btnStyle} onClick={() => callEquip('sword_1h')}>
           Equip sword
         </button>
-        <button type="button" style={btnStyle} onClick={() => callEquip('staff')}>
-          Equip staff
+        <button type="button" style={btnStyle} onClick={() => callEquip('wand')}>
+          Equip wand
+        </button>
+        <button type="button" style={btnStyle} onClick={() => callEquip('dagger')}>
+          Equip dagger
         </button>
         <button type="button" style={btnStyle} onClick={() => callEquip('shield')}>
           Equip shield

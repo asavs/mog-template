@@ -117,13 +117,17 @@ const ITEM_PRESENTATION: Record<
     socketId: 'left_hand',
     objectNames: ['Baked shield 1', 'Shield 1'],
   },
-  staff: {
-    // Placeholder: no isolated staff mesh yet (#64).
-    meshKey: 'models/wizard2/wizard2.fbx',
+  wand: {
+    meshKey: 'models/weapons/low_poly_weapons_pack_rigged_blender.glb',
     attach: 'socket',
     socketId: 'right_hand',
-    grantsOnly: true,
-    visibleByDefault: false,
+    objectNames: ['Baked wand', 'Wand'],
+  },
+  dagger: {
+    meshKey: 'models/weapons/low_poly_weapons_pack_rigged_blender.glb',
+    attach: 'socket',
+    socketId: 'right_hand',
+    objectNames: ['Baked dagger', 'Dagger'],
   },
   potion: {
     meshKey: 'models/items/red-potion.glb',
@@ -221,6 +225,8 @@ function wizardClips(): ClipSource[] {
 const PRESET_CLIPS: Record<string, () => ClipSource[]> = {
   paladin: paladinClips,
   wizard: wizardClips,
+  // Acolyte reuses wizard locomotion/cast clips (shared body_f monomesh).
+  acolyte: wizardClips,
 };
 
 function buildPresetsFromAuthority(): Record<string, LoadoutPreset> {

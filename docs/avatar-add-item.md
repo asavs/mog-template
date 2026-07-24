@@ -86,7 +86,7 @@ dagger: {
 | `meshKey` | Path under `client/public/` (see asset drop). |
 | `attach` | Usually `'socket'` for held gear. |
 | `socketId` | e.g. `right_hand` / `left_hand` (canonical sockets in the avatar package). |
-| `grantsOnly: true` | OK placeholder: no mesh fetch/attach until art exists (see current `staff`). |
+| `grantsOnly: true` | OK placeholder: no mesh fetch/attach until art exists. |
 | `objectNames` | Submesh names inside a multi-mesh pack GLB (transitional). |
 
 `buildItemsFromAuthority()` throws if an authority item lacks an `ITEM_PRESENTATION` row. Missing body presentation is the same pattern on `BODY_PRESENTATION`.
@@ -154,7 +154,7 @@ Hypothetical only — do not commit this item unless you intend to ship it.
    }
    ```
 
-   Optional starter: set a preset’s `"main_hand": "dagger"` (replacing `sword_1h` or `staff` for that preset).
+   Optional starter: set a preset’s `"main_hand": "dagger"` (replacing `sword_1h` or `wand` for that preset).
 
 2. **Gen:** `node scripts/gen-avatar-loadout.mjs` then `node scripts/gen-avatar-loadout.mjs --check`.
 

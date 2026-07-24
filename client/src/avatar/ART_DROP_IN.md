@@ -29,7 +29,7 @@ Register assets in `catalog.ts` (later: JSON/CDN / single-source data — issue 
 |---|---|---|
 | Body | `body_m`, `body_f` | Underwear / nude base |
 | Item | `sword_1h`, `shield`, … | `slot` + `meshKey` + grants |
-| Preset | `paladin`, `wizard` | Starting body + slots (character select) |
+| Preset | `paladin`, `wizard`, `acolyte` | Starting body + slots (character select) |
 | Grant | `melee_slash`, `cast_fireball`, … | Ability tags on items / presets |
 | Slot | `main_hand`, `off_hand`, … | Paper-doll `EquipSlot` strings |
 
@@ -59,12 +59,13 @@ node scripts/gen-avatar-loadout.mjs
 ### Naming
 
 - **snake_case** only: `sword_1h`, `cast_fireball`, `body_m`
-- **Presets** are join / character-select ids (`wizard`, `paladin`) — not mesh-pack product names
+- **Presets** are join / character-select ids (`wizard`, `paladin`, `acolyte`) — not mesh-pack product names
 - **Legacy class strings** map onto presets via `legacyClassToPreset` in the JSON
 - **Grants** are capability tags: `melee_slash`, `block`, `cast_fireball`, `cast_lightning`, `drink_potion`
 - **Paper-doll slots** (`equipSlots`): exclusive body/hand slots (`main_hand`, `off_hand`, …). At most one item per slot.
 - **Utility slots** (`utilitySlots`): consumable/attach ids (`utility_potion`, …). Exclusive within their own id; do **not** compete with paper-doll (potion is never `off_hand`).
-- Item `slot` must be listed in exactly one of those lists. Preset `slots` keys ∈ `equipSlots`; `utilityEquipment` rows ∈ `utilitySlots`.
+- Item `slot` must be listed in exactly one of those lists. Preset `slots` holds paper-doll only (keys ∈ `equipSlots`); `utilityEquipment` holds utility only (rows ∈ `utilitySlots`). Gen rejects crossed placement.
+- Cast weapons use the **`wand`** item id (main_hand; weapons-pack mesh). Do not reintroduce `staff`.
 - **Live equip** (issue #49): server reducers `equip_item(item_id)` / `unequip_slot(slot)` mutate `player_equipment`; combat grants recompute from those rows (+ `baselineGrants`).
 
 ### Where to edit
