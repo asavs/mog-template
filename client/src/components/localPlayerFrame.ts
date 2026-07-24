@@ -5,7 +5,7 @@ import { sampleHeight, terrainHeightAt } from '../heightmap';
 import { createMovementState, isMoving, simulateMovementTick, type LocomotionState } from '../movement';
 import type { NetMetrics } from '../netcode';
 import { setAudioListenerWorldPosition } from '../audio/AudioManager';
-import { getCharacterCapabilities } from './characterConfig';
+import type { ClassCapabilities } from './characterConfig';
 import { publishFireballAimDebug, vectorDebug as fireballVectorDebug } from '../fireballDebug';
 
 export type MovementAnimationDirection = 'forward' | 'back' | 'left' | 'right';
@@ -30,7 +30,8 @@ type LocalPlayerFrameOptions = {
   cameraPitchRef: MutableRefObject<number>;
   cameraRotationMatrixRef: MutableRefObject<THREE.Matrix4>;
   cameraRotationRef: MutableRefObject<THREE.Euler>;
-  characterClass: string;
+  /** Live capabilities from appearance + equipment (not class string alone). */
+  capabilities: ClassCapabilities;
   currentInputRef: MutableRefObject<InputState>;
   deltaSeconds: number;
   debugRefs: {
@@ -92,7 +93,8 @@ type LocalPlayerFrameResult = {
 
 export type LocalPlayerRuntimeConfig = {
   camera: THREE.Camera;
-  characterClass: string;
+  /** Live capabilities from appearance + equipment (not class string alone). */
+  capabilities: ClassCapabilities;
   groupRef: MutableRefObject<THREE.Group>;
   identityKey: string;
   jumpAnimationName: string;
@@ -273,7 +275,7 @@ export class LocalPlayerRuntime {
       cameraPitchRef: this.cameraPitchRef,
       cameraRotationMatrixRef: refValue(this.cameraRotationMatrix),
       cameraRotationRef: refValue(this.cameraRotation),
-      characterClass: this.config.characterClass,
+      capabilities: this.config.capabilities,
       currentInputRef: refValue(currentInput),
       deltaSeconds,
       debugRefs: {
@@ -500,7 +502,7 @@ export function runLocalPlayerFrame({
   cameraPitchRef,
   cameraRotationMatrixRef,
   cameraRotationRef,
-  characterClass,
+  capabilities,
   currentInputRef,
   deltaSeconds: dt,
   debugRefs,
@@ -982,7 +984,7 @@ export function runLocalPlayerFrame({
 
   updateWizardAimTargets({
     camera,
-    characterClass,
+    capabilities,
     fireballAimDirectionRef,
     fireballLineRef,
     fireballTargetRef,
@@ -1495,7 +1497,7 @@ function logLocalFrameDebug({
 
 function updateWizardAimTargets({
   camera,
-  characterClass,
+  capabilities,
   fireballAimDirectionRef,
   fireballLineRef,
   fireballTargetRef,
@@ -1511,7 +1513,7 @@ function updateWizardAimTargets({
   selectedWizardSpell,
 }: {
   camera: THREE.Camera;
-  characterClass: string;
+  capabilities: ClassCapabilities;
   fireballAimDirectionRef: MutableRefObject<THREE.Vector3>;
   fireballLineRef: MutableRefObject<THREE.Line | null>;
   fireballTargetRef: MutableRefObject<THREE.Vector3>;
@@ -1528,7 +1530,8 @@ function updateWizardAimTargets({
 }) {
   const reticle = lightningReticleRef.current;
   if (reticle) {
-    const showLightningTarget = getCharacterCapabilities(characterClass).spells.length > 0 && !isDead && selectedWizardSpell === 'lightning';
+    const showLightningTarget =
+      capabilities.spells.includes('lightning') && !isDead && selectedWizardSpell === 'lightning';
     reticle.visible = showLightningTarget;
 
     if (showLightningTarget) {
@@ -1584,7 +1587,8 @@ function updateWizardAimTargets({
   const fireballLine = fireballLineRef.current;
   if (!fireballLine) return;
 
-  const showFireballTarget = getCharacterCapabilities(characterClass).spells.length > 0 && !isDead && selectedWizardSpell === 'fireball';
+  const showFireballTarget =
+    capabilities.spells.includes('fireball') && !isDead && selectedWizardSpell === 'fireball';
   fireballLine.visible = showFireballTarget;
 
   if (!showFireballTarget) return;

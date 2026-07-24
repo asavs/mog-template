@@ -2,7 +2,7 @@ import type { MutableRefObject } from 'react';
 import * as THREE from 'three';
 import type { PlayerActionState, PlayerAnimation } from '../generated/types';
 import { ATTACK_ANIMATION_TIME_SCALE } from '../combatTiming';
-import { getCharacterCapabilities } from './characterConfig';
+import type { ClassCapabilities } from './characterConfig';
 import type { MovementAnimationDirection } from './localPlayerFrame';
 
 type AnimationNames = {
@@ -38,7 +38,8 @@ type MovementAnimationNameOptions = {
 type RemoteOneShotOptions = {
   animationNames: AnimationNames;
   animations: Record<string, THREE.AnimationAction>;
-  characterClass: string;
+  /** Live capabilities from appearance + equipment (not class string alone). */
+  capabilities: ClassCapabilities;
   currentAnimationRef: MutableRefObject<string>;
   isLocalPlayer: boolean;
   lastPlayedAttackSeqRef: MutableRefObject<number | null>;
@@ -121,7 +122,7 @@ export function configureAnimationPlayback(
 export function playRemoteOneShotAnimation({
   animationNames,
   animations,
-  characterClass,
+  capabilities,
   currentAnimationRef,
   isLocalPlayer,
   lastPlayedAttackSeqRef,
@@ -138,7 +139,6 @@ export function playRemoteOneShotAnimation({
     return;
   }
 
-  const capabilities = getCharacterCapabilities(characterClass);
   const activeAnimation = playerAnimation.activeAnimation;
   const canPlayOneShot =
     (activeAnimation === animationNames.slash && capabilities.melee) ||

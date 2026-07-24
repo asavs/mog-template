@@ -4,7 +4,7 @@ import type { PlayerActionState, PlayerHealth, Vector3 as GameVector3 } from '..
 import { canRequestAction } from '../playerActions';
 import { playLocalSound } from '../audio/AudioManager';
 import { logFireballDebug, vectorDebug as fireballVectorDebug } from '../fireballDebug';
-import { getCharacterCapabilities, type WizardSpell } from './characterConfig';
+import type { ClassCapabilities, WizardSpell } from './characterConfig';
 import {
   createPendingFireballCosmeticCast,
   fireballVisualDirectionFromSpawn,
@@ -38,7 +38,8 @@ type LocalPlayerControlsOptions = {
     cast: string;
     drinking: string;
   };
-  characterClass: string;
+  /** Live capabilities from appearance + equipment (not class string alone). */
+  capabilities: ClassCapabilities;
   controlsRuntimeRef: MutableRefObject<LocalPlayerControlsRuntime>;
   localRotationYRef?: MutableRefObject<number>;
   cameraPitchRef?: MutableRefObject<number>;
@@ -82,7 +83,7 @@ export function clampLookPitchWithOrbitOffset(nextPitch: number, orbitPitch: num
 export function useLocalPlayerControls({
   enabled,
   animationNames,
-  characterClass,
+  capabilities,
   controlsRuntimeRef,
   localRotationYRef,
   cameraPitchRef,
@@ -136,7 +137,6 @@ export function useLocalPlayerControls({
       throw new Error('Local player controls require local runtime refs when enabled');
     }
 
-    const capabilities = getCharacterCapabilities(characterClass);
 
     const clearPotionHideTimeout = () => {
       if (potionHideTimeoutRef.current === null) return;
@@ -249,7 +249,12 @@ export function useLocalPlayerControls({
 
         actionRequestLockedUntilRef.current = now + ACTION_REQUEST_LOCK_MS;
         onSlashAttack?.();
-      } else if (event.button === 0 && !isDead && capabilities.spells.length > 0 && animations[animationNames.cast]) {
+      } else if (
+        event.button === 0
+        && !isDead
+        && capabilities.spells.includes(selectedWizardSpell)
+        && animations[animationNames.cast]
+      ) {
         if (selectedWizardSpell === 'fireball') {
           const targetPosition = {
             x: fireballTargetRef.current.x,
@@ -426,7 +431,7 @@ export function useLocalPlayerControls({
   }, [
     enabled,
     animationNames,
-    characterClass,
+    capabilities,
     controlsRuntimeRef,
     localRotationYRef,
     cameraPitchRef,
