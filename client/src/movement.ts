@@ -129,12 +129,23 @@ export function applyMovement(
   const desired = position.clone();
   desired.x += moveX * movementScale;
   desired.z += moveZ * movementScale;
-  const currentGround = groundHeightAt(position);
+  const currentCastleGround = activeCastleGroundSupportDetailed(
+    position,
+    CASTLE_GROUND_SNAP_DISTANCE,
+  );
+  const currentGround = currentCastleGround.position?.y ?? terrainHeightAt(position);
+  const startedOnCastle = currentCastleGround.position !== null;
   const wasGrounded = position.y <= currentGround + GROUNDED_EPSILON;
   const resolved = resolvePlayerMovement(position, desired);
   if (wasGrounded) {
-    const resolvedGround = groundHeightAt(resolved);
-    if (currentGround - resolvedGround <= MAX_SNAP_DOWN_HEIGHT) {
+    const resolvedCastleGround = activeCastleGroundSupportDetailed(
+      resolved,
+      CASTLE_GROUND_SNAP_DISTANCE,
+    );
+    const resolvedGround = resolvedCastleGround.position?.y ?? terrainHeightAt(resolved);
+    if (resolvedCastleGround.position) {
+      resolved.y = resolvedGround;
+    } else if (!startedOnCastle && currentGround - resolvedGround <= MAX_SNAP_DOWN_HEIGHT) {
       resolved.y = resolvedGround;
     }
   }
@@ -281,6 +292,8 @@ function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance:
   position: THREE.Vector3 | null;
   source: 'rapier' | 'custom' | 'none';
 } {
+  if (!isCastleCollisionReady()) return { position: null, source: 'none' };
+
   const rapierSupport = getRapierCastleGroundSupport(
     position,
     maxDistance,

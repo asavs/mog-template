@@ -1208,11 +1208,19 @@ function reconcileLocalPrediction({
   }
 
   const reconciliationError = localPositionRef.current.distanceTo(replayPosition);
-  const preserveLocalVerticalPrediction = shouldPreserveLocalVerticalPrediction({
+  const localVerticalPredictionShouldBePreserved = shouldPreserveLocalVerticalPrediction({
     localMovementState: localMovementStateRef.current,
     localPosition: localPositionRef.current,
     localVerticalVelocity: localVerticalVelocityRef.current,
   });
+  const replayVerticalPredictionShouldBePreserved = shouldClearVerticalCorrection({
+    groundY: groundHeightAt(replayPosition),
+    movementState: replayMovementState,
+    positionY: replayPosition.y,
+    verticalVelocity: replayVerticalVelocity,
+  });
+  const preserveLocalVerticalPrediction = localVerticalPredictionShouldBePreserved
+    && replayVerticalPredictionShouldBePreserved;
   if (collisionDebugEnabled()) {
     logCollisionDebug({
       at: performance.now(),
@@ -1235,7 +1243,7 @@ function reconcileLocalPrediction({
       latestServerTick: Number(latestTransform.serverTick),
       pendingTickCount: predictedTicksRef.current.length,
       reconciliationError: collisionNumberDebug(reconciliationError),
-      note: `droppedTickCount=${droppedTickCount}; preserveLocalVertical=${preserveLocalVerticalPrediction}`,
+      note: `droppedTickCount=${droppedTickCount}; preserveLocalVertical=${preserveLocalVerticalPrediction}; localVerticalPreserve=${localVerticalPredictionShouldBePreserved}; replayVerticalPreserve=${replayVerticalPredictionShouldBePreserved}`,
     });
   }
   if (jumpDebugFrame?.trace) {
@@ -1261,7 +1269,7 @@ function reconcileLocalPrediction({
       droppedTickCount,
       reconciliationError: Number(reconciliationError.toFixed(4)),
       correctionOffsetLength: Number(visualCorrectionOffsetRef.current.length().toFixed(4)),
-      note: `replayPosition=${JSON.stringify(vectorDebug(replayPosition))}; preserveLocalVertical=${preserveLocalVerticalPrediction}`,
+      note: `replayPosition=${JSON.stringify(vectorDebug(replayPosition))}; preserveLocalVertical=${preserveLocalVerticalPrediction}; localVerticalPreserve=${localVerticalPredictionShouldBePreserved}; replayVerticalPreserve=${replayVerticalPredictionShouldBePreserved}`,
     });
   }
   metrics.localCorrectionError = reconciliationError;
