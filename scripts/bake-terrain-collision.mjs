@@ -6,7 +6,7 @@ import { encodeCastleCollisionBinary, writeCastleCollisionMeta } from './castle-
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 /** Keep in sync with `client/src/terrainConfig.ts` (TERRAIN_GLB_RELATIVE_PATH). */
-const TERRAIN_GLB_RELATIVE_PATH = 'models/terrain/dark-fantasy-map-lower-poly.glb';
+const TERRAIN_GLB_RELATIVE_PATH = 'models/terrain/castle-terrain-zone.glb';
 const GLB_PATH = path.join(ROOT, 'client/public', TERRAIN_GLB_RELATIVE_PATH);
 /** Client runtime binary (static web root). */
 const CLIENT_BIN_OUT = path.join(ROOT, 'client/public/models/terrain/heightmap.bin');
