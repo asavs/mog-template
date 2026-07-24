@@ -1,6 +1,7 @@
 import { useCallback, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { DbConnection } from '../generated';
 import type { CharacterClass } from '../components/JoinGameDialog';
+import { normalizeCharacterClass } from '../components/characterConfig';
 import {
   clearSavedCharacter,
   loadJoinPreferences,
@@ -23,9 +24,10 @@ export function useJoinSession({
   const handleJoin = useCallback((username: string, characterClass: CharacterClass) => {
     const connection = connRef.current;
     if (connection) {
-      saveJoinPreferences({ username, characterClass });
-      setJoinPreferences({ username, characterClass });
-      connection.reducers.joinGameAs({ username, characterClass });
+      const presetId = normalizeCharacterClass(characterClass);
+      saveJoinPreferences({ username, characterClass: presetId });
+      setJoinPreferences({ username, characterClass: presetId });
+      connection.reducers.joinGameAs({ username, characterClass: presetId });
       setIsJoined(true);
     }
   }, [connRef, setIsJoined]);

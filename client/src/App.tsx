@@ -20,8 +20,10 @@ import { GameOverlays } from './components/GameOverlays';
 import { CombatFeedbackEffect, type ActiveCombatFeedback } from './components/CombatFeedbackEffect';
 import { FireballProjectileEffects, LightningEffectPreloader, LightningStrikeEffects } from './components/SpellEffects';
 import type { WizardSpell } from './components/BasePlayer';
-import { resolvePlayerCapabilities } from './components/characterConfig';
-import { presetIdFromLegacyClass } from './avatar/catalog';
+import {
+  normalizeCharacterClass,
+  resolvePlayerCapabilities,
+} from './components/characterConfig';
 import type { PendingFireballCosmeticCast } from './components/fireballVisuals';
 import type { SpellCasterVisualOrigin } from './components/spellVisualOrigins';
 import {
@@ -272,8 +274,9 @@ export default function App() {
   });
 
   // Warm only the selected join class (not every character pack). Remotes load on demand.
+  // Use catalog-aware normalize so future presets (e.g. acolyte) preload correctly.
   useEffect(() => {
-    const presetId = presetIdFromLegacyClass(joinPreferences.characterClass);
+    const presetId = normalizeCharacterClass(joinPreferences.characterClass);
     void import('./components/playerModelLoader').then(({ preloadPresetAssets }) => {
       void preloadPresetAssets(presetId);
     });

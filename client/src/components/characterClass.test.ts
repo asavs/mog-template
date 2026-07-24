@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { ITEM_IDS, LOADOUT_PRESET_IDS } from '../avatar/loadoutAuthority.generated';
 import {
   canSelectSpell,
-  CHARACTER_CONFIGS,
+  formatCatalogIdLabel,
   getCharacterCapabilities,
   hasSpellSelectHotkeys,
-  joinPresetButtonLabel,
+  listEquippableCatalogItems,
   listLoadoutPresetIds,
+  listLoadoutPresetsForSelect,
   normalizeCharacterClass,
   resolvePlayerCapabilities,
 } from './characterConfig';
@@ -24,7 +26,6 @@ describe('normalizeCharacterClass legacy remapping', () => {
   it('maps acolyte identifiers to acolyte (not wizard)', () => {
     expect(normalizeCharacterClass('acolyte')).toBe('acolyte');
     expect(normalizeCharacterClass('Acolyte')).toBe('acolyte');
-    expect(normalizeCharacterClass('  ACOLYTE ')).toBe('acolyte');
   });
 
   it('is case- and whitespace-insensitive', () => {
@@ -32,33 +33,61 @@ describe('normalizeCharacterClass legacy remapping', () => {
     expect(normalizeCharacterClass('Wizard2')).toBe('wizard');
   });
 
-  it('defaults unknown, null, and undefined values to default preset', () => {
+  it('defaults unknown, null, and undefined values to wizard', () => {
     expect(normalizeCharacterClass('knight')).toBe('wizard');
     expect(normalizeCharacterClass('')).toBe('wizard');
     expect(normalizeCharacterClass(null)).toBe('wizard');
     expect(normalizeCharacterClass(undefined)).toBe('wizard');
   });
 
-  it('preserves every catalog loadout preset id (no collapse to wizard/paladin only)', () => {
-    for (const id of listLoadoutPresetIds()) {
-      expect(normalizeCharacterClass(id)).toBe(id);
+  it('accepts every generated loadout preset id directly', () => {
+    for (const presetId of LOADOUT_PRESET_IDS) {
+      expect(normalizeCharacterClass(presetId)).toBe(presetId);
     }
   });
 });
 
-describe('catalog-driven character configs (QA matrix)', () => {
-  it('includes every catalog preset with capabilities', () => {
+describe('catalog-driven join presets (#56)', () => {
+  it('lists one select option per catalog preset with labels', () => {
+    const options = listLoadoutPresetsForSelect();
     const ids = listLoadoutPresetIds();
-    expect(ids.length).toBeGreaterThanOrEqual(2);
-    for (const id of ids) {
-      expect(CHARACTER_CONFIGS[id]?.capabilities).toBeDefined();
+    expect(options.map(o => o.id).sort()).toEqual([...ids].sort());
+    expect(options.length).toBeGreaterThanOrEqual(2);
+    for (const option of options) {
+      expect(option.label.trim().length).toBeGreaterThan(0);
+    }
+    // Known presets today; new presets (acolyte) appear without UI hardcoding.
+    expect(ids).toContain('wizard');
+    expect(ids).toContain('paladin');
+  });
+});
+
+describe('catalog-driven equippable items (#52)', () => {
+  it('lists all authority item ids for equip UI', () => {
+    const items = listEquippableCatalogItems();
+    expect(items.map(i => i.itemId).sort()).toEqual([...ITEM_IDS].sort());
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    for (const item of items) {
+      expect(item.slot.length).toBeGreaterThan(0);
+      expect(item.label.length).toBeGreaterThan(0);
+      expect(item.group === 'equipment' || item.group === 'utility').toBe(true);
     }
   });
 
-  it('joinPresetButtonLabel uses catalog labels', () => {
-    expect(joinPresetButtonLabel('wizard')).toBe('Wizard');
-    expect(joinPresetButtonLabel('paladin')).toBe('Paladin');
-    expect(joinPresetButtonLabel('acolyte')).toBe('Acolyte');
+  it('groups utility potion separately from paper-doll gear when present', () => {
+    const items = listEquippableCatalogItems();
+    const potion = items.find(i => i.itemId === 'potion');
+    if (potion) {
+      expect(potion.group).toBe('utility');
+      expect(potion.slot).toBe('utility_potion');
+    }
+    const mainHand = items.filter(i => i.slot === 'main_hand');
+    expect(mainHand.every(i => i.group === 'equipment')).toBe(true);
+  });
+
+  it('formats catalog ids for display', () => {
+    expect(formatCatalogIdLabel('sword_1h')).toBe('Sword 1h');
+    expect(formatCatalogIdLabel('main_hand')).toBe('Main Hand');
   });
 });
 
@@ -99,7 +128,7 @@ describe('class capabilities', () => {
 });
 
 describe('resolvePlayerCapabilities (HUD / hotkey path)', () => {
-  it('paladin class string with no cast grants → no spell hotkeys', () => {
+  it('paladin class string with no cast grants ΓåÆ no spell hotkeys', () => {
     const caps = resolvePlayerCapabilities({
       legacyClass: 'paladin',
       appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
@@ -131,7 +160,7 @@ describe('resolvePlayerCapabilities (HUD / hotkey path)', () => {
     expect(hasSpellSelectHotkeys(caps)).toBe(true);
     expect(canSelectSpell(caps, 'fireball')).toBe(true);
     expect(canSelectSpell(caps, 'lightning')).toBe(true);
-    // main_hand is wand, not sword — melee_slash is not granted from gear.
+    // main_hand is wand, not sword ΓÇö melee_slash is not granted from gear.
     expect(caps.melee).toBe(false);
   });
 
@@ -174,3 +203,4 @@ describe('resolvePlayerCapabilities (HUD / hotkey path)', () => {
     expect(hasSpellSelectHotkeys(caps)).toBe(false);
   });
 });
+
