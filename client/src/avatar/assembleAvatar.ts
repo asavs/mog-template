@@ -146,10 +146,28 @@ export async function assembleAvatar(options: AssembleAvatarOptions): Promise<As
   };
 }
 
+/** Stored on attached gear so partial sync can keep unchanged meshes. */
+const AVATAR_ITEM_KEY = 'avatarItemKey';
+
+function meshAttachKey(item: ResolvedItem): string {
+  return `${item.id}:${item.meshKey}`;
+}
+
+function isSocketMeshItem(item: ResolvedItem): item is ResolvedItem & {
+  attach: 'socket';
+  socket: NonNullable<ResolvedItem['socket']>;
+} {
+  return item.attach === 'socket' && !!item.socket && !item.grantsOnly;
+}
+
 /**
- * Equipment-only refresh: drop current gear meshes and attach the new set.
- * Does not reload body skeleton, re-scale, or rebind animation clips.
+ * Equipment-only refresh: diff current gear vs resolved set.
+ * Keeps meshes whose item id + meshKey are unchanged; disposes removed/changed
+ * gear; loads only new attachments. Does not reload body or rebind clips.
  * Mutates `assembled.equipment` in place.
+ *
+ * Cancellation: never wipes the whole shared equipment map. In-flight loads
+ * dispose only the meshes they allocated.
  */
 export async function syncAvatarEquipment(
   options: SyncAvatarEquipmentOptions,
@@ -163,25 +181,51 @@ export async function syncAvatarEquipment(
   } = options;
 
   const isDisposed = () => signal?.disposed === true;
+  const { equipment, root } = assembled;
 
-  clearEquipmentMeshes(assembled.equipment);
+  // Bail before mutating shared gear if a newer apply already superseded us.
+  if (isDisposed()) {
+    return;
+  }
+
+  const desiredItems = resolved.equipped.filter(isSocketMeshItem);
+  const desiredKeys = new Map(desiredItems.map(item => [item.id, meshAttachKey(item)]));
+
+  // Remove gear that is gone or whose mesh identity changed.
+  for (const [id, obj] of [...equipment.entries()]) {
+    if (isDisposed()) {
+      return;
+    }
+    const wantKey = desiredKeys.get(id);
+    const haveKey = typeof obj.userData[AVATAR_ITEM_KEY] === 'string'
+      ? (obj.userData[AVATAR_ITEM_KEY] as string)
+      : null;
+    if (wantKey && haveKey === wantKey) {
+      // Still equipped with the same mesh — re-apply visibility preference only.
+      const desiredVisible = desiredEquipmentVisibility.get(id);
+      if (desiredVisible !== undefined) {
+        obj.visible = desiredVisible;
+      }
+      continue;
+    }
+    disposeObjectMeshes(obj);
+    obj.parent?.remove(obj);
+    equipment.delete(id);
+  }
 
   if (isDisposed()) {
     return;
   }
 
-  await attachResolvedEquipment({
-    root: assembled.root,
-    equipment: assembled.equipment,
-    resolved,
+  const toAttach = desiredItems.filter(item => !equipment.has(item.id));
+  await attachEquipmentItems({
+    root,
+    equipment,
+    items: toAttach,
     loadModel: loaders.loadModel,
     desiredEquipmentVisibility,
     isDisposed,
   });
-
-  if (isDisposed()) {
-    clearEquipmentMeshes(assembled.equipment);
-  }
 }
 
 async function attachResolvedEquipment(options: {
@@ -192,24 +236,47 @@ async function attachResolvedEquipment(options: {
   desiredEquipmentVisibility: Map<string, boolean>;
   isDisposed: () => boolean;
 }): Promise<void> {
+  await attachEquipmentItems({
+    root: options.root,
+    equipment: options.equipment,
+    items: options.resolved.equipped.filter(isSocketMeshItem),
+    loadModel: options.loadModel,
+    desiredEquipmentVisibility: options.desiredEquipmentVisibility,
+    isDisposed: options.isDisposed,
+  });
+}
+
+async function attachEquipmentItems(options: {
+  root: THREE.Group;
+  equipment: Map<string, THREE.Object3D>;
+  items: readonly ResolvedItem[];
+  loadModel: AvatarLoaders['loadModel'];
+  desiredEquipmentVisibility: Map<string, boolean>;
+  isDisposed: () => boolean;
+}): Promise<void> {
   const {
     root,
     equipment,
-    resolved,
+    items,
     loadModel,
     desiredEquipmentVisibility,
     isDisposed,
   } = options;
 
   await Promise.all(
-    resolved.equipped.map(async (item) => {
-      if (item.attach !== 'socket' || !item.socket) return;
-      // Grants-only placeholder — no mesh attach (see ItemDef.grantsOnly).
-      if (item.grantsOnly) return;
+    items.map(async (item) => {
+      if (!isSocketMeshItem(item)) return;
+      // Skip if a newer sync already attached this id (race with overlapping applies).
+      if (equipment.has(item.id)) return;
 
       try {
         const assetRoot = await loadModel(item.url);
         if (isDisposed()) {
+          disposeObjectMeshes(assetRoot);
+          return;
+        }
+        // Another concurrent attach may have won while we loaded.
+        if (equipment.has(item.id)) {
           disposeObjectMeshes(assetRoot);
           return;
         }
@@ -235,6 +302,7 @@ async function attachResolvedEquipment(options: {
         }
 
         configureWeaponObject(sourceWeapon, item);
+        sourceWeapon.userData[AVATAR_ITEM_KEY] = meshAttachKey(item);
         sourceWeapon.visible =
           desiredEquipmentVisibility.get(item.id) ?? item.visibleByDefault ?? true;
         targetBone.add(sourceWeapon);

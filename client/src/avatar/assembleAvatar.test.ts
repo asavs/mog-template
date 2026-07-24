@@ -228,6 +228,136 @@ describe('syncAvatarEquipment', () => {
     expect(group.children).toHaveLength(0);
   });
 
+  it('keeps unchanged gear meshes and only loads newly equipped items', async () => {
+    const group = new THREE.Group();
+    const body = makeBodyWithHand();
+    const loadModel = vi.fn(async (url: string) => {
+      if (url.includes('sword')) return makeWeaponRoot('One handed sword');
+      return makeWeaponRoot('Shield 1');
+    });
+
+    const swordItem = socketItem({
+      id: 'sword_1h',
+      meshKey: 'sword.glb',
+      url: '/sword.glb',
+      objectNames: ['One handed sword'],
+    });
+    const shieldItem = socketItem({
+      id: 'shield',
+      slot: 'off_hand',
+      meshKey: 'shield.glb',
+      url: '/shield.glb',
+      objectNames: ['Shield 1'],
+      grants: ['block'],
+    });
+
+    const assembled = await assembleAvatar({
+      resolved: emptyResolved({ equipped: [swordItem] }),
+      loaders: {
+        getModelSource: async () => body,
+        loadModel,
+        loadAnimations: async () => [],
+      },
+      group,
+      desiredEquipmentVisibility: new Map(),
+      actionAnimationNames: ACTION_ANIMATION_NAMES,
+    });
+
+    const keptSword = assembled.equipment.get('sword_1h');
+    expect(keptSword).toBeDefined();
+    const swordLoadsBefore = loadModel.mock.calls.filter(c => String(c[0]).includes('sword')).length;
+
+    await syncAvatarEquipment({
+      assembled,
+      resolved: emptyResolved({ equipped: [swordItem, shieldItem] }),
+      loaders: { loadModel },
+      desiredEquipmentVisibility: new Map(),
+    });
+
+    expect(assembled.equipment.get('sword_1h')).toBe(keptSword);
+    expect(assembled.equipment.has('shield')).toBe(true);
+    const swordLoadsAfter = loadModel.mock.calls.filter(c => String(c[0]).includes('sword')).length;
+    expect(swordLoadsAfter).toBe(swordLoadsBefore);
+    expect(loadModel.mock.calls.some(c => String(c[0]).includes('shield'))).toBe(true);
+
+    assembled.dispose();
+  });
+
+  it('does not wipe live equipment when a cancelled sync aborts', async () => {
+    const group = new THREE.Group();
+    const body = makeBodyWithHand();
+    const swordItem = socketItem({
+      id: 'sword_1h',
+      meshKey: 'sword.glb',
+      url: '/sword.glb',
+      objectNames: ['One handed sword'],
+    });
+    const shieldItem = socketItem({
+      id: 'shield',
+      slot: 'off_hand',
+      meshKey: 'shield.glb',
+      url: '/shield.glb',
+      objectNames: ['Shield 1'],
+      grants: ['block'],
+    });
+
+    let releaseShield!: () => void;
+    const shieldGate = new Promise<void>(resolve => {
+      releaseShield = resolve;
+    });
+
+    const loadModel = vi.fn(async (url: string) => {
+      if (url.includes('shield')) {
+        await shieldGate;
+        return makeWeaponRoot('Shield 1');
+      }
+      return makeWeaponRoot('One handed sword');
+    });
+
+    const assembled = await assembleAvatar({
+      resolved: emptyResolved({ equipped: [swordItem] }),
+      loaders: {
+        getModelSource: async () => body,
+        loadModel,
+        loadAnimations: async () => [],
+      },
+      group,
+      desiredEquipmentVisibility: new Map(),
+      actionAnimationNames: ACTION_ANIMATION_NAMES,
+    });
+
+    const signal = { disposed: false };
+    const pending = syncAvatarEquipment({
+      assembled,
+      resolved: emptyResolved({ equipped: [shieldItem] }),
+      loaders: { loadModel },
+      desiredEquipmentVisibility: new Map(),
+      signal,
+    });
+
+    // Cancel mid-flight (simulates a newer apply generation) after the stale
+    // sync has already removed sword but before shield load finishes.
+    await Promise.resolve();
+    signal.disposed = true;
+    releaseShield();
+    await pending;
+
+    // Must not clear the shared map on cancel — a newer generation owns it.
+    // Stale path may have removed sword (diff) but must not attach shield after cancel.
+    expect(assembled.equipment.has('shield')).toBe(false);
+
+    // Newer generation re-applies the intended set cleanly.
+    await syncAvatarEquipment({
+      assembled,
+      resolved: emptyResolved({ equipped: [swordItem] }),
+      loaders: { loadModel },
+      desiredEquipmentVisibility: new Map(),
+    });
+    expect(assembled.equipment.has('sword_1h')).toBe(true);
+
+    assembled.dispose();
+  });
+
   it('disposes removed equipment meshes on sync and on avatar dispose', async () => {
     const group = new THREE.Group();
     const body = makeBodyWithHand();
