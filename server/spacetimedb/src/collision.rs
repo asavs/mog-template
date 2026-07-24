@@ -44,7 +44,10 @@ pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Ve
         PLAYER_COLLISION_RADIUS,
         PLAYER_CAPSULE_HEIGHT,
     );
-    result.ground_normal.filter(|normal| normal.y >= 0.342).map(|_| result.position)
+    result
+        .ground_normal
+        .filter(|normal| normal.y >= castle_collision::MIN_WALKABLE_NORMAL_Y)
+        .map(|_| result.position)
 }
 
 fn resolve_player_movement_against(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> Vector3 {

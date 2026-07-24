@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { castleCollisionAsset, castleTriangleCandidates } from './castleCollision';
 
 export const CASTLE_CAPSULE_SKIN = 0.002;
+/** cos(70°), shared with the Rust controller. */
+export const CASTLE_MIN_WALKABLE_NORMAL_Y = 0.34202015;
 const CONTACT_EPSILON = 0.0001;
 const MAX_SLIDE_ITERATIONS = 4;
 const MAX_SUBSTEP_DISTANCE = 0.2;
@@ -51,7 +53,7 @@ export function resolveCastleCapsuleSweep(
       else low = middle;
     }
     position = low.addScaledVector(hit.normal, CASTLE_CAPSULE_SKIN);
-    if (hit.normal.y > 0.35) groundNormal = hit.normal;
+    if (hit.normal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y) groundNormal = hit.normal;
     remaining = target.clone().sub(position);
     const intoSurface = remaining.dot(hit.normal);
     if (intoSurface < 0) remaining.addScaledVector(hit.normal, -intoSurface);
@@ -71,7 +73,9 @@ export function castleGroundSupport(
     radius,
     height,
   );
-  return result.groundNormal && result.groundNormal.y >= 0.342 ? result.position : null;
+  return result.groundNormal && result.groundNormal.y >= CASTLE_MIN_WALKABLE_NORMAL_Y
+    ? result.position
+    : null;
 }
 
 function capsuleContact(position: THREE.Vector3, radius: number, height: number, motion: THREE.Vector3): { normal: THREE.Vector3 } | null {
