@@ -142,7 +142,7 @@ mod tests {
         assert!(data.max_x > data.min_x);
         assert!(data.max_z > data.min_z);
         // Matches client heightmapMeta for the current bake (approx; f32 binary).
-        assert!((data.min_x - (-1574.03)).abs() < 0.05);
-        assert!((data.min_z - (-1574.03)).abs() < 0.05);
+        assert!((data.min_x - (-489.71)).abs() < 0.05);
+        assert!((data.min_z - (-489.71)).abs() < 0.05);
     }
 }

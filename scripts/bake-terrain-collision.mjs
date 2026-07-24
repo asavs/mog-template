@@ -20,7 +20,7 @@ const SERVER_CASTLE_COLLISION_OUT = path.join(ROOT, 'server/spacetimedb/src/cast
 const CLIENT_CASTLE_COLLISION_META_OUT = path.join(ROOT, 'client/src/castleCollisionMeta.ts');
 
 /** Keep in sync with `client/src/terrainConfig.ts` (TERRAIN_TARGET_SIZE). */
-const TERRAIN_TARGET_SIZE = 3148.07;
+const TERRAIN_TARGET_SIZE = 979.43;
 const HEIGHTMAP_SIZE = 513;
 const MAX_WALKABLE_SLOPE_DEGREES = 70;
 const MAX_WALKABLE_SLOPE = Math.tan((MAX_WALKABLE_SLOPE_DEGREES * Math.PI) / 180);
