@@ -350,6 +350,9 @@ export default function App() {
     const identityKey = identity?.toHexString();
     const rows = identityKey ? playerEquipment.get(identityKey) ?? [] : [];
     window.__qaEquipment = rows.map(row => ({ slot: row.slot, itemId: row.itemId }));
+    return () => {
+      delete window.__qaEquipment;
+    };
   }, [identity, playerEquipment]);
 
   useKeyboardInput({
