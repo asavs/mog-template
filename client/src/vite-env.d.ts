@@ -13,6 +13,13 @@ declare global {
     __gameDebug?: GameDebugChannels;
     /** Local player equipment rows (slot/itemId) for QA equip asserts. */
     __qaEquipment?: ReadonlyArray<{ slot: string; itemId: string }>;
+    /** Live grant-derived capabilities for QA equip ↔ combat asserts. */
+    __qaCapabilities?: {
+      melee: boolean;
+      block: boolean;
+      spells: readonly string[];
+      drinkPotion: boolean;
+    };
   }
 }
 

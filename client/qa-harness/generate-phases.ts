@@ -249,10 +249,95 @@ async function clickInventoryControl(
   await control.click({ force: true, timeout: timeoutMs });
 }
 
+type CapWant = {
+  melee?: boolean;
+  notMelee?: boolean;
+  spell?: string;
+  noSpells?: boolean;
+};
+
+async function waitForQaCapabilities(page: Page, want: CapWant, timeoutMs = 10_000) {
+  await page.waitForFunction(
+    (serialized) => {
+      const caps = (window as unknown as {
+        __qaCapabilities?: {
+          melee: boolean;
+          block: boolean;
+          spells: readonly string[];
+          drinkPotion: boolean;
+        };
+      }).__qaCapabilities;
+      if (!caps) return false;
+      const w = serialized as CapWant;
+      if (w.melee === true && !caps.melee) return false;
+      if (w.notMelee === true && caps.melee) return false;
+      if (w.spell && !caps.spells.includes(w.spell)) return false;
+      if (w.noSpells === true && caps.spells.length > 0) return false;
+      return true;
+    },
+    want,
+    { timeout: timeoutMs },
+  );
+}
+
+async function reengagePointerLock(page: Page) {
+  await page.mouse.move(640, 360, { steps: 1 });
+  await page.waitForTimeout(50);
+  if (!(await page.evaluate(() => document.pointerLockElement === document.body))) {
+    await click(page);
+    await page.waitForTimeout(200);
+  }
+}
+
+async function readFireballCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const v = (window as unknown as { __gameDebug?: Record<string, unknown> }).__gameDebug
+      ?.fireballProjectiles;
+    return typeof v === 'number' ? v : 0;
+  });
+}
+
+/** Cast fireball and hard-fail if no projectile is observed (grant/combat must work). */
+async function castFireballAndExpectProjectile(page: Page, timeoutMs = 8_000) {
+  await reengagePointerLock(page);
+  await tapKey(page, 'Digit1');
+  const before = await readFireballCount(page);
+  // A few clicks — first may only re-lock; second/third should cast once grants are live.
+  for (let i = 0; i < 3; i += 1) {
+    await click(page);
+    await page.waitForTimeout(350);
+  }
+  await page.waitForFunction(
+    (prev) => {
+      const v = (window as unknown as { __gameDebug?: Record<string, unknown> }).__gameDebug
+        ?.fireballProjectiles;
+      const n = typeof v === 'number' ? v : 0;
+      return n > (prev as number);
+    },
+    before,
+    { timeout: timeoutMs },
+  );
+}
+
+/** Click attack while sword equipped; hard-fail if fireball still spawns (wrong grants). */
+async function slashAndExpectNoFireball(page: Page, settleMs = 1200) {
+  await reengagePointerLock(page);
+  const before = await readFireballCount(page);
+  await click(page);
+  await page.waitForTimeout(settleMs);
+  await click(page);
+  await page.waitForTimeout(400);
+  const after = await readFireballCount(page);
+  if (after > before) {
+    throw new Error(
+      `Expected melee/sword equip to NOT spawn fireballs; fireballProjectiles ${before} -> ${after}`,
+    );
+  }
+}
+
 /**
- * Mid-session equip/unequip via InventoryPanel data-qa hooks.
- * Covers wand cast grants after equip and empty main_hand after unequip.
- * All presets that can join (catalog) run these — equip UI is class-agnostic.
+ * Mid-session equip/unequip via InventoryPanel + hard combat grant asserts.
+ * Order is load-bearing: wand → fireball, sword → no fireball / melee click, empty hands → no fireball.
  */
 export function generateEquipPhases(): PhaseDef[] {
   const stationary = { kind: 'stationary' } as const;
@@ -266,16 +351,16 @@ export function generateEquipPhases(): PhaseDef[] {
         await page.waitForSelector('[data-qa="inventory-panel"]', { timeout: 10_000 });
         const equip = page.locator('[data-qa-equip="wand"]');
         await equip.waitFor({ state: 'visible', timeout: 10_000 });
-        // Already equipped (wizard/acolyte seed) — skip click when data-qa-equipped=1.
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
           await clickInventoryControl(page, '[data-qa-equip="wand"]');
         }
-        // UI strip + authority subscription (window.__qaEquipment).
         await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
           state: 'visible',
           timeout: 8_000,
         });
         await waitForAuthorityMainHand(page, 'wand');
+        // Live grants must flip to cast (paladin: sword→wand is the critical path).
+        await waitForQaCapabilities(page, { spell: 'fireball', notMelee: true });
       },
     },
     {
@@ -283,45 +368,14 @@ export function generateEquipPhases(): PhaseDef[] {
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        // Ensure wand is equipped (idempotent) before casting.
         const equip = page.locator('[data-qa-equip="wand"]');
         await equip.waitFor({ state: 'visible', timeout: 10_000 });
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
           await clickInventoryControl(page, '[data-qa-equip="wand"]');
         }
         await waitForAuthorityMainHand(page, 'wand');
-        // Re-center + re-engage pointer lock so Digit1 and combat clicks hit the canvas.
-        await page.mouse.move(640, 360, { steps: 1 });
-        await page.waitForTimeout(50);
-        if (!(await page.evaluate(() => document.pointerLockElement === document.body))) {
-          await click(page);
-          await page.waitForTimeout(150);
-        }
-        await tapKey(page, 'Digit1');
-        await click(page);
-        await page.waitForTimeout(400);
-        await click(page);
-        await page.waitForTimeout(600);
-      },
-    },
-    {
-      name: 'unequip_main_hand',
-      group: 'matrix',
-      expect: stationary,
-      run: async ({ page }) => {
-        await clickInventoryControl(page, '[data-qa-unequip="main_hand"]');
-        // Slot empty: unequip control gone + authority has no main_hand row.
-        await page.locator('[data-qa-unequip="main_hand"]').waitFor({
-          state: 'hidden',
-          timeout: 8_000,
-        });
-        await waitForAuthorityMainHand(page, null);
-        if ((await page.locator('[data-qa-equip="wand"]').count()) > 0) {
-          await page.locator('[data-qa-equip="wand"][data-qa-equipped="0"]').waitFor({
-            state: 'visible',
-            timeout: 8_000,
-          });
-        }
+        await waitForQaCapabilities(page, { spell: 'fireball' });
+        await castFireballAndExpectProjectile(page);
       },
     },
     {
@@ -339,6 +393,46 @@ export function generateEquipPhases(): PhaseDef[] {
           timeout: 8_000,
         });
         await waitForAuthorityMainHand(page, 'sword_1h');
+        // Sword grants melee_slash only — cast spells must clear.
+        await waitForQaCapabilities(page, { melee: true, noSpells: true });
+      },
+    },
+    {
+      name: 'slash_after_equip_sword',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        await waitForAuthorityMainHand(page, 'sword_1h');
+        await waitForQaCapabilities(page, { melee: true, noSpells: true });
+        await slashAndExpectNoFireball(page);
+      },
+    },
+    {
+      name: 'unequip_main_hand',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        await clickInventoryControl(page, '[data-qa-unequip="main_hand"]');
+        await page.locator('[data-qa-unequip="main_hand"]').waitFor({
+          state: 'hidden',
+          timeout: 8_000,
+        });
+        await waitForAuthorityMainHand(page, null);
+        await waitForQaCapabilities(page, { notMelee: true, noSpells: true });
+        // Empty hands: casting must not produce a fireball.
+        await reengagePointerLock(page);
+        const before = await readFireballCount(page);
+        await tapKey(page, 'Digit1');
+        for (let i = 0; i < 3; i += 1) {
+          await click(page);
+          await page.waitForTimeout(300);
+        }
+        const after = await readFireballCount(page);
+        if (after > before) {
+          throw new Error(
+            `Empty main_hand still cast fireball; fireballProjectiles ${before} -> ${after}`,
+          );
+        }
       },
     },
   ];

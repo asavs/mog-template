@@ -343,17 +343,23 @@ export default function App() {
     });
   }, [identity, playerAppearances, playerClasses, playerEquipment]);
 
-  // Authority equipment rows for the local player — QA harness asserts mid-session
-  // equip/unequip against this (not only inventory button data-qa attributes).
+  // Authority equipment + live grants for QA mid-session equip ↔ combat asserts.
   useEffect(() => {
     if (!QA_GAME_DEBUG_ENABLED || typeof window === 'undefined') return;
     const identityKey = identity?.toHexString();
     const rows = identityKey ? playerEquipment.get(identityKey) ?? [] : [];
     window.__qaEquipment = rows.map(row => ({ slot: row.slot, itemId: row.itemId }));
+    window.__qaCapabilities = {
+      melee: localCapabilities.melee,
+      block: localCapabilities.block,
+      spells: [...localCapabilities.spells],
+      drinkPotion: localCapabilities.drinkPotion,
+    };
     return () => {
       delete window.__qaEquipment;
+      delete window.__qaCapabilities;
     };
-  }, [identity, playerEquipment]);
+  }, [identity, playerEquipment, localCapabilities]);
 
   useKeyboardInput({
     identity,

@@ -92,13 +92,14 @@ describe('generateCapabilityPhases', () => {
 });
 
 describe('generateEquipPhases', () => {
-  it('registers equip_wand / cast_after_equip_wand / unequip / equip_sword', () => {
+  it('registers equip grant-flip phases in order', () => {
     const names = generateEquipPhases().map((p) => p.name);
     expect(names).toEqual([
       'equip_wand',
       'cast_after_equip_wand',
-      'unequip_main_hand',
       'equip_sword',
+      'slash_after_equip_sword',
+      'unequip_main_hand',
     ]);
     expect(GENERATED_EQUIP_PHASES.map((p) => p.name)).toEqual(names);
   });
@@ -116,8 +117,9 @@ describe('generateEquipPhases', () => {
       const names = new Set(selected.map((p) => p.name));
       expect(names.has('equip_wand')).toBe(true);
       expect(names.has('cast_after_equip_wand')).toBe(true);
-      expect(names.has('unequip_main_hand')).toBe(true);
       expect(names.has('equip_sword')).toBe(true);
+      expect(names.has('slash_after_equip_sword')).toBe(true);
+      expect(names.has('unequip_main_hand')).toBe(true);
     }
   });
 });
