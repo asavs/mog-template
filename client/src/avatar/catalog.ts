@@ -313,28 +313,46 @@ export function capabilitiesFromGrants(grants: readonly AbilityId[]): AvatarCapa
 }
 
 /**
- * Stable key for avatar assembly. Same key ⇒ skip dispose/rebuild (join race
- * where preset fallback and seeded server rows resolve to the same loadout).
+ * Body + scale + clip identity. When this is stable, equipment-only changes can
+ * partial-sync gear without reloading the skeleton or rebinding clips.
  */
-export function presentationAssemblyKey(resolved: ResolvedAppearance): string {
-  const equipped = resolved.equipped
-    .map(item => `${item.slot}:${item.id}:${item.grantsOnly ? 'grantsOnly' : item.meshKey}`)
-    .sort()
-    .join(',');
+export function appearanceBodyClipsKey(resolved: ResolvedAppearance): string {
   const clips = resolved.clips
     .map(clip => `${clip.actionKey}:${clip.meshKey}`)
     .sort()
     .join(',');
-  const grants = [...resolved.grants].sort().join(',');
   return [
     resolved.presetId ?? '',
     resolved.body.id,
     resolved.body.meshKey,
     String(resolved.scale),
-    equipped,
-    grants,
     clips,
   ].join('|');
+}
+
+/**
+ * Equipped item set identity (slots / ids / mesh or grantsOnly). Used to gate
+ * equipment-only partial re-attach.
+ */
+export function appearanceEquipmentKey(resolved: ResolvedAppearance): string {
+  return resolved.equipped
+    .map(item => `${item.slot}:${item.id}:${item.grantsOnly ? 'grantsOnly' : item.meshKey}`)
+    .sort()
+    .join(',');
+}
+
+/**
+ * Stable key for full presentation identity. Same key ⇒ skip dispose/rebuild
+ * (join race where preset fallback and seeded server rows resolve to the same
+ * loadout). Composes body/clips + equipment + grants.
+ */
+export function presentationAssemblyKey(resolved: ResolvedAppearance): string {
+  const grants = [...resolved.grants].sort().join(',');
+  return [
+    appearanceBodyClipsKey(resolved),
+    appearanceEquipmentKey(resolved),
+    grants,
+  ].join('||');
 }
 
 export function createAvatarCatalog(options?: {

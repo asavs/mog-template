@@ -5,8 +5,12 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   assembleAvatar,
   preloadResolvedAppearance,
+  syncAvatarEquipment,
+  type AssembledAvatar,
 } from '../avatar/assembleAvatar';
 import {
+  appearanceBodyClipsKey,
+  appearanceEquipmentKey,
   assetUrlsForAppearance,
   defaultAvatarCatalog,
   resolvePreset,
@@ -43,6 +47,23 @@ export type LoadPlayerModelAssetOptions = {
   onMixerLoaded: (mixer: THREE.AnimationMixer | null) => void;
   onModelLoaded: (loaded: boolean) => void;
   visualModelRef: MutableRefObject<THREE.Group | null>;
+};
+
+export type PlayerModelBindingOptions = Omit<
+  LoadPlayerModelAssetOptions,
+  'resolved' | 'presetId'
+> & {
+  catalog?: AvatarCatalog;
+};
+
+/**
+ * Long-lived binding that chooses full assemble vs equipment-only sync.
+ * Call `applyResolved` whenever presentation changes; same body/clips/scale
+ * with different gear only re-attaches equipment meshes.
+ */
+export type PlayerModelBinding = {
+  applyResolved: (resolved: ResolvedAppearance) => void;
+  dispose: () => void;
 };
 
 type ModelAssetLoader = (url: string) => Promise<THREE.Group>;
@@ -108,6 +129,161 @@ export function preloadAllCharacterModelAssets() {
   // Call preloadPresetAssets for the selected preset instead.
 }
 
+/**
+ * Create a binding that can full-assemble or partial-sync equipment without
+ * tearing down the body/mixer when only the equipped item set changes.
+ */
+export function createPlayerModelBinding(
+  options: PlayerModelBindingOptions,
+): PlayerModelBinding {
+  const {
+    actionAnimationNames,
+    currentAnimationRef,
+    desiredEquipmentVisibilityRef,
+    equipmentItemsRef,
+    groupRef,
+    lastPlayedAttackSeqRef,
+    onAnimationsLoaded,
+    onMixerLoaded,
+    onModelLoaded,
+    visualModelRef,
+  } = options;
+
+  let disposed = false;
+  let assembled: AssembledAvatar | null = null;
+  let lastBodyClipsKey: string | null = null;
+  let lastEquipmentKey: string | null = null;
+  let applyGeneration = 0;
+
+  const loaders = {
+    loadModel: (url: string) => getOrLoadModel(url),
+    loadAnimations: (url: string) => getOrLoadAnimations(url),
+    getModelSource: (url: string) => getOrLoadModelSource(url),
+  };
+
+  function resetLoadedState() {
+    equipmentItemsRef.current.clear();
+    visualModelRef.current = null;
+    onModelLoaded(false);
+    onMixerLoaded(null);
+    onAnimationsLoaded({});
+    currentAnimationRef.current = ANIMATIONS.IDLE;
+    lastPlayedAttackSeqRef.current = null;
+  }
+
+  function disposeAssembled() {
+    assembled?.dispose();
+    assembled = null;
+    lastBodyClipsKey = null;
+    lastEquipmentKey = null;
+  }
+
+  async function fullAssemble(resolved: ResolvedAppearance, gen: number) {
+    const group = groupRef.current;
+    if (!group) return;
+
+    disposeAssembled();
+    resetLoadedState();
+
+    const label = resolved.presetId ?? resolved.body.id;
+    try {
+      const next = await assembleAvatar({
+        resolved,
+        loaders,
+        group,
+        desiredEquipmentVisibility: desiredEquipmentVisibilityRef.current,
+        actionAnimationNames,
+        signal: {
+          get disposed() {
+            return disposed || gen !== applyGeneration;
+          },
+        },
+      });
+
+      if (disposed || gen !== applyGeneration) {
+        next.dispose();
+        return;
+      }
+
+      assembled = next;
+      lastBodyClipsKey = appearanceBodyClipsKey(resolved);
+      lastEquipmentKey = appearanceEquipmentKey(resolved);
+      visualModelRef.current = next.root;
+      equipmentItemsRef.current = next.equipment;
+      onModelLoaded(true);
+      onMixerLoaded(next.mixer);
+      onAnimationsLoaded(next.animations);
+    } catch (error) {
+      if (!disposed && gen === applyGeneration) {
+        console.warn(`Failed to assemble avatar ${label}`, error);
+      }
+    }
+  }
+
+  async function partialEquipment(resolved: ResolvedAppearance, gen: number) {
+    const current = assembled;
+    if (!current) return;
+
+    try {
+      await syncAvatarEquipment({
+        assembled: current,
+        resolved,
+        loaders,
+        desiredEquipmentVisibility: desiredEquipmentVisibilityRef.current,
+        signal: {
+          get disposed() {
+            return disposed || gen !== applyGeneration || assembled !== current;
+          },
+        },
+      });
+
+      if (disposed || gen !== applyGeneration || assembled !== current) {
+        return;
+      }
+
+      // Map is mutated in place; keep ref pointed at the same instance.
+      equipmentItemsRef.current = current.equipment;
+      lastEquipmentKey = appearanceEquipmentKey(resolved);
+    } catch (error) {
+      if (!disposed && gen === applyGeneration) {
+        console.warn('Failed to sync avatar equipment', error);
+      }
+    }
+  }
+
+  return {
+    applyResolved(resolved: ResolvedAppearance) {
+      if (disposed) return;
+
+      const bodyKey = appearanceBodyClipsKey(resolved);
+      const equipKey = appearanceEquipmentKey(resolved);
+
+      if (assembled && lastBodyClipsKey === bodyKey) {
+        if (lastEquipmentKey === equipKey) {
+          return;
+        }
+        const gen = ++applyGeneration;
+        void partialEquipment(resolved, gen);
+        return;
+      }
+
+      const gen = ++applyGeneration;
+      void fullAssemble(resolved, gen);
+    },
+    dispose() {
+      disposed = true;
+      applyGeneration += 1;
+      disposeAssembled();
+      visualModelRef.current = null;
+      equipmentItemsRef.current.clear();
+    },
+  };
+}
+
+/**
+ * One-shot full assemble (legacy callers / tests). Prefer `createPlayerModelBinding`
+ * for live players so mid-session equip/unequip can partial-sync.
+ */
 export function loadPlayerModelAssets({
   actionAnimationNames,
   resolved: resolvedInput,
@@ -123,71 +299,30 @@ export function loadPlayerModelAssets({
   onModelLoaded,
   visualModelRef,
 }: LoadPlayerModelAssetOptions) {
-  let disposed = false;
-  let disposeAvatar: (() => void) | null = null;
-  equipmentItemsRef.current.clear();
-
-  onModelLoaded(false);
-  onMixerLoaded(null);
-  onAnimationsLoaded({});
-  currentAnimationRef.current = ANIMATIONS.IDLE;
-  lastPlayedAttackSeqRef.current = null;
-
-  const group = groupRef.current;
-  if (!group) {
-    return () => {
-      disposed = true;
-    };
-  }
-
-  let resolved: ResolvedAppearance;
+  let resolved: ResolvedAppearance | undefined;
   try {
     resolved = resolvedInput
       ?? resolvePreset(presetId ?? 'wizard', catalog);
   } catch (error) {
     console.warn(`Failed to resolve avatar (${presetId ?? 'resolved'})`, error);
-    return () => {
-      disposed = true;
-    };
+    return () => {};
   }
 
-  const label = resolved.presetId ?? presetId ?? resolved.body.id;
-
-  void assembleAvatar({
-    resolved,
-    loaders: {
-      loadModel: url => getOrLoadModel(url),
-      loadAnimations: url => getOrLoadAnimations(url),
-      getModelSource: url => getOrLoadModelSource(url),
-    },
-    group,
-    desiredEquipmentVisibility: desiredEquipmentVisibilityRef.current,
+  const binding = createPlayerModelBinding({
     actionAnimationNames,
-    signal: { get disposed() { return disposed; } },
-  }).then((assembled) => {
-    if (disposed) {
-      assembled.dispose();
-      return;
-    }
-    disposeAvatar = assembled.dispose;
-    visualModelRef.current = assembled.root;
-    equipmentItemsRef.current = assembled.equipment;
-    onModelLoaded(true);
-    onMixerLoaded(assembled.mixer);
-    onAnimationsLoaded(assembled.animations);
-  }).catch((error) => {
-    if (!disposed) {
-      console.warn(`Failed to assemble avatar ${label}`, error);
-    }
+    currentAnimationRef,
+    desiredEquipmentVisibilityRef,
+    equipmentItemsRef,
+    groupRef,
+    lastPlayedAttackSeqRef,
+    onAnimationsLoaded,
+    onMixerLoaded,
+    onModelLoaded,
+    visualModelRef,
+    catalog,
   });
-
-  return () => {
-    disposed = true;
-    visualModelRef.current = null;
-    equipmentItemsRef.current.clear();
-    disposeAvatar?.();
-    disposeAvatar = null;
-  };
+  binding.applyResolved(resolved);
+  return () => binding.dispose();
 }
 
 export function getOrLoadModelSource(

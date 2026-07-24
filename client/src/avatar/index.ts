@@ -39,6 +39,8 @@ export {
 } from './types';
 
 export {
+  appearanceBodyClipsKey,
+  appearanceEquipmentKey,
   appearanceFromPreset,
   assetUrlsForAppearance,
   BASELINE_ABILITY_GRANTS,
@@ -62,7 +64,9 @@ export {
   findObjectByNames,
   normalizeModelScale,
   preloadResolvedAppearance,
+  syncAvatarEquipment,
 } from './assembleAvatar';
+export type { AssembledAvatar, AvatarLoaders, SyncAvatarEquipmentOptions } from './assembleAvatar';
 
 export {
   boneNameCandidates,
