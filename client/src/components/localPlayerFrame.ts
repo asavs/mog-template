@@ -1282,6 +1282,10 @@ function reconcileLocalPrediction({
   }
 
   if (reconciliationError > RECONCILIATION_EPSILON_METERS) {
+    const shouldTraceCollisionCorrection = collisionDebugEnabled();
+    const physicsPosBeforeCorrection = shouldTraceCollisionCorrection
+      ? localPositionRef.current.clone()
+      : null;
     const correctedPosition = replayPosition.clone();
     if (preserveLocalVerticalPrediction) {
       correctedPosition.y = localPositionRef.current.y;
@@ -1300,13 +1304,13 @@ function reconcileLocalPrediction({
     if (visualCorrectionOffsetRef.current.length() > VISUAL_CORRECTION_SNAP_METERS) {
       visualCorrectionOffsetRef.current.set(0, 0, 0);
     }
-    if (collisionDebugEnabled()) {
+    if (shouldTraceCollisionCorrection && physicsPosBeforeCorrection) {
       logCollisionDebug({
         at: performance.now(),
         phase: 'reconcile:apply-correction',
         current: collisionVectorDebug(localPositionRef.current),
         serverPosition: collisionVectorDebug(serverPosition),
-        correctionDelta: collisionVectorDebug(replayPosition.clone().sub(localPositionRef.current)),
+        correctionDelta: collisionVectorDebug(correctedPosition.clone().sub(physicsPosBeforeCorrection)),
         visualCorrectionOffset: collisionVectorDebug(visualCorrectionOffsetRef.current),
         movementState: localMovementStateRef.current ? { ...localMovementStateRef.current } : null,
         groundY: collisionNumberDebug(groundHeightAt(localPositionRef.current)),
