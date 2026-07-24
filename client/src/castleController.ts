@@ -182,8 +182,7 @@ function recoverCapsuleOverlap(position: THREE.Vector3, radius: number, height: 
 
 function selectContacts(contacts: Contact[]): Contact[] {
   contacts.sort((left, right) => {
-    const penetrationOrder = right.penetration - left.penetration;
-    if (Math.abs(penetrationOrder) > CONTACT_EPSILON) return penetrationOrder;
+    if (left.penetration !== right.penetration) return right.penetration - left.penetration;
     return left.triangleId - right.triangleId;
   });
   const selected: Contact[] = [];

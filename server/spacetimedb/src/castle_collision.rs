@@ -360,7 +360,7 @@ fn select_contacts(mut contacts: Vec<Contact>) -> Vec<Contact> {
             .penetration
             .partial_cmp(&left.penetration)
             .unwrap_or(Ordering::Equal);
-        if (right.penetration - left.penetration).abs() > CONTACT_EPSILON {
+        if penetration_order != Ordering::Equal {
             penetration_order
         } else {
             left.triangle_id.cmp(&right.triangle_id)

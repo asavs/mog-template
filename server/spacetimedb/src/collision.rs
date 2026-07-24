@@ -25,7 +25,11 @@ pub struct Aabb {
 }
 
 pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_collision::CapsuleMoveResult {
-    let terrain_resolved = resolve_player_movement_against(current, desired, &[]);
+    let terrain_resolved = if castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some() {
+        clamp_to_world(desired)
+    } else {
+        resolve_player_movement_against(current, desired, &[])
+    };
     castle_collision::resolve_capsule_sweep(
         current,
         &terrain_resolved,

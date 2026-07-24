@@ -132,6 +132,10 @@ export function applyMovement(
 
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
+  if (isCastleCollisionReady()
+    && castleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE, PLAYER_COLLISION_RADIUS, PLAYER_CAPSULE_HEIGHT)) {
+    return clampedDesired;
+  }
   let terrainResolved: THREE.Vector3;
   if (canMoveTo(current, clampedDesired)) {
     terrainResolved = clampedDesired;
