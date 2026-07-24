@@ -13,6 +13,7 @@ How to replace the playable ground mesh and keep client/server collision aligned
 | `server/spacetimedb/src/heightmap.bin` | Server embed (`include_bytes!`) |
 | `client/src/heightmapMeta.ts` | Generated client bounds (from bake) |
 | `server/.../heightmap.rs` | Thin loader; **bounds come from the binary header** |
+| Client/server movement clamps | Derived from heightmap bounds (`HEIGHTMAP_*` / `heightmap::world_bounds()`) — never a second hardcoded map box |
 
 ## Swap steps
 

@@ -13,7 +13,14 @@ import {
   resolveCastleCapsuleSweep,
 } from './castleController';
 import { castleCollisionAsset, isCastleCollisionReady } from './castleCollision';
-import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
+import {
+  HEIGHTMAP_MAX_X,
+  HEIGHTMAP_MAX_Z,
+  HEIGHTMAP_MIN_X,
+  HEIGHTMAP_MIN_Z,
+  isTerrainWalkableAt,
+  terrainHeightAt,
+} from './heightmap';
 import {
   getRapierCastleGroundSupport,
   resolveRapierCastleMovement,
@@ -50,10 +57,11 @@ export const MAX_WALKABLE_SLOPE_DEGREES = 70;
 export const MAX_STEP_HEIGHT = 1.25;
 export const MAX_SNAP_DOWN_HEIGHT = 6.0;
 
-const WORLD_MIN_X = -1574.03;
-const WORLD_MAX_X = 1574.03;
-const WORLD_MIN_Z = -1231.44;
-const WORLD_MAX_Z = 1231.44;
+/** Playable clamp box tracks the baked heightmap — do not hardcode map extents. */
+const WORLD_MIN_X = HEIGHTMAP_MIN_X;
+const WORLD_MAX_X = HEIGHTMAP_MAX_X;
+const WORLD_MIN_Z = HEIGHTMAP_MIN_Z;
+const WORLD_MAX_Z = HEIGHTMAP_MAX_Z;
 const MAX_WALKABLE_SLOPE = Math.tan(THREE.MathUtils.degToRad(MAX_WALKABLE_SLOPE_DEGREES));
 const SLOPE_SAMPLE_DISTANCE = 1.0;
 

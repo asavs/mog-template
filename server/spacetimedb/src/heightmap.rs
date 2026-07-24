@@ -116,6 +116,12 @@ pub fn terrain_slope_at(x: f32, z: f32) -> f32 {
     (dhdx * dhdx + dhdz * dhdz).sqrt()
 }
 
+/// Playable XZ clamp box — always the baked heightmap header, never a parallel constant.
+pub fn world_bounds() -> (f32, f32, f32, f32) {
+    let hm = heightmap();
+    (hm.min_x, hm.max_x, hm.min_z, hm.max_z)
+}
+
 fn height_at_index(x: usize, z: usize) -> f32 {
     heightmap().heights[z * HEIGHTMAP_SIZE + x]
 }
@@ -142,7 +148,7 @@ mod tests {
         assert!(data.max_x > data.min_x);
         assert!(data.max_z > data.min_z);
         // Matches client heightmapMeta for the current bake (approx; f32 binary).
-        assert!((data.min_x - (-1574.03)).abs() < 0.05);
-        assert!((data.min_z - (-1218.91)).abs() < 0.05);
+        assert!((data.min_x - (-489.71)).abs() < 0.05);
+        assert!((data.min_z - (-489.71)).abs() < 0.05);
     }
 }
