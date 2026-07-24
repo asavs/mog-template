@@ -46,11 +46,20 @@ regression checks" below) for a real pass/fail outcome.
 
 | Area | Harness coverage | Notes |
 |------|------------------|--------|
-| **Equip / unequip mid-session** | Yes — `equip_wand`, `unequip_main_hand`, `equip_sword`, `cast_after_equip_wand` | Clicks Inventory panel `data-qa-equip` / `data-qa-unequip` |
-| **Acolyte preset** | Join + capability + equip phases | No checked-in `baselines/acolyte.json` yet — structural still runs; capture baseline locally with `--update-baseline` when you want drift gates |
-| **Wand cast grants** | Yes — equip wand then Digit1 cast; cast combat phases include every catalog preset with fireball/lightning | Seeded wizard/acolyte already have wand; paladin path proves mid-session grant flip |
+| **Equip / unequip mid-session** | Yes — `equip_wand`, `unequip_main_hand`, `equip_sword`, `cast_after_equip_wand` | Asserts inventory `data-qa-*` **and** authority rows on `window.__qaEquipment` |
+| **Acolyte preset** | Join + capability + equip + `baselines/acolyte.json` when captured | Capture/update: `QA_CLASSES=acolyte npm run qa:baseline:update` |
+| **Wand cast grants** | Yes — equip wand then re-center mouse, re-lock pointer, Digit1 cast | Inventory clicks stopPropagation so equip does not fire a stray slash/cast |
 | **Duel (2-bot HP)** | Still wizard → paladin topology | Interaction topology is fixed; multi-preset duel is a separate experiment |
 | **Partial reassemble** | Unit tests only (`assembleAvatar` / binding) | Browser harness cannot cheaply assert body mesh reuse; leave that to vitest |
+
+### Pointer lock vs inventory (why stopPropagation)
+
+Combat input listens on **`document`** (`useLocalPlayerControls`): any bubbled
+`click` / `mousedown` calls `requestPointerLock` and may slash/cast/block using
+**current** capabilities (equipment subscription is async). Inventory UI must
+`stopPropagation` so equip/unequip is side-effect free. After an equip click the
+virtual mouse is still over the panel — cast phases re-center (`mouse.move`) and
+re-engage lock before Digit1 + canvas click.
 
 ## Targeting a PR's preview VM (`--pr`)
 

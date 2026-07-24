@@ -183,7 +183,11 @@ export async function joinAs(session: BotSession, cfg: SessionConfig) {
     .getByRole('button', { name: joinPresetButtonLabel(characterClass), exact: true })
     .click();
   await page.getByRole('button', { name: 'Join Game' }).click();
-  await page.waitForFunction(() => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug, { timeout: cfg.joinTimeoutMs });
+  await page.waitForFunction(
+    () => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug,
+    undefined,
+    { timeout: cfg.joinTimeoutMs },
+  );
 }
 
 export async function acquirePointerLock(page: Page) {

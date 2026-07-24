@@ -11,7 +11,7 @@ import {
  * Minimal inventory / equipment panel for joined players (#52).
  *
  * Available items come from loadout authority (`ITEM_IDS` / catalog), not a
- * hardcoded staff/sword list — wand and future items appear when Auth regenerates.
+ * hardcoded item list — wand and future items appear when authority regenerates.
  *
  * True inventory bag persistence is future work; this uses the catalog as the
  * set of equippable loadout items.
@@ -68,7 +68,21 @@ export function InventoryPanel() {
   if (!isJoined) return null;
 
   return (
-    <div style={panelStyle} data-qa="inventory-panel">
+    <div
+      style={panelStyle}
+      data-qa="inventory-panel"
+      // Document-level combat listeners (useLocalPlayerControls) request pointer
+      // lock and fire attack/cast on any bubbled click/mousedown. Inventory must
+      // not leak those events or equipping becomes a free swing with stale grants.
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onAuxClick={(e) => e.stopPropagation()}
+    >
       <div style={titleStyle}>Inventory / Equipment</div>
 
       <div style={sectionLabelStyle}>Equipped</div>

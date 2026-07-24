@@ -11,6 +11,8 @@ declare global {
       mode: string;
     };
     __gameDebug?: GameDebugChannels;
+    /** Local player equipment rows (slot/itemId) for QA equip asserts. */
+    __qaEquipment?: ReadonlyArray<{ slot: string; itemId: string }>;
   }
 }
 

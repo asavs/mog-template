@@ -96,6 +96,7 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
   await page.getByRole('button', { name: 'Join Game' }).click();
   await page.waitForFunction(
     () => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug,
+    undefined,
     { timeout: cfg.joinTimeoutMs },
   );
   const tPlayable = Date.now();

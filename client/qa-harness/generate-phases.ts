@@ -1,3 +1,4 @@
+import type { Page } from 'playwright';
 import {
   CHARACTER_CONFIGS,
   type CharacterConfigKey,
@@ -202,6 +203,33 @@ export function generateCapabilityPhases(
   return phases;
 }
 
+async function waitForAuthorityMainHand(
+  page: Page,
+  itemId: string | null,
+  timeoutMs = 8_000,
+) {
+  // Prefer authority rows on window.__qaEquipment (server subscription); fall back to data-qa.
+  await page.waitForFunction(
+    (want) => {
+      const eq = (window as unknown as {
+        __qaEquipment?: ReadonlyArray<{ slot: string; itemId: string }>;
+      }).__qaEquipment;
+      if (eq) {
+        const main = eq.find((row) => row.slot === 'main_hand');
+        if (want === null) return !main;
+        return main?.itemId === want;
+      }
+      if (want === null) {
+        return !document.querySelector('[data-qa-unequip="main_hand"]');
+      }
+      const el = document.querySelector(`[data-qa-equip="${want}"]`);
+      return el?.getAttribute('data-qa-equipped') === '1';
+    },
+    itemId,
+    { timeout: timeoutMs },
+  );
+}
+
 /**
  * Mid-session equip/unequip via InventoryPanel data-qa hooks.
  * Covers wand cast grants after equip and empty main_hand after unequip.
@@ -209,7 +237,6 @@ export function generateCapabilityPhases(
  */
 export function generateEquipPhases(): PhaseDef[] {
   const stationary = { kind: 'stationary' } as const;
-  const settleMs = 600;
 
   return [
     {
@@ -224,12 +251,12 @@ export function generateEquipPhases(): PhaseDef[] {
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
           await equip.click();
         }
-        // Must verify *wand* is equipped. Do not race with main_hand unequip visibility:
-        // every preset seeds a main-hand item, so that control is already visible.
+        // UI strip + authority subscription (window.__qaEquipment).
         await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
           state: 'visible',
           timeout: 8_000,
         });
+        await waitForAuthorityMainHand(page, 'wand');
       },
     },
     {
@@ -243,10 +270,16 @@ export function generateEquipPhases(): PhaseDef[] {
         if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
           await equip.click();
         }
-        await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
-          state: 'visible',
-          timeout: 8_000,
-        });
+        await waitForAuthorityMainHand(page, 'wand');
+        // equip.click() left the virtual mouse on the inventory panel. Digit1 /
+        // combat clicks only apply under pointer lock and must hit the canvas —
+        // re-center then re-engage lock (same idea as lookAround / acquirePointerLock).
+        await page.mouse.move(640, 360, { steps: 1 });
+        await page.waitForTimeout(50);
+        if (!(await page.evaluate(() => document.pointerLockElement === document.body))) {
+          await click(page);
+          await page.waitForTimeout(150);
+        }
         await tapKey(page, 'Digit1');
         await click(page);
         await page.waitForTimeout(400);
@@ -262,16 +295,17 @@ export function generateEquipPhases(): PhaseDef[] {
         const unequip = page.locator('[data-qa-unequip="main_hand"]');
         await unequip.waitFor({ state: 'visible', timeout: 10_000 });
         await unequip.click();
-        // Slot is empty when the main_hand unequip control is gone (not when wand is merely "0",
-        // which is also true if sword still occupies main_hand).
+        // Slot empty: unequip control gone + authority has no main_hand row.
         await page.locator('[data-qa-unequip="main_hand"]').waitFor({
           state: 'hidden',
           timeout: 8_000,
         });
-        // If wand exists in the catalog strip, it must not still show equipped.
-        const wandUnequipped = page.locator('[data-qa-equip="wand"][data-qa-equipped="0"]');
+        await waitForAuthorityMainHand(page, null);
         if ((await page.locator('[data-qa-equip="wand"]').count()) > 0) {
-          await wandUnequipped.waitFor({ state: 'visible', timeout: 8_000 });
+          await page.locator('[data-qa-equip="wand"][data-qa-equipped="0"]').waitFor({
+            state: 'visible',
+            timeout: 8_000,
+          });
         }
       },
     },
@@ -289,6 +323,7 @@ export function generateEquipPhases(): PhaseDef[] {
           state: 'visible',
           timeout: 8_000,
         });
+        await waitForAuthorityMainHand(page, 'sword_1h');
       },
     },
   ];

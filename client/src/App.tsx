@@ -343,6 +343,15 @@ export default function App() {
     });
   }, [identity, playerAppearances, playerClasses, playerEquipment]);
 
+  // Authority equipment rows for the local player — QA harness asserts mid-session
+  // equip/unequip against this (not only inventory button data-qa attributes).
+  useEffect(() => {
+    if (!QA_GAME_DEBUG_ENABLED || typeof window === 'undefined') return;
+    const identityKey = identity?.toHexString();
+    const rows = identityKey ? playerEquipment.get(identityKey) ?? [] : [];
+    window.__qaEquipment = rows.map(row => ({ slot: row.slot, itemId: row.itemId }));
+  }, [identity, playerEquipment]);
+
   useKeyboardInput({
     identity,
     inputRef,

@@ -128,15 +128,15 @@ describe('assembleAvatar', () => {
   it('skips mesh attach for grantsOnly items', async () => {
     const group = new THREE.Group();
     const body = makeBodyWithHand();
-    const loadModel = vi.fn(async () => makeWeaponRoot('staff'));
+    const loadModel = vi.fn(async () => makeWeaponRoot('grants_only_fixture'));
 
     const assembled = await assembleAvatar({
       resolved: emptyResolved({
         equipped: [
           socketItem({
-            id: 'staff',
-            meshKey: 'staff.fbx',
-            url: '/staff.fbx',
+            id: 'grants_only_fixture',
+            meshKey: 'grants_only_fixture.fbx',
+            url: '/grants_only_fixture.fbx',
             grantsOnly: true,
             grants: ['cast_fireball'],
           }),
