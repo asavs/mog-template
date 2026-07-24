@@ -18,3 +18,24 @@ describe('mog_humanoid rig', () => {
     expect(SOCKET_BONE_CANDIDATES.left_hand[0]).toBe('LeftHand');
   });
 });
+
+describe('mixamo aliases', () => {
+  it('uses mixamo\'s own limb names, which are not ours', () => {
+    // Getting these wrong is invisible: a track that binds to nothing is
+    // silently ignored, so the character would move its torso and nothing else.
+    expect(boneNameCandidates('leftUpperArm')).toContain('mixamorig:LeftArm');
+    expect(boneNameCandidates('leftLowerArm')).toContain('mixamorig:LeftForeArm');
+    expect(boneNameCandidates('rightUpperLeg')).toContain('mixamorig:RightUpLeg');
+    expect(boneNameCandidates('rightLowerLeg')).toContain('mixamorig:RightLeg');
+    // Never emit a mixamo name mixamo does not use.
+    expect(boneNameCandidates('leftUpperArm')).not.toContain('mixamorig:LeftUpperArm');
+  });
+
+  it('keeps our canonical name first and covers every bone', () => {
+    for (const bone of Object.keys(MOG_BONES) as (keyof typeof MOG_BONES)[]) {
+      const candidates = boneNameCandidates(bone);
+      expect(candidates[0]).toBe(MOG_BONES[bone]);
+      expect(candidates.some(name => name.startsWith('mixamorig:'))).toBe(true);
+    }
+  });
+});

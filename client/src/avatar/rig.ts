@@ -38,17 +38,42 @@ export const MOG_BONES = {
 export type MogBoneId = keyof typeof MOG_BONES;
 
 /**
+ * Mixamo's own name for each of our bones, WITHOUT the `mixamorig` prefix.
+ *
+ * Only the bones where Mixamo disagrees with us are listed; everything else
+ * matches our canonical name exactly. The four limb segments are the entire
+ * reason this table has to exist, and getting them wrong is invisible: an
+ * animation track that binds to nothing is silently ignored, so a Mixamo clip
+ * would play a moving torso above dead arms and legs with no error anywhere.
+ */
+const MIXAMO_ALIASES: Partial<Record<MogBoneId, string>> = {
+  leftUpperArm: 'LeftArm',
+  leftLowerArm: 'LeftForeArm',
+  rightUpperArm: 'RightArm',
+  rightLowerArm: 'RightForeArm',
+  leftUpperLeg: 'LeftUpLeg',
+  leftLowerLeg: 'LeftLeg',
+  rightUpperLeg: 'RightUpLeg',
+  rightLowerLeg: 'RightLeg',
+};
+
+/**
  * Ordered name candidates for scene-graph lookup.
  * Prefer canonical mog names first; Mixamo-style aliases last (legacy FBX).
+ *
+ * Both `mixamorig:Name` and `mixamorigName` are listed because exporters and
+ * loaders disagree about whether the colon survives.
  */
 export function boneNameCandidates(bone: MogBoneId): readonly string[] {
   const canonical = MOG_BONES[bone];
-  // Mixamo exports often prefix with mixamorig / mixamorig:
-  const mixamo = [
-    `mixamorig${canonical}`,
-    `mixamorig:${canonical}`,
+  const mixamoName = MIXAMO_ALIASES[bone] ?? canonical;
+  return [
+    canonical,
+    `mixamorig:${mixamoName}`,
+    `mixamorig${mixamoName}`,
+    // Some rigs ship the bare Mixamo name with no prefix at all.
+    ...(mixamoName === canonical ? [] : [mixamoName]),
   ];
-  return [canonical, ...mixamo];
 }
 
 /** Hand sockets used by weapons / potions. */
