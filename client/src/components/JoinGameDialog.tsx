@@ -8,7 +8,8 @@
 import React, { useState } from 'react';
 import { buildInfo } from '../buildInfo';
 
-export type CharacterClass = 'wizard' | 'paladin';
+/** Loadout preset id (wizard, paladin, acolyte, …). */
+export type CharacterClass = string;
 
 interface JoinGameDialogProps {
   onJoin: (username: string, characterClass: CharacterClass) => void;

@@ -30,7 +30,8 @@ export type InputEvent = {
   detail: string;
 };
 
-export type CharacterClass = 'wizard' | 'paladin';
+/** Loadout preset id used when joining (catalog-driven; not a closed enum). */
+export type CharacterClass = string;
 
 // ---------------------------------------------------------------------------
 // Performance instrumentation (harness-injected; the game is not modified).

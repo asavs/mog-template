@@ -30,7 +30,7 @@ type CapabilityConfig = {
   };
 };
 
-type CapabilityConfigs = Record<CharacterConfigKey, CapabilityConfig>;
+type CapabilityConfigs = Record<string, CapabilityConfig>;
 
 async function runMovement(
   page: Parameters<PhaseDef['run']>[0]['page'],

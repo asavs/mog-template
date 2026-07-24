@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { isItemId } from '../avatar/loadoutAuthority.generated';
 import {
   canSelectSpell,
+  CHARACTER_CONFIGS,
   getCharacterCapabilities,
   hasSpellSelectHotkeys,
+  joinPresetButtonLabel,
+  listLoadoutPresetIds,
   normalizeCharacterClass,
   resolvePlayerCapabilities,
 } from './characterConfig';
@@ -23,11 +27,32 @@ describe('normalizeCharacterClass legacy remapping', () => {
     expect(normalizeCharacterClass('Wizard2')).toBe('wizard');
   });
 
-  it('defaults unknown, null, and undefined values to wizard', () => {
+  it('defaults unknown, null, and undefined values to default preset', () => {
     expect(normalizeCharacterClass('knight')).toBe('wizard');
     expect(normalizeCharacterClass('')).toBe('wizard');
     expect(normalizeCharacterClass(null)).toBe('wizard');
     expect(normalizeCharacterClass(undefined)).toBe('wizard');
+  });
+
+  it('preserves every catalog loadout preset id (no collapse to wizard/paladin only)', () => {
+    for (const id of listLoadoutPresetIds()) {
+      expect(normalizeCharacterClass(id)).toBe(id);
+    }
+  });
+});
+
+describe('catalog-driven character configs (QA matrix)', () => {
+  it('includes every catalog preset with capabilities', () => {
+    const ids = listLoadoutPresetIds();
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    for (const id of ids) {
+      expect(CHARACTER_CONFIGS[id]?.capabilities).toBeDefined();
+    }
+  });
+
+  it('joinPresetButtonLabel uses catalog labels', () => {
+    expect(joinPresetButtonLabel('wizard')).toBe('Wizard');
+    expect(joinPresetButtonLabel('paladin')).toBe('Paladin');
   });
 });
 
@@ -78,21 +103,27 @@ describe('resolvePlayerCapabilities (HUD / hotkey path)', () => {
     expect(canSelectSpell(caps, 'lightning')).toBe(false);
   });
 
-  it('staff equipment grants spells even when class string is paladin', () => {
+  /** Prefer wand (post staff→wand rename); fall back to staff on older loadouts. */
+  function castMainHandItemId(): 'wand' | 'staff' {
+    if (isItemId('wand')) return 'wand';
+    if (isItemId('staff')) return 'staff';
+    throw new Error('No cast main-hand item (wand/staff) in loadout authority');
+  }
+
+  it('cast weapon equipment grants spells even when class string is paladin', () => {
     const caps = resolvePlayerCapabilities({
       legacyClass: 'paladin',
       appearance: { bodyId: 'body_m', scale: 1, loadoutPreset: 'paladin' },
       equipment: [
-        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'main_hand', itemId: castMainHandItemId() },
         { slot: 'utility_potion', itemId: 'potion' },
       ],
     });
-    // Grant-driven: staff cast_* abilities enable spell hotkeys regardless of class string.
+    // Grant-driven: cast_* grants enable spell hotkeys regardless of class string.
     expect([...caps.spells]).toEqual(['fireball', 'lightning']);
     expect(hasSpellSelectHotkeys(caps)).toBe(true);
     expect(canSelectSpell(caps, 'fireball')).toBe(true);
     expect(canSelectSpell(caps, 'lightning')).toBe(true);
-    // main_hand is staff, not sword — melee_slash is not granted from gear.
     expect(caps.melee).toBe(false);
   });
 
@@ -101,7 +132,7 @@ describe('resolvePlayerCapabilities (HUD / hotkey path)', () => {
       legacyClass: 'wizard',
       appearance: { bodyId: 'body_f', scale: 1, loadoutPreset: 'wizard' },
       equipment: [
-        { slot: 'main_hand', itemId: 'staff' },
+        { slot: 'main_hand', itemId: castMainHandItemId() },
         { slot: 'utility_potion', itemId: 'potion' },
       ],
     });

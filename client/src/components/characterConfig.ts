@@ -43,22 +43,32 @@ export const DRINKING_ANIMATION_TRIM_END_SECONDS = 2.5;
 
 export type ClassCapabilities = AvatarCapabilities;
 
-export type NormalizedCharacterClass = 'paladin' | 'wizard';
+/**
+ * Normalized join/loadout preset id after legacy remap.
+ * Open string so new presets (e.g. acolyte) work without harness type edits.
+ */
+export type NormalizedCharacterClass = string;
 
 /** @deprecated Prefer getCharacterPresentation; retained for QA capability matrix. */
-export type CharacterConfigKey = NormalizedCharacterClass;
+export type CharacterConfigKey = string;
 
 /**
  * Capability-only table for harness phase generation.
+ * Built from catalog presets so new loadout rows appear automatically.
  * Full mesh/clip data lives in the avatar catalog — do not re-grow this object.
  */
+function buildCharacterConfigs(): Record<string, { capabilities: ClassCapabilities }> {
+  const out: Record<string, { capabilities: ClassCapabilities }> = {};
+  for (const preset of defaultAvatarCatalog.listPresets()) {
+    out[preset.id] = { capabilities: resolvePreset(preset.id).capabilities };
+  }
+  return out;
+}
+
 export const CHARACTER_CONFIGS: Record<
-  CharacterConfigKey,
+  string,
   { capabilities: ClassCapabilities }
-> = {
-  paladin: { capabilities: resolvePreset('paladin').capabilities },
-  wizard: { capabilities: resolvePreset('wizard').capabilities },
-};
+> = buildCharacterConfigs();
 
 export type CharacterPresentation = {
   presetId: string;
@@ -73,11 +83,20 @@ export type CharacterPresentation = {
 // Single copy of the legacy class remap table on the client. Remote players'
 // DB rows may still carry legacy values until they rejoin, and localStorage may
 // hold a legacy stored class; normalize both through here.
+// Returns the catalog loadout preset id (wizard, paladin, acolyte, …) — not a
+// closed two-class union.
 export function normalizeCharacterClass(
   characterClass: string | null | undefined,
 ): NormalizedCharacterClass {
-  const presetId = presetIdFromLegacyClass(characterClass);
-  return presetId === 'paladin' ? 'paladin' : 'wizard';
+  return presetIdFromLegacyClass(characterClass);
+}
+
+/** Join-dialog button label for a loadout preset id (catalog `label`, else title case). */
+export function joinPresetButtonLabel(presetId: string): string {
+  const preset = defaultAvatarCatalog.getPreset(presetId);
+  if (preset?.label) return preset.label;
+  if (!presetId) return 'Wizard';
+  return presetId.charAt(0).toUpperCase() + presetId.slice(1);
 }
 
 export function presentationFromResolved(resolved: ResolvedAppearance): CharacterPresentation {

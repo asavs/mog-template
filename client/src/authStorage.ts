@@ -1,6 +1,7 @@
 import { normalizeCharacterClass } from './components/characterConfig';
 
-export type StoredCharacterClass = 'wizard' | 'paladin';
+/** Loadout preset id stored for re-join (wizard, paladin, acolyte, …). */
+export type StoredCharacterClass = string;
 
 export type JoinPreferences = {
   username: string;

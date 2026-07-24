@@ -10,9 +10,9 @@
  * `QA_PHASES=movement,combat`) while preserving registry order, which makes
  * a single action re-runnable in seconds while debugging.
  *
- * Content note: current phases drive placeholder gameplay (wizard/paladin,
- * fireball/lightning). The registry shape — not the phase list — is the
- * durable part; phases are expected to be swapped freely as the game evolves.
+ * Content note: capability phases derive from catalog loadout presets
+ * (`CHARACTER_CONFIGS`); join uses catalog button labels. The registry shape
+ * — not the fixed class list — is the durable part.
  */
 import {
   click,

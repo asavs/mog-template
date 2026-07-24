@@ -54,6 +54,7 @@ import {
 } from './page-driver';
 import { formatAnnounce, isRemoteClientUrl, parsePrArg, resolvePreviewTarget } from './preview-target';
 import { checkTool, formatResults, formatUnsupportedBanner } from '../../tools/env-requirements/preflight.mjs';
+import { listLoadoutPresetIds } from '../src/components/characterConfig';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, 'runs');
@@ -94,7 +95,10 @@ const MODE =
       : process.env.QA_MODE === 'grid'
         ? 'grid'
         : 'phases';
-const CLASSES = (process.env.QA_CLASSES ?? 'wizard,paladin')
+
+/** Default: every catalog loadout preset (wizard, paladin, acolyte, …). Override with QA_CLASSES. */
+const DEFAULT_QA_CLASSES = listLoadoutPresetIds().join(',') || 'wizard,paladin';
+const CLASSES = (process.env.QA_CLASSES ?? DEFAULT_QA_CLASSES)
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean) as CharacterClass[];

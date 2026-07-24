@@ -8,6 +8,7 @@
 import type { Browser, BrowserContext, Page, Video } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import { joinPresetButtonLabel } from '../src/components/characterConfig';
 import type { CharacterClass, InputEvent, RunData, TraceRecord, Vec3 } from './trace-types';
 import { collectPerf, installPerfCollectors } from './perf-collectors';
 
@@ -178,7 +179,9 @@ export async function joinAs(session: BotSession, cfg: SessionConfig) {
   await page.goto(url.toString(), { waitUntil: 'networkidle' });
   await page.waitForSelector('#username', { timeout: cfg.joinTimeoutMs });
   await page.locator('#username').fill(`QaBot-${characterClass}-${Date.now()}`);
-  await page.getByRole('button', { name: characterClass === 'wizard' ? 'Wizard' : 'Paladin', exact: true }).click();
+  await page
+    .getByRole('button', { name: joinPresetButtonLabel(characterClass), exact: true })
+    .click();
   await page.getByRole('button', { name: 'Join Game' }).click();
   await page.waitForFunction(() => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug, { timeout: cfg.joinTimeoutMs });
 }
