@@ -118,11 +118,11 @@ export function applyMovement(
   const desired = position.clone();
   desired.x += moveX * movementScale;
   desired.z += moveZ * movementScale;
-  const currentGround = terrainHeightAt(position);
+  const currentGround = groundHeightAt(position);
   const wasGrounded = position.y <= currentGround + GROUNDED_EPSILON;
   const resolved = resolvePlayerMovement(position, desired);
   if (wasGrounded) {
-    const resolvedGround = terrainHeightAt(resolved);
+    const resolvedGround = groundHeightAt(resolved);
     if (currentGround - resolvedGround <= MAX_SNAP_DOWN_HEIGHT) {
       resolved.y = resolvedGround;
     }
@@ -314,6 +314,21 @@ export function simulateMovementTick(
   // ceilings, undersides, or ramps after horizontal prediction has run.
   let resolvedVerticalVelocity = jumpPhysicsAfterTick.verticalVelocity;
   if (isCastleCollisionReady()) {
+    const wasGrounded = movementStateBeforeTick.isGrounded;
+    const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
+    if (wasGrounded && !isStartingJump) {
+      const endingTerrainY = terrainHeightAt(position);
+      const endingCastleGround = castleGroundSupport(
+        position,
+        CASTLE_GROUND_SNAP_DISTANCE,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+      );
+      const endingGroundY = endingCastleGround ? endingCastleGround.y : endingTerrainY;
+      if (endingGroundY > position.y) {
+        position.y = endingGroundY;
+      }
+    }
     const desiredBeforeCastle = position.clone();
     const collision = resolveCastleCapsuleSweep(
       fullTickStart,
@@ -333,8 +348,6 @@ export function simulateMovementTick(
       PLAYER_COLLISION_RADIUS,
       PLAYER_CAPSULE_HEIGHT,
     ) !== null;
-    const wasGrounded = movementStateBeforeTick.isGrounded;
-    const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
     const terrainResolvedGroundY = terrainHeightAt(position);
     const castleResolvedGround = castleGroundSupport(
       position,
