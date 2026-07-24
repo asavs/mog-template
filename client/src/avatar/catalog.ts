@@ -4,6 +4,7 @@ import {
   DEFAULT_PRESET_ID,
   LOADOUT_AUTHORITY,
   LOADOUT_DERIVED,
+  isAuthorityEquipSlot,
   isBodyId,
   isItemId,
   isLoadoutPresetId,
@@ -18,6 +19,7 @@ import type {
   EquipSlot,
   ItemDef,
   ItemId,
+  ItemSlot,
   LoadoutPreset,
   LoadoutPresetId,
   PlayerAppearance,
@@ -149,7 +151,7 @@ function buildItemsFromAuthority(): Record<string, ItemDef> {
     }
     out[id] = {
       id,
-      slot: auth.slot as EquipSlot,
+      slot: auth.slot as ItemSlot,
       grants: [...auth.grants] as AbilityId[],
       ...presentation,
     };
@@ -377,7 +379,18 @@ export function createAvatarCatalog(options?: {
       return Object.values(presets);
     },
     urlForMeshKey,
-    resolve(appearance: PlayerAppearance, resolveOptions?: { presetId?: string }): ResolvedAppearance {
+    resolve(
+      appearance: PlayerAppearance,
+      resolveOptions?: {
+        presetId?: string;
+        /**
+         * When true (default), inject preset utilityEquipment rows (join/preset resolve).
+         * When false, only paper-doll `appearance.slots` are used — server equipment
+         * rows already include utility attaches (issue #49 equip loop).
+         */
+        includePresetUtility?: boolean;
+      },
+    ): ResolvedAppearance {
       const body = bodies[appearance.bodyId];
       if (!body) {
         throw new Error(`Unknown bodyId: ${appearance.bodyId}`);
@@ -399,10 +412,13 @@ export function createAvatarCatalog(options?: {
         grantLists.push(resolved.grants);
       }
 
-      // Phase A: paladin needs shield + potion without a second off_hand slot model.
-      const utilityIds = resolveOptions?.presetId
-        ? utilityItemsByPreset[resolveOptions.presetId] ?? []
-        : [];
+      // Preset utility attaches (e.g. utility_potion). Skipped when resolving from
+      // live server equipment rows so mid-session unequip is visible.
+      const includeUtility = resolveOptions?.includePresetUtility !== false;
+      const utilityIds =
+        includeUtility && resolveOptions?.presetId
+          ? utilityItemsByPreset[resolveOptions.presetId] ?? []
+          : [];
       for (const itemId of utilityIds) {
         if (seenItemIds.has(itemId)) continue;
         const resolved = resolveItem(itemId);
@@ -485,7 +501,7 @@ export function resolvePreset(
   });
 }
 
-const EQUIP_SLOTS = new Set<string>(SLOT_ORDER);
+const PAPER_DOLL_SLOTS = new Set<string>(SLOT_ORDER);
 
 export type NetworkAppearanceRow = {
   bodyId: string;
@@ -502,6 +518,9 @@ export type NetworkEquipmentRow = {
  * Prefer authoritative appearance + equipment rows from SpacetimeDB.
  * Falls back to loadout preset when rows are missing (join race / legacy),
  * or when server ids are unknown to this client build (catalog drift).
+ *
+ * `equipment: undefined | null` → subscription race / no rows yet → preset fallback.
+ * `equipment: []` → intentionally empty loadout (baseline grants only).
  */
 export function resolveFromServerState(options: {
   appearance?: NetworkAppearanceRow | null;
@@ -530,46 +549,47 @@ export function resolveFromServerState(options: {
     const presetId: LoadoutPresetId = isLoadoutPresetId(rawPresetId)
       ? rawPresetId
       : fallbackPresetId();
+
+    // Equipment not subscribed yet — keep preset presentation for join race.
+    if (options.equipment == null) {
+      return resolvePreset(presetId, catalog);
+    }
+
     const slots: PlayerAppearance['slots'] = {};
     const extraItemIds: ItemId[] = [];
 
-    for (const row of options.equipment ?? []) {
+    for (const row of options.equipment) {
       if (!isItemId(row.itemId)) {
         // Unknown item from a newer server build — fail the whole resolve into fallback.
         throw new Error(`Unknown itemId from server: ${row.itemId}`);
       }
-      if (EQUIP_SLOTS.has(row.slot)) {
+      if (PAPER_DOLL_SLOTS.has(row.slot) || isAuthorityEquipSlot(row.slot)) {
         slots[row.slot as EquipSlot] = row.itemId;
       } else {
-        // utility_potion and future non-slot attaches
+        // utility_potion and future non-paper-doll attaches
         extraItemIds.push(row.itemId);
       }
-    }
-
-    // If equipment rows have not arrived yet, fall back to preset equipment.
-    const hasAnyGear = (options.equipment?.length ?? 0) > 0;
-    if (!hasAnyGear) {
-      return resolvePreset(presetId, catalog);
     }
 
     if (!isBodyId(appearance.bodyId)) {
       throw new Error(`Unknown bodyId from server: ${appearance.bodyId}`);
     }
 
+    // Do not re-inject preset utility — server equipment is authoritative mid-session.
     const base = catalog.resolve(
       {
         bodyId: appearance.bodyId,
         scale: appearance.scale,
         slots,
       },
-      { presetId },
+      { presetId, includePresetUtility: false },
     );
 
     if (extraItemIds.length === 0) {
       return base;
     }
 
-    // Append utility items not covered by EquipSlot (server may store them under custom slots).
+    // Append utility items not covered by EquipSlot (server stores them under utility slots).
     const seen = new Set(base.equipped.map(item => item.id));
     const extraEquipped = [...base.equipped];
     const grantLists: (readonly AbilityId[])[] = [base.grants];

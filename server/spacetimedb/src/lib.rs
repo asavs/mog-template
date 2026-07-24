@@ -829,6 +829,89 @@ fn clear_player_loadout(ctx: &ReducerContext, identity: Identity) {
     clear_player_equipment(ctx, identity);
 }
 
+fn player_is_dead(ctx: &ReducerContext, identity: Identity) -> bool {
+    ctx.db
+        .player_health()
+        .identity()
+        .find(identity)
+        .map(|health| health.is_dead)
+        .unwrap_or(false)
+}
+
+fn clear_equipment_slot(ctx: &ReducerContext, identity: Identity, slot: &str) {
+    let rows: Vec<PlayerEquipment> = ctx
+        .db
+        .player_equipment()
+        .owner()
+        .filter(&identity)
+        .filter(|row| row.slot == slot)
+        .collect();
+    for row in rows {
+        ctx.db.player_equipment().id().delete(&row.id);
+    }
+}
+
+/// Place an authority item into its exclusive slot (paper-doll or utility).
+/// Replaces any existing item in that slot. Combat grants recompute from equipment rows.
+#[spacetimedb::reducer]
+pub fn equip_item(ctx: &ReducerContext, item_id: String) -> Result<(), String> {
+    let identity = ctx.sender();
+    if ctx.db.player().identity().find(identity).is_none() {
+        return Err("Player has not joined".to_string());
+    }
+    if player_is_dead(ctx, identity) {
+        return Err("Cannot equip while dead".to_string());
+    }
+
+    let item_id = item_id.trim();
+    if item_id.is_empty() {
+        return Err("item_id is required".to_string());
+    }
+    let slot = loadout::equip_slot_for_item(item_id)?;
+
+    clear_equipment_slot(ctx, identity, slot);
+    ctx.db.player_equipment().insert(PlayerEquipment {
+        id: 0,
+        owner: identity,
+        slot: slot.to_string(),
+        item_id: item_id.to_string(),
+    });
+    Ok(())
+}
+
+/// Clear one exclusive slot (paper-doll or utility) for the sender.
+#[spacetimedb::reducer]
+pub fn unequip_slot(ctx: &ReducerContext, slot: String) -> Result<(), String> {
+    let identity = ctx.sender();
+    if ctx.db.player().identity().find(identity).is_none() {
+        return Err("Player has not joined".to_string());
+    }
+    if player_is_dead(ctx, identity) {
+        return Err("Cannot unequip while dead".to_string());
+    }
+
+    let slot = slot.trim();
+    if slot.is_empty() {
+        return Err("slot is required".to_string());
+    }
+    loadout::validate_unequip_slot(slot)?;
+
+    let rows: Vec<PlayerEquipment> = ctx
+        .db
+        .player_equipment()
+        .owner()
+        .filter(&identity)
+        .filter(|row| row.slot == slot)
+        .collect();
+    if rows.is_empty() {
+        return Err(format!("Nothing equipped in slot: {slot}"));
+    }
+    for row in rows {
+        ctx.db.player_equipment().id().delete(&row.id);
+    }
+    Ok(())
+}
+
 #[spacetimedb::reducer]
 pub fn trigger_slash_attack(ctx: &ReducerContext) -> Result<(), String> {
     let identity = ctx.sender();

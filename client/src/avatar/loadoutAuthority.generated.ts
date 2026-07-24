@@ -38,8 +38,16 @@ export const AUTHORITY_EQUIP_SLOTS = [
   "main_hand",
   "off_hand",
 ] as const;
-/** Slots used in shared loadout authority seeds (subset of full paper-doll). */
+/** Exclusive paper-doll slots (at most one item per slot per player). */
 export type AuthorityEquipSlot = (typeof AUTHORITY_EQUIP_SLOTS)[number];
+
+export const AUTHORITY_UTILITY_SLOTS = [
+  "utility_potion",
+] as const;
+/** Utility / consumable attaches (exclusive per slot id, not paper-doll). */
+export type AuthorityUtilitySlot = (typeof AUTHORITY_UTILITY_SLOTS)[number];
+
+export type AuthorityItemSlot = AuthorityEquipSlot | AuthorityUtilitySlot;
 
 export const DEFAULT_PRESET_ID: LoadoutPresetId = "wizard";
 
@@ -57,6 +65,9 @@ export const LOADOUT_AUTHORITY = {
   "equipSlots": [
     "main_hand",
     "off_hand"
+  ],
+  "utilitySlots": [
+    "utility_potion"
   ],
   "bodies": {
     "body_m": {},
@@ -83,7 +94,7 @@ export const LOADOUT_AUTHORITY = {
       ]
     },
     "potion": {
-      "slot": "off_hand",
+      "slot": "utility_potion",
       "grants": [
         "drink_potion"
       ]
@@ -95,13 +106,10 @@ export const LOADOUT_AUTHORITY = {
       "bodyId": "body_m",
       "scale": 1,
       "slots": {
-        "main_hand": "sword_1h"
+        "main_hand": "sword_1h",
+        "off_hand": "shield"
       },
       "utilityEquipment": [
-        {
-          "slot": "off_hand",
-          "itemId": "shield"
-        },
         {
           "slot": "utility_potion",
           "itemId": "potion"
@@ -116,10 +124,14 @@ export const LOADOUT_AUTHORITY = {
       "bodyId": "body_f",
       "scale": 1,
       "slots": {
-        "main_hand": "staff",
-        "off_hand": "potion"
+        "main_hand": "staff"
       },
-      "utilityEquipment": [],
+      "utilityEquipment": [
+        {
+          "slot": "utility_potion",
+          "itemId": "potion"
+        }
+      ],
       "extraGrants": [
         "drink_potion"
       ]
@@ -153,6 +165,9 @@ export const LOADOUT_DERIVED = {
     "main_hand",
     "off_hand"
   ],
+  "utilitySlots": [
+    "utility_potion"
+  ],
   "presetBodies": {
     "paladin": "body_m",
     "wizard": "body_f"
@@ -182,10 +197,11 @@ export const LOADOUT_DERIVED = {
   },
   "utilityItemsByPreset": {
     "paladin": [
-      "shield",
       "potion"
     ],
-    "wizard": []
+    "wizard": [
+      "potion"
+    ]
   }
 } as const;
 
@@ -201,4 +217,13 @@ export function isAbilityId(value: string): value is AbilityId {
 }
 export function isLoadoutPresetId(value: string): value is LoadoutPresetId {
   return (LOADOUT_PRESET_IDS as readonly string[]).includes(value);
+}
+export function isAuthorityEquipSlot(value: string): value is AuthorityEquipSlot {
+  return (AUTHORITY_EQUIP_SLOTS as readonly string[]).includes(value);
+}
+export function isAuthorityUtilitySlot(value: string): value is AuthorityUtilitySlot {
+  return (AUTHORITY_UTILITY_SLOTS as readonly string[]).includes(value);
+}
+export function isAuthorityItemSlot(value: string): value is AuthorityItemSlot {
+  return isAuthorityEquipSlot(value) || isAuthorityUtilitySlot(value);
 }

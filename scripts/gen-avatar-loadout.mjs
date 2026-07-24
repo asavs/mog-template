@@ -2,7 +2,7 @@
  * Generate server (and optional client) loadout authority from shared/avatar-loadout.json.
  *
  * Usage: node scripts/gen-avatar-loadout.mjs
- *        node scripts/gen-avatar-loadout.mjs --check   # exit 1 if generated rust is stale
+ *        node scripts/gen-avatar-loadout.mjs --check   # exit 1 if generated files are stale
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,6 +21,85 @@ function readAuthority() {
 
 function uniqueSorted(values) {
   return [...new Set(values)].sort();
+}
+
+function asSet(values) {
+  return new Set(values ?? []);
+}
+
+/**
+ * Validate paper-doll vs utility slot model (issue #51).
+ * Throws with a clear message if authority is inconsistent.
+ */
+function validateAuthority(data) {
+  const equipSlots = asSet(data.equipSlots);
+  const utilitySlots = asSet(data.utilitySlots);
+  const errors = [];
+
+  for (const slot of equipSlots) {
+    if (utilitySlots.has(slot)) {
+      errors.push(`slot "${slot}" is listed in both equipSlots and utilitySlots`);
+    }
+  }
+
+  for (const [itemId, item] of Object.entries(data.items ?? {})) {
+    if (!item?.slot || typeof item.slot !== 'string') {
+      errors.push(`item "${itemId}" is missing slot`);
+      continue;
+    }
+    const inEquip = equipSlots.has(item.slot);
+    const inUtility = utilitySlots.has(item.slot);
+    if (!inEquip && !inUtility) {
+      errors.push(
+        `item "${itemId}" slot "${item.slot}" is neither equipSlots nor utilitySlots`,
+      );
+    }
+    if (inEquip && inUtility) {
+      errors.push(`item "${itemId}" slot "${item.slot}" is in both equip and utility lists`);
+    }
+  }
+
+  for (const [presetId, preset] of Object.entries(data.presets ?? {})) {
+    for (const [slot, itemId] of Object.entries(preset.slots ?? {})) {
+      if (!equipSlots.has(slot)) {
+        errors.push(
+          `preset "${presetId}" slots key "${slot}" is not an equipSlots paper-doll slot`,
+        );
+      }
+      const item = data.items?.[itemId];
+      if (!item) {
+        errors.push(`preset "${presetId}" slots.${slot} references unknown item "${itemId}"`);
+      } else if (item.slot !== slot) {
+        errors.push(
+          `preset "${presetId}" slots.${slot}="${itemId}" but item.slot is "${item.slot}"`,
+        );
+      }
+    }
+
+    for (const row of preset.utilityEquipment ?? []) {
+      if (!utilitySlots.has(row.slot)) {
+        errors.push(
+          `preset "${presetId}" utilityEquipment slot "${row.slot}" is not in utilitySlots`,
+        );
+      }
+      const item = data.items?.[row.itemId];
+      if (!item) {
+        errors.push(
+          `preset "${presetId}" utilityEquipment references unknown item "${row.itemId}"`,
+        );
+      } else if (item.slot !== row.slot) {
+        errors.push(
+          `preset "${presetId}" utilityEquipment slot "${row.slot}" item "${row.itemId}" has item.slot "${item.slot}"`,
+        );
+      }
+    }
+  }
+
+  if (errors.length) {
+    throw new Error(
+      `[gen-avatar-loadout] authority validation failed:\n- ${errors.join('\n- ')}`,
+    );
+  }
 }
 
 function presetGrantList(data, presetId) {
@@ -59,6 +138,8 @@ function generateRust(data) {
   const presetIds = Object.keys(data.presets).sort();
   const itemIds = Object.keys(data.items).sort();
   const bodyIds = Object.keys(data.bodies).sort();
+  const equipSlots = [...(data.equipSlots ?? [])].sort();
+  const utilitySlots = [...(data.utilitySlots ?? [])].sort();
   const allGrants = uniqueSorted([
     ...(data.baselineGrants ?? []),
     ...Object.values(data.items).flatMap(i => i.grants ?? []),
@@ -77,6 +158,8 @@ function generateRust(data) {
   lines.push(`pub const BODY_IDS: &[&str] = ${rustStringSlice(bodyIds)};`);
   lines.push(`pub const ITEM_IDS: &[&str] = ${rustStringSlice(itemIds)};`);
   lines.push(`pub const GRANT_IDS: &[&str] = ${rustStringSlice(allGrants)};`);
+  lines.push(`pub const EQUIP_SLOTS: &[&str] = ${rustStringSlice(equipSlots)};`);
+  lines.push(`pub const UTILITY_SLOTS: &[&str] = ${rustStringSlice(utilitySlots)};`);
   lines.push('');
 
   lines.push('pub fn normalize_preset_id(character_class: &str) -> Result<String, String> {');
@@ -107,6 +190,35 @@ function generateRust(data) {
   }
   lines.push('        _ => None,');
   lines.push('    }');
+  lines.push('}');
+  lines.push('');
+
+  if (equipSlots.length === 0) {
+    lines.push('pub fn is_equip_slot(slot: &str) -> bool {');
+    lines.push('    let _ = slot;');
+    lines.push('    false');
+    lines.push('}');
+  } else {
+    lines.push('pub fn is_equip_slot(slot: &str) -> bool {');
+    lines.push(`    matches!(slot, ${equipSlots.map(s => `"${s}"`).join(' | ')})`);
+    lines.push('}');
+  }
+  lines.push('');
+
+  if (utilitySlots.length === 0) {
+    lines.push('pub fn is_utility_slot(slot: &str) -> bool {');
+    lines.push('    let _ = slot;');
+    lines.push('    false');
+    lines.push('}');
+  } else {
+    lines.push('pub fn is_utility_slot(slot: &str) -> bool {');
+    lines.push(`    matches!(slot, ${utilitySlots.map(s => `"${s}"`).join(' | ')})`);
+    lines.push('}');
+  }
+  lines.push('');
+
+  lines.push('pub fn is_known_slot(slot: &str) -> bool {');
+  lines.push('    is_equip_slot(slot) || is_utility_slot(slot)');
   lines.push('}');
   lines.push('');
 
@@ -187,12 +299,14 @@ function generateTs(data) {
     ...Object.values(data.presets).flatMap((p) => p.extraGrants ?? []),
   ]);
   const equipSlots = [...(data.equipSlots ?? [])].sort();
+  const utilitySlots = [...(data.utilitySlots ?? [])].sort();
 
   const authority = {
     baselineGrants: data.baselineGrants ?? [],
     legacyClassToPreset: data.legacyClassToPreset ?? {},
     defaultPresetId: data.defaultPresetId,
     equipSlots: data.equipSlots ?? [],
+    utilitySlots: data.utilitySlots ?? [],
     bodies: data.bodies,
     items: data.items,
     presets: data.presets,
@@ -204,6 +318,7 @@ function generateTs(data) {
     itemIds,
     grantIds,
     equipSlots,
+    utilitySlots,
     presetBodies: Object.fromEntries(presetIds.map((id) => [id, data.presets[id].bodyId])),
     presetGrants: Object.fromEntries(presetIds.map((id) => [id, presetGrantList(data, id)])),
     presetEquipmentItemIds: Object.fromEntries(
@@ -240,8 +355,14 @@ ${tsConstStringArray('LOADOUT_PRESET_IDS', presetIds)}
 export type LoadoutPresetId = (typeof LOADOUT_PRESET_IDS)[number];
 
 ${tsConstStringArray('AUTHORITY_EQUIP_SLOTS', equipSlots)}
-/** Slots used in shared loadout authority seeds (subset of full paper-doll). */
+/** Exclusive paper-doll slots (at most one item per slot per player). */
 export type AuthorityEquipSlot = (typeof AUTHORITY_EQUIP_SLOTS)[number];
+
+${tsConstStringArray('AUTHORITY_UTILITY_SLOTS', utilitySlots)}
+/** Utility / consumable attaches (exclusive per slot id, not paper-doll). */
+export type AuthorityUtilitySlot = (typeof AUTHORITY_UTILITY_SLOTS)[number];
+
+export type AuthorityItemSlot = AuthorityEquipSlot | AuthorityUtilitySlot;
 
 export const DEFAULT_PRESET_ID: LoadoutPresetId = ${JSON.stringify(data.defaultPresetId)};
 
@@ -262,12 +383,22 @@ export function isAbilityId(value: string): value is AbilityId {
 export function isLoadoutPresetId(value: string): value is LoadoutPresetId {
   return (LOADOUT_PRESET_IDS as readonly string[]).includes(value);
 }
+export function isAuthorityEquipSlot(value: string): value is AuthorityEquipSlot {
+  return (AUTHORITY_EQUIP_SLOTS as readonly string[]).includes(value);
+}
+export function isAuthorityUtilitySlot(value: string): value is AuthorityUtilitySlot {
+  return (AUTHORITY_UTILITY_SLOTS as readonly string[]).includes(value);
+}
+export function isAuthorityItemSlot(value: string): value is AuthorityItemSlot {
+  return isAuthorityEquipSlot(value) || isAuthorityUtilitySlot(value);
+}
 `;
 }
 
 function main() {
   const check = process.argv.includes('--check');
   const data = readAuthority();
+  validateAuthority(data);
   const rust = generateRust(data);
   const ts = generateTs(data);
 
