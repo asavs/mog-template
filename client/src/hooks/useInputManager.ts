@@ -37,7 +37,12 @@ type UseKeyboardInputOptions = {
   onSelectWizardSpell: (spell: WizardSpell) => void;
   playerRuntimeRef: MutableRefObject<PlayerRuntimeState>;
   sendInputNow: () => void;
-  spellsEnabled: boolean;
+  /**
+   * Spells granted by resolved capabilities (appearance + equipment + baseline).
+   * Empty → Digit1/Digit2 spell select is disabled. Membership gates each key
+   * (fireball / lightning), not class name.
+   */
+  availableSpells: readonly WizardSpell[];
 };
 
 const GAME_KEY_CODES = new Set([
@@ -79,13 +84,23 @@ function clearGameplayInput(input: InputState): boolean {
   return changed;
 }
 
+/** Spell bound to Digit1 / Digit2 when granted by capabilities. */
+export function spellForSelectHotkey(
+  code: string,
+  availableSpells: readonly WizardSpell[],
+): WizardSpell | null {
+  if (code === 'Digit1' && availableSpells.includes('fireball')) return 'fireball';
+  if (code === 'Digit2' && availableSpells.includes('lightning')) return 'lightning';
+  return null;
+}
+
 export function useKeyboardInput({
   identity,
   inputRef,
   onSelectWizardSpell,
   playerRuntimeRef,
   sendInputNow,
-  spellsEnabled,
+  availableSpells,
 }: UseKeyboardInputOptions) {
   useEffect(() => {
     const updateInput = (key: keyof InputState, val: boolean) => {
@@ -112,11 +127,9 @@ export function useKeyboardInput({
       if (event.code === 'KeyD') changed = updateInput('right', true) || changed;
       if (event.code === 'ShiftLeft') changed = updateInput('sprint', true) || changed;
       if (event.code === 'Space') changed = updateInput('jump', true) || changed;
-      if (spellsEnabled && event.code === 'Digit1') {
-        onSelectWizardSpell('fireball');
-      }
-      if (spellsEnabled && event.code === 'Digit2') {
-        onSelectWizardSpell('lightning');
+      const selectedSpell = spellForSelectHotkey(event.code, availableSpells);
+      if (selectedSpell) {
+        onSelectWizardSpell(selectedSpell);
       }
       if (changed) sendInputNow();
     };
@@ -154,5 +167,5 @@ export function useKeyboardInput({
       window.removeEventListener('keyup', handleKeyUp);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
     };
-  }, [identity, inputRef, onSelectWizardSpell, playerRuntimeRef, sendInputNow, spellsEnabled]);
+  }, [availableSpells, identity, inputRef, onSelectWizardSpell, playerRuntimeRef, sendInputNow]);
 }

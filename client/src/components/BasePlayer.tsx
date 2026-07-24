@@ -396,7 +396,7 @@ export const BasePlayer: React.FC<BasePlayerProps> = memo(({
     playRemoteOneShotAnimation({
       animationNames: ACTION_ANIMATION_NAMES,
       animations,
-      characterClass,
+      capabilities: characterConfig.capabilities,
       currentAnimationRef,
       isLocalPlayer,
       lastPlayedAttackSeqRef,

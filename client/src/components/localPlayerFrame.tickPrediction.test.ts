@@ -164,7 +164,12 @@ function createRuntime() {
   const rotationYRef = { current: 0 };
   const runtime = new LocalPlayerRuntime({
     camera,
-    characterClass: 'knight',
+    capabilities: {
+      melee: true,
+      block: true,
+      spells: [],
+      drinkPotion: true,
+    },
     groupRef: { current: group },
     identityKey: 'local-player',
     jumpAnimationName: 'jump',

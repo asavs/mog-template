@@ -120,8 +120,39 @@ export function getCharacterConfig(characterClass: string | undefined): Characte
   return getCharacterPresentation(characterClass);
 }
 
+/**
+ * Preset-only capabilities from a class/loadout string.
+ * Prefer {@link resolvePlayerCapabilities} for post-join HUD/input gating so
+ * live appearance + equipment grants can update mid-session.
+ */
 export function getCharacterCapabilities(characterClass: string | undefined): ClassCapabilities {
   return getCharacterPresentation(characterClass).capabilities;
+}
+
+/**
+ * Single path for local-player combat UI / hotkey affordances.
+ * Prefer SpacetimeDB appearance + equipment; fall back to character_class
+ * loadout preset when rows are missing (same contract as remotes/presentation).
+ */
+export function resolvePlayerCapabilities(options: {
+  legacyClass?: string | null;
+  appearance?: NetworkAppearanceRow | null;
+  equipment?: readonly NetworkEquipmentRow[] | null;
+}): ClassCapabilities {
+  return getCharacterPresentationFromServer(options).capabilities;
+}
+
+/** True when Digit1/Digit2 spell-select hotkeys should be active. */
+export function hasSpellSelectHotkeys(capabilities: ClassCapabilities): boolean {
+  return capabilities.spells.length > 0;
+}
+
+/** Whether a specific spell may be selected via hotkey from resolved caps. */
+export function canSelectSpell(
+  capabilities: ClassCapabilities,
+  spell: WizardSpell,
+): boolean {
+  return capabilities.spells.includes(spell);
 }
 
 export function listLoadoutPresetIds(): readonly string[] {

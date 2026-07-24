@@ -1,12 +1,14 @@
-import React, { memo, useRef } from 'react';
+import React, { memo, useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BasePlayer, type LocalPlayerProps } from './BasePlayer';
+import { resolvePlayerCapabilities } from './characterConfig';
 import { useLocalPlayerFrameRuntime } from './localPlayerFrame';
 import {
   useLocalPlayerControls,
   type LocalPlayerControlsRuntime,
 } from './useLocalPlayerControls';
+import { useGameState } from '../state/useGameState';
 
 const toVisualYaw = (rotationY: number) => rotationY + Math.PI;
 const LOCAL_CONTROL_ANIMATIONS = {
@@ -32,9 +34,31 @@ export const LocalPlayer: React.FC<LocalPlayerProps> = memo((props) => {
   const paladinBlockRequestedRef = useRef(false);
   const { camera } = useThree();
   const identityKey = props.playerData.identity.toHexString();
+  const { playerAppearances, playerClasses, playerEquipment } = useGameState();
+
+  // Same grant path as HUD hotkeys: appearance + equipment, class/preset fallback.
+  const capabilities = useMemo(() => {
+    const appearanceRow = playerAppearances.get(identityKey);
+    const equipmentRows = playerEquipment.get(identityKey);
+    return resolvePlayerCapabilities({
+      legacyClass: playerClasses.get(identityKey) ?? props.characterClass,
+      appearance: appearanceRow
+        ? {
+            bodyId: appearanceRow.bodyId,
+            scale: appearanceRow.scale,
+            loadoutPreset: appearanceRow.loadoutPreset,
+          }
+        : null,
+      equipment: equipmentRows?.map(row => ({
+        slot: row.slot,
+        itemId: row.itemId,
+      })),
+    });
+  }, [identityKey, playerAppearances, playerClasses, playerEquipment, props.characterClass]);
+
   const localFrameRuntime = useLocalPlayerFrameRuntime({
     camera,
-    characterClass: props.characterClass,
+    capabilities,
     groupRef,
     identityKey,
     jumpAnimationName: 'jump',
@@ -46,7 +70,7 @@ export const LocalPlayer: React.FC<LocalPlayerProps> = memo((props) => {
   useLocalPlayerControls({
     enabled: true,
     animationNames: LOCAL_CONTROL_ANIMATIONS,
-    characterClass: props.characterClass,
+    capabilities,
     controlsRuntimeRef,
     localRotationYRef: localFrameRuntime.localRotationYRef,
     cameraPitchRef: localFrameRuntime.cameraPitchRef,
