@@ -17,6 +17,8 @@ import type { PendingFireballCosmeticCast } from './fireballVisuals';
 
 const GroundTerrain = lazy(() =>
   import('./GroundTerrain').then(m => ({ default: m.GroundTerrain })));
+const CastleCollisionDebug = lazy(() =>
+  import('./CastleCollisionDebug').then(m => ({ default: m.CastleCollisionDebug })));
 const LocalPlayer = lazy(() =>
   import('./LocalPlayer').then(m => ({ default: m.LocalPlayer })));
 const RemotePlayer = lazy(() =>
@@ -186,6 +188,11 @@ export function GameWorld({
       <Suspense fallback={null}>
         <GroundTerrain />
       </Suspense>
+      {QA_GAME_DEBUG_ENABLED && (
+        <Suspense fallback={null}>
+          <CastleCollisionDebug />
+        </Suspense>
+      )}
       <Suspense fallback={null}>
         {combatAndSpellEffects}
       </Suspense>

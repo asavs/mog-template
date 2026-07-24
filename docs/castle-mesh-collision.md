@@ -23,3 +23,7 @@ explicitly quantizes intermediate values.
 The capsule's current elevation and reachable swept contacts choose support on
 the spiral ramps. No system may select a castle surface by taking the highest
 triangle at an X/Z coordinate, because ramp levels overlap.
+
+For in-game inspection, append `?qa` to a client URL (or set `VITE_QA_MODE`)
+to render the exact `CC01` collision triangles as a green wireframe. This is a
+QA-only visualization and is never mounted in normal gameplay.
