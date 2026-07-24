@@ -35,8 +35,10 @@ export function initRapierCastleController(): Promise<void> {
       const asset = castleCollisionAsset();
       const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
       const triMeshFlags = RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES
+        | RAPIER.TriMeshFlags.DELETE_BAD_TOPOLOGY_TRIANGLES
         | RAPIER.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES
-        | RAPIER.TriMeshFlags.DELETE_DUPLICATE_TRIANGLES;
+        | RAPIER.TriMeshFlags.DELETE_DUPLICATE_TRIANGLES
+        | RAPIER.TriMeshFlags.MERGE_DUPLICATE_VERTICES;
       world.createCollider(
         RAPIER.ColliderDesc.trimesh(asset.vertices.slice(), asset.indices.slice(), triMeshFlags),
       );

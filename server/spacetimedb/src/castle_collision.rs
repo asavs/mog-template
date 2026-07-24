@@ -25,7 +25,7 @@ pub struct CastleCollisionData {
 
 static CASTLE_COLLISION: OnceLock<CastleCollisionData> = OnceLock::new();
 
-pub const CAPSULE_SKIN: f32 = 0.002;
+pub const CAPSULE_SKIN: f32 = 0.01;
 /// cos(60 degrees), kept in sync with `client/src/castleController.ts`.
 pub const MIN_WALKABLE_NORMAL_Y: f32 = 0.5;
 pub const GROUND_SNAP_DISTANCE: f32 = 0.35;

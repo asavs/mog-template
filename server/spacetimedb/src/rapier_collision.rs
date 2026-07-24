@@ -116,8 +116,10 @@ fn build_rapier_castle_world() -> Option<RapierCastleWorld> {
         .map(|triangle| [triangle[0], triangle[1], triangle[2]])
         .collect::<Vec<_>>();
     let tri_mesh_flags = TriMeshFlags::FIX_INTERNAL_EDGES
+        | TriMeshFlags::DELETE_BAD_TOPOLOGY_TRIANGLES
         | TriMeshFlags::DELETE_DEGENERATE_TRIANGLES
-        | TriMeshFlags::DELETE_DUPLICATE_TRIANGLES;
+        | TriMeshFlags::DELETE_DUPLICATE_TRIANGLES
+        | TriMeshFlags::MERGE_DUPLICATE_VERTICES;
     let collider = match ColliderBuilder::trimesh_with_flags(vertices, indices, tri_mesh_flags) {
         Ok(builder) => builder.build(),
         Err(error) => {
