@@ -11,3 +11,4 @@ crate-type = ["cdylib"]
 [dependencies]
 spacetimedb = { version = "2.1.0" }
 log = "0.4"
+rapier3d = { version = "0.30.0", features = ["enhanced-determinism"] }

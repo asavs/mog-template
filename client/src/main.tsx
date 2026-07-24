@@ -18,6 +18,9 @@ async function boot() {
     rootEl.textContent = 'Failed to load terrain collision data. Refresh or check that collision assets are deployed.'
     return
   }
+  import('./rapierCastleController').then(({ initRapierCastleController }) => initRapierCastleController()).catch(error => {
+    console.warn('Rapier castle controller unavailable; using current castle collision path.', error)
+  })
 
   createRoot(rootEl).render(
     <StrictMode>
