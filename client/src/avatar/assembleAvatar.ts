@@ -189,7 +189,9 @@ export async function syncAvatarEquipment(
   }
 
   const desiredItems = resolved.equipped.filter(isSocketMeshItem);
-  const desiredKeys = new Map(desiredItems.map(item => [item.id, meshAttachKey(item)]));
+  const desiredKeys = new Map<string, string>(
+    desiredItems.map(item => [item.id, meshAttachKey(item)]),
+  );
 
   // Remove gear that is gone or whose mesh identity changed.
   for (const [id, obj] of [...equipment.entries()]) {
