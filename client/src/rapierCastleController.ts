@@ -38,6 +38,11 @@ export function initRapierCastleController(): Promise<void> {
         RAPIER.ColliderDesc.trimesh(asset.vertices.slice(), asset.indices.slice(), triMeshFlags),
       );
       characterCollider = world.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.5));
+      // Keep the browser KCC setup aligned with the Rust authoritative path:
+      // Rapier scene-query acceleration structures are populated during a step.
+      // Without this initial step the character controller can miss the static
+      // castle trimesh and prediction falls back into server correction jitter.
+      world.step();
       characterController = world.createCharacterController(CASTLE_CAPSULE_SKIN);
       characterController.setUp({ x: 0, y: 1, z: 0 });
       characterController.setSlideEnabled(true);

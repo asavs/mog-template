@@ -7,6 +7,13 @@ import type { NetMetrics } from '../netcode';
 import { setAudioListenerWorldPosition } from '../audio/AudioManager';
 import type { ClassCapabilities } from './characterConfig';
 import { publishFireballAimDebug, vectorDebug as fireballVectorDebug } from '../fireballDebug';
+import {
+  collisionDebugEnabled,
+  collisionInputDebug,
+  collisionNumberDebug,
+  collisionVectorDebug,
+  logCollisionDebug,
+} from '../collisionDebug';
 
 export type MovementAnimationDirection = 'forward' | 'back' | 'left' | 'right';
 
@@ -1201,11 +1208,44 @@ function reconcileLocalPrediction({
   }
 
   const reconciliationError = localPositionRef.current.distanceTo(replayPosition);
-  const preserveLocalVerticalPrediction = shouldPreserveLocalVerticalPrediction({
+  const localVerticalPredictionShouldBePreserved = shouldPreserveLocalVerticalPrediction({
     localMovementState: localMovementStateRef.current,
     localPosition: localPositionRef.current,
     localVerticalVelocity: localVerticalVelocityRef.current,
   });
+  const replayVerticalPredictionShouldBePreserved = shouldClearVerticalCorrection({
+    groundY: groundHeightAt(replayPosition),
+    movementState: replayMovementState,
+    positionY: replayPosition.y,
+    verticalVelocity: replayVerticalVelocity,
+  });
+  const preserveLocalVerticalPrediction = localVerticalPredictionShouldBePreserved
+    && replayVerticalPredictionShouldBePreserved;
+  if (collisionDebugEnabled()) {
+    logCollisionDebug({
+      at: performance.now(),
+      phase: 'reconcile:after-replay',
+      current: collisionVectorDebug(localPositionRef.current),
+      desired: collisionVectorDebug(replayPosition),
+      serverPosition: collisionVectorDebug(serverPosition),
+      correctionDelta: collisionVectorDebug(replayPosition.clone().sub(localPositionRef.current)),
+      visualCorrectionOffset: collisionVectorDebug(visualCorrectionOffsetRef.current),
+      movementState: localMovementStateRef.current ? { ...localMovementStateRef.current } : null,
+      groundY: collisionNumberDebug(groundHeightAt(localPositionRef.current)),
+      verticalVelocityBefore: collisionNumberDebug(localVerticalVelocityRef.current),
+      verticalVelocityAfter: collisionNumberDebug(replayVerticalVelocity),
+      jumpWasPressedBefore: localJumpWasPressedRef.current,
+      jumpWasPressedAfter: replayJumpWasPressed,
+      localClientTick: localClientTickRef.current,
+      localTick: localTickRef.current,
+      acknowledgedClientTick,
+      lastReconciledClientTick: lastReconciledClientTickRef.current,
+      latestServerTick: Number(latestTransform.serverTick),
+      pendingTickCount: predictedTicksRef.current.length,
+      reconciliationError: collisionNumberDebug(reconciliationError),
+      note: `droppedTickCount=${droppedTickCount}; preserveLocalVertical=${preserveLocalVerticalPrediction}; localVerticalPreserve=${localVerticalPredictionShouldBePreserved}; replayVerticalPreserve=${replayVerticalPredictionShouldBePreserved}`,
+    });
+  }
   if (jumpDebugFrame?.trace) {
     pushJumpDebug({
       phase: 'reconcile:after-replay',
@@ -1229,7 +1269,7 @@ function reconcileLocalPrediction({
       droppedTickCount,
       reconciliationError: Number(reconciliationError.toFixed(4)),
       correctionOffsetLength: Number(visualCorrectionOffsetRef.current.length().toFixed(4)),
-      note: `replayPosition=${JSON.stringify(vectorDebug(replayPosition))}; preserveLocalVertical=${preserveLocalVerticalPrediction}`,
+      note: `replayPosition=${JSON.stringify(vectorDebug(replayPosition))}; preserveLocalVertical=${preserveLocalVerticalPrediction}; localVerticalPreserve=${localVerticalPredictionShouldBePreserved}; replayVerticalPreserve=${replayVerticalPredictionShouldBePreserved}`,
     });
   }
   metrics.localCorrectionError = reconciliationError;
@@ -1250,6 +1290,10 @@ function reconcileLocalPrediction({
   }
 
   if (reconciliationError > RECONCILIATION_EPSILON_METERS) {
+    const shouldTraceCollisionCorrection = collisionDebugEnabled();
+    const physicsPosBeforeCorrection = shouldTraceCollisionCorrection
+      ? localPositionRef.current.clone()
+      : null;
     const correctedPosition = replayPosition.clone();
     if (preserveLocalVerticalPrediction) {
       correctedPosition.y = localPositionRef.current.y;
@@ -1267,6 +1311,30 @@ function reconcileLocalPrediction({
     }
     if (visualCorrectionOffsetRef.current.length() > VISUAL_CORRECTION_SNAP_METERS) {
       visualCorrectionOffsetRef.current.set(0, 0, 0);
+    }
+    if (shouldTraceCollisionCorrection && physicsPosBeforeCorrection) {
+      logCollisionDebug({
+        at: performance.now(),
+        phase: 'reconcile:apply-correction',
+        current: collisionVectorDebug(localPositionRef.current),
+        serverPosition: collisionVectorDebug(serverPosition),
+        correctionDelta: collisionVectorDebug(correctedPosition.clone().sub(physicsPosBeforeCorrection)),
+        visualCorrectionOffset: collisionVectorDebug(visualCorrectionOffsetRef.current),
+        movementState: localMovementStateRef.current ? { ...localMovementStateRef.current } : null,
+        groundY: collisionNumberDebug(groundHeightAt(localPositionRef.current)),
+        verticalVelocityAfter: collisionNumberDebug(localVerticalVelocityRef.current),
+        jumpWasPressedAfter: localJumpWasPressedRef.current,
+        localClientTick: localClientTickRef.current,
+        localTick: localTickRef.current,
+        acknowledgedClientTick,
+        lastReconciledClientTick: lastReconciledClientTickRef.current,
+        latestServerTick: Number(latestTransform.serverTick),
+        pendingTickCount: predictedTicksRef.current.length,
+        reconciliationError: collisionNumberDebug(reconciliationError),
+        note: preserveLocalVerticalPrediction
+          ? 'preserved local airborne vertical prediction; applied horizontal correction only'
+          : 'applied full replay correction',
+      });
     }
     if (jumpDebugFrame?.trace) {
       pushJumpDebug({
@@ -1385,6 +1453,32 @@ function snapToServerTransform({
   previousPredictedTickPositionRef.current.copy(localPositionRef.current);
   currentPredictedTickPositionRef.current.copy(localPositionRef.current);
   visualCorrectionOffsetRef.current.set(0, 0, 0);
+
+  if (collisionDebugEnabled()) {
+    const serverPosition = new THREE.Vector3(
+      latestTransform.position.x,
+      latestTransform.position.y,
+      latestTransform.position.z,
+    );
+    logCollisionDebug({
+      at: performance.now(),
+      phase: 'snap:server-transform',
+      input: collisionInputDebug(currentInputRef.current),
+      current: collisionVectorDebug(localPositionRef.current),
+      serverPosition: collisionVectorDebug(serverPosition),
+      visualCorrectionOffset: collisionVectorDebug(visualCorrectionOffsetRef.current),
+      movementState: localMovementStateRef.current ? { ...localMovementStateRef.current } : null,
+      groundY: collisionNumberDebug(groundHeightAt(localPositionRef.current)),
+      verticalVelocityAfter: collisionNumberDebug(localVerticalVelocityRef.current),
+      jumpWasPressedAfter: localJumpWasPressedRef.current,
+      localClientTick: localClientTickRef.current,
+      localTick: localTickRef.current,
+      acknowledgedClientTick: ack.lastProcessedClientTick,
+      latestServerTick: Number(latestTransform.serverTick),
+      pendingTickCount: predictedTicksRef.current.length,
+      note: 'local prediction reset to authoritative server transform',
+    });
+  }
 
   if (jumpDebugFrame?.trace) {
     pushJumpDebug({
