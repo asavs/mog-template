@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { InputState, MovementState } from './generated/types';
 import { isTerrainWalkableAt, terrainHeightAt } from './heightmap';
+import { STATIC_TERRAIN_BLOCKERS } from './terrainCollision';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
   GRAVITY,
@@ -46,10 +47,9 @@ interface Aabb {
   maxZ: number;
 }
 
-// Authored "-col" meshes were converted to broad rectangles and caused
-// false invisible walls in playable terrain. Keep horizontal movement open
-// for now and let the baked heightmap control where the player stands.
-const BLOCKERS: Aabb[] = [];
+// Generated from the dedicated Castle Collision mesh. The same bounds are
+// enforced by the authoritative server.
+const BLOCKERS: readonly Aabb[] = STATIC_TERRAIN_BLOCKERS;
 
 export function isMoving(input: InputState): boolean {
   return isMovingInput(input);

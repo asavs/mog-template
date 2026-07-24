@@ -9,6 +9,7 @@ import {
 } from '../terrainConfig';
 
 const TERRAIN_PATH = publicAssetPath(TERRAIN_GLB_RELATIVE_PATH);
+const CASTLE_COLLISION_MESH_NAME = 'Castle Collision.002';
 
 export function GroundTerrain() {
   const { scene } = useGLTF(TERRAIN_PATH);
@@ -33,6 +34,9 @@ export function GroundTerrain() {
 
     scene.traverse(child => {
       if (child instanceof THREE.Mesh) {
+        if (child.name === CASTLE_COLLISION_MESH_NAME) {
+          child.visible = false;
+        }
         child.receiveShadow = true;
       }
     });

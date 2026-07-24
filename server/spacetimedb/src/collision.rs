@@ -1,5 +1,6 @@
 use crate::common::Vector3;
 use crate::heightmap;
+use crate::terrain_collision;
 
 pub const PLAYER_COLLISION_RADIUS: f32 = 0.45;
 pub const MAX_WALKABLE_SLOPE_DEGREES: f32 = 70.0;
@@ -21,13 +22,8 @@ pub struct Aabb {
     pub max_z: f32,
 }
 
-// Authored "-col" meshes were converted to broad rectangles and caused
-// false invisible walls in playable terrain. Keep horizontal movement open
-// for now and let the baked heightmap control where the player stands.
-const BLOCKERS: &[Aabb] = &[];
-
 pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> Vector3 {
-    resolve_player_movement_against(current, desired, BLOCKERS)
+    resolve_player_movement_against(current, desired, &[])
 }
 
 fn resolve_player_movement_against(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> Vector3 {
@@ -80,7 +76,20 @@ fn collides_with_blockers(position: &Vector3, blockers: &[Aabb]) -> bool {
 }
 
 fn can_move_to(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> bool {
-    !collides_with_blockers(desired, blockers) && is_terrain_step_walkable(current, desired)
+    !collides_with_static_blockers(desired)
+        && !collides_with_blockers(desired, blockers)
+        && is_terrain_step_walkable(current, desired)
+}
+
+fn collides_with_static_blockers(position: &Vector3) -> bool {
+    terrain_collision::STATIC_TERRAIN_BLOCKERS
+        .iter()
+        .any(|&(min_x, max_x, min_z, max_z)| {
+            position.x >= min_x - PLAYER_COLLISION_RADIUS
+                && position.x <= max_x + PLAYER_COLLISION_RADIUS
+                && position.z >= min_z - PLAYER_COLLISION_RADIUS
+                && position.z <= max_z + PLAYER_COLLISION_RADIUS
+        })
 }
 
 pub fn is_terrain_step_walkable(current: &Vector3, desired: &Vector3) -> bool {
@@ -167,6 +176,25 @@ mod tests {
         };
 
         assert_eq!(resolve_player_movement(&current, &desired), desired);
+    }
+
+    #[test]
+    fn blocks_generated_castle_collision() {
+        let &(min_x, _max_x, min_z, max_z) = terrain_collision::STATIC_TERRAIN_BLOCKERS
+            .first()
+            .expect("generated map must include the castle collider");
+        let current = Vector3 {
+            x: min_x - PLAYER_COLLISION_RADIUS - 0.1,
+            y: 4.0,
+            z: (min_z + max_z) / 2.0,
+        };
+        let desired = Vector3 {
+            x: min_x,
+            y: 4.0,
+            z: current.z,
+        };
+
+        assert_eq!(resolve_player_movement(&current, &desired), current);
     }
 
     #[test]
