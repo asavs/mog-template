@@ -83,7 +83,11 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
   if (!url.searchParams.has('qa')) url.searchParams.set('qa', '');
 
   const t0 = Date.now();
-  await page.goto(url.toString(), { waitUntil: 'networkidle' });
+  // networkidle never settles with live SpacetimeDB websockets on preview/prod.
+  await page.goto(url.toString(), {
+    waitUntil: 'domcontentloaded',
+    timeout: Math.max(cfg.joinTimeoutMs, 60_000),
+  });
   await page.waitForSelector('#username', { timeout: cfg.joinTimeoutMs });
   const tJoinScreen = Date.now();
 
@@ -96,6 +100,7 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
   await page.getByRole('button', { name: 'Join Game' }).click();
   await page.waitForFunction(
     () => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug,
+    undefined,
     { timeout: cfg.joinTimeoutMs },
   );
   const tPlayable = Date.now();
@@ -368,18 +373,39 @@ export async function runPerf(browser: Browser, cfg: SessionConfig): Promise<Per
   const issues: string[] = [];
   const notes: string[] = [];
 
-  console.log('[perf] cold-load (wizard, paladin)');
-  runs.push(await runColdLoad(browser, cfg, 'wizard'));
-  runs.push(await runColdLoad(browser, cfg, 'paladin'));
+  // Optional filter: QA_PERF_SCENARIOS=cold-load,first-cast (default: all).
+  const wanted = new Set(
+    (process.env.QA_PERF_SCENARIOS ?? 'cold-load,first-cast,player-join,remote-motion')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
 
-  console.log('[perf] first-cast (wizard: fireball×2, lightning×2)');
-  runs.push(await runFirstCast(browser, cfg));
+  async function runScenario(name: string, fn: () => Promise<RunData[] | RunData>) {
+    if (!wanted.has(name)) {
+      console.log(`[perf] skip ${name} (not in QA_PERF_SCENARIOS)`);
+      return;
+    }
+    console.log(`[perf] ${name}`);
+    try {
+      const result = await fn();
+      if (Array.isArray(result)) runs.push(...result);
+      else runs.push(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      issues.push(`${name}: ${message}`);
+      console.error(`[perf] ${name} FAILED: ${message}`);
+      // Continue remaining scenarios so cold-load / first-cast reports still land.
+    }
+  }
 
-  console.log('[perf] player-join (bot A wizard, bot B paladin)');
-  runs.push(...(await runPlayerJoin(browser, cfg, notes)));
-
-  console.log('[perf] remote-motion (bot B walks, bot A observes)');
-  runs.push(...(await runRemoteMotion(browser, cfg, notes)));
+  await runScenario('cold-load', async () => [
+    await runColdLoad(browser, cfg, 'wizard'),
+    await runColdLoad(browser, cfg, 'paladin'),
+  ]);
+  await runScenario('first-cast', async () => [await runFirstCast(browser, cfg)]);
+  await runScenario('player-join', async () => runPlayerJoin(browser, cfg, notes));
+  await runScenario('remote-motion', async () => runRemoteMotion(browser, cfg, notes));
 
   return { runs, issues, notes };
 }

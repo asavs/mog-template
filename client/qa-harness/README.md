@@ -42,6 +42,25 @@ Each run produces these artifacts in `runs/`:
 A run is also checked against a checked-in baseline (see "Baseline
 regression checks" below) for a real pass/fail outcome.
 
+## Avatar equip wave — what the harness covers (and what it doesn't)
+
+| Area | Harness coverage | Notes |
+|------|------------------|--------|
+| **Equip / unequip mid-session** | Yes — `equip_wand`, `unequip_main_hand`, `equip_sword`, `cast_after_equip_wand` | Asserts inventory `data-qa-*` **and** authority rows on `window.__qaEquipment` |
+| **Acolyte preset** | Join + capability + equip + `baselines/acolyte.json` when captured | Capture/update: `QA_CLASSES=acolyte npm run qa:baseline:update` |
+| **Wand cast grants** | Yes — equip wand then re-center mouse, re-lock pointer, Digit1 cast | Inventory clicks stopPropagation so equip does not fire a stray slash/cast |
+| **Duel (2-bot HP)** | Still wizard → paladin topology | Interaction topology is fixed; multi-preset duel is a separate experiment |
+| **Partial reassemble** | Unit tests only (`assembleAvatar` / binding) | Browser harness cannot cheaply assert body mesh reuse; leave that to vitest |
+
+### Pointer lock vs inventory (why stopPropagation)
+
+Combat input listens on **`document`** (`useLocalPlayerControls`): any bubbled
+`click` / `mousedown` calls `requestPointerLock` and may slash/cast/block using
+**current** capabilities (equipment subscription is async). Inventory UI must
+`stopPropagation` so equip/unequip is side-effect free. After an equip click the
+virtual mouse is still over the panel — cast phases re-center (`mouse.move`) and
+re-engage lock before Digit1 + canvas click.
+
 ## Targeting a PR's preview VM (`--pr`)
 
 After a PR is approved by a trusted reviewer with green CI, the Preview VM
@@ -179,9 +198,13 @@ Useful env vars:
   generated capability phases run in both tiers. An explicitly named phase in
   `QA_PHASES` always runs regardless of tier.
 - `QA_CLASSES=wizard` — run only named loadout presets (default: **every
-  catalog preset**, e.g. `wizard,paladin` and `acolyte` when that preset
-  exists). Join UI clicks the catalog **label** button (not a hardcoded
-  wizard/paladin branch).
+  catalog preset**, e.g. `wizard,paladin,acolyte`). Join UI clicks the
+  catalog **label** button. Recommended smoke set after avatar equip wave:
+  `QA_CLASSES=wizard,paladin,acolyte QA_PHASES=movement,combat,matrix`.
+- Equip matrix phases (`equip_wand`, `cast_after_equip_wand`,
+  `unequip_main_hand`, `equip_sword`) drive the Inventory panel via
+  `data-qa-*` hooks — they run for every class (paladin can equip wand and
+  cast). Select with `QA_PHASES=matrix` or by name.
 - `QA_RUN_LABEL=before-refactor` — tag output filenames, e.g. for diffing
   `before-refactor` vs `after-refactor` runs.
 - `QA_HEADLESS=1` — run headless (movement only is reliable; see caveat above).

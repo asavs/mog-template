@@ -1,0 +1,1622 @@
+{
+  "walk_forward": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.799999999999998,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 1,
+        "mean": 0.0847457627118644,
+        "first": 0,
+        "last": 1
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "walk_forward",
+    "frames": 59,
+    "pathLength": 5.563362777013122,
+    "netDisplacement": 5.563362777013123,
+    "maxFrameDelta": 0.6954203713060446,
+    "meanCorrErr": 0.09429432369866489,
+    "stddevCorrErr": 0.2401250462023731,
+    "meanOffset": 0.26941488292450294,
+    "stddevOffset": 0.31017656220271517
+  },
+  "walk_backward": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000071,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 1,
+        "mean": 0.004310344827586207,
+        "first": 1,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "walk_backward",
+    "frames": 232,
+    "pathLength": 24.78648820774265,
+    "netDisplacement": 3.4771078806378735,
+    "maxFrameDelta": 7.973954392633123,
+    "meanCorrErr": 0.36763951058660505,
+    "stddevCorrErr": 1.6159785332433978,
+    "meanOffset": 0.003162227046648471,
+    "stddevOffset": 0.008498921243158255
+  },
+  "strafe_left": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000076,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "strafe_left",
+    "frames": 250,
+    "pathLength": 15.199272403415348,
+    "netDisplacement": 12.049212156195523,
+    "maxFrameDelta": 1.3915585246746054,
+    "meanCorrErr": 0.06188858944510138,
+    "stddevCorrErr": 0.23567606113394227,
+    "meanOffset": 0.08042150189733684,
+    "stddevOffset": 0.18571862510720655
+  },
+  "strafe_right": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000076,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "strafe_right",
+    "frames": 249,
+    "pathLength": 14.174928810599784,
+    "netDisplacement": 13.263333083554855,
+    "maxFrameDelta": 0.7987800569688943,
+    "meanCorrErr": 0.03996460026371185,
+    "stddevCorrErr": 0.15927349599402824,
+    "meanOffset": 0.05888931979981216,
+    "stddevOffset": 0.1537440007251493
+  },
+  "walk_forward_left": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000054,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "walk_forward_left",
+    "frames": 160,
+    "pathLength": 8.90968848390066,
+    "netDisplacement": 7.065595968711049,
+    "maxFrameDelta": 0.8423948565114021,
+    "meanCorrErr": 0.07607076100000632,
+    "stddevCorrErr": 0.20476437449176133,
+    "meanOffset": 0.046056444424176654,
+    "stddevOffset": 0.08290703721564753
+  },
+  "walk_forward_right": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000065,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "walk_forward_right",
+    "frames": 195,
+    "pathLength": 21.2399136144543,
+    "netDisplacement": 14.699260557769957,
+    "maxFrameDelta": 3.640554392993675,
+    "meanCorrErr": 0.29141340098928475,
+    "stddevCorrErr": 0.7391022931478931,
+    "meanOffset": 0.07207595107416592,
+    "stddevOffset": 0.1499714307140037
+  },
+  "sprint_forward": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000027,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "sprint_forward",
+    "frames": 112,
+    "pathLength": 33.799542067688016,
+    "netDisplacement": 33.316914248176786,
+    "maxFrameDelta": 8.938306422030461,
+    "meanCorrErr": 1.301108388983853,
+    "stddevCorrErr": 2.312328846501889,
+    "meanOffset": 0.23535874479168353,
+    "stddevOffset": 0.27408558430458385
+  },
+  "staccato_forward": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.7999999999999894,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "staccato_forward",
+    "frames": 436,
+    "pathLength": 20.687065804504826,
+    "netDisplacement": 12.11486249349762,
+    "maxFrameDelta": 1.25882803800007,
+    "meanCorrErr": 0.39849362855963427,
+    "stddevCorrErr": 0.36666583129519786,
+    "meanOffset": 0.19890987120769774,
+    "stddevOffset": 0.18615876188879082
+  },
+  "direction_change": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000043,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "direction_change",
+    "frames": 306,
+    "pathLength": 20.382351498988964,
+    "netDisplacement": 4.204534091359051,
+    "maxFrameDelta": 1.1685104525087495,
+    "meanCorrErr": 0.15356880281424562,
+    "stddevCorrErr": 0.3108463156013736,
+    "meanOffset": 0.1276066440088929,
+    "stddevOffset": 0.16710639998179014
+  },
+  "sprint_toggle": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.7999999999999903,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "sprint_toggle",
+    "frames": 425,
+    "pathLength": 25.490570143660662,
+    "netDisplacement": 20.906099351771342,
+    "maxFrameDelta": 1.051665647792977,
+    "meanCorrErr": 0.14218953503506024,
+    "stddevCorrErr": 0.2622338615797103,
+    "meanOffset": 0.16180181046522069,
+    "stddevOffset": 0.26476281467804635
+  },
+  "sprint_strafe": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "sprint_strafe",
+    "frames": 335,
+    "pathLength": 12.578452264519777,
+    "netDisplacement": 12.552931539150759,
+    "maxFrameDelta": 1.2308139530134916,
+    "meanCorrErr": 0.05115283588949569,
+    "stddevCorrErr": 0.2317639357577922,
+    "meanOffset": 0.038846854683720226,
+    "stddevOffset": 0.17448610221412392
+  },
+  "circle_run": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000052,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "circle_run",
+    "frames": 157,
+    "pathLength": 99.48054618108023,
+    "netDisplacement": 76.03784190612004,
+    "maxFrameDelta": 36.27952843876054,
+    "meanCorrErr": 1.778974192163671,
+    "stddevCorrErr": 5.56024225952473,
+    "meanOffset": 0.10715173857213699,
+    "stddevOffset": 0.12471642029019796
+  },
+  "jump_idle": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000054,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "jump_idle",
+    "frames": 159,
+    "pathLength": 4.145068674083835,
+    "netDisplacement": 0.026848865971856654,
+    "maxFrameDelta": 0.5100000000000051,
+    "meanCorrErr": 0.25063455761313613,
+    "stddevCorrErr": 0.1138219495650447,
+    "meanOffset": 0.005249495149538888,
+    "stddevOffset": 0.008861820068500439
+  },
+  "jump_while_moving": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000058,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "jump_while_moving",
+    "frames": 176,
+    "pathLength": 10.53550336466259,
+    "netDisplacement": 6.666886779488918,
+    "maxFrameDelta": 0.6871984088279609,
+    "meanCorrErr": 0.3090823132395337,
+    "stddevCorrErr": 0.2169147949903507,
+    "meanOffset": 0.1306139587523447,
+    "stddevOffset": 0.11490084669456452
+  },
+  "jump_at_direction_change": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000071,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "jump_at_direction_change",
+    "frames": 226,
+    "pathLength": 11.105994253228442,
+    "netDisplacement": 6.188999461211992,
+    "maxFrameDelta": 0.7086353081804454,
+    "meanCorrErr": 0.09954999868462659,
+    "stddevCorrErr": 0.12952182404490864,
+    "meanOffset": 0.09507420345946581,
+    "stddevOffset": 0.09391034594465758
+  },
+  "lag_spike_walk_forward": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000052,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "lag_spike_walk_forward",
+    "frames": 301,
+    "pathLength": 9.615915380577182,
+    "netDisplacement": 8.706360537746187,
+    "maxFrameDelta": 0.30306269490929866,
+    "meanCorrErr": 0.0690212853397083,
+    "stddevCorrErr": 0.12672661217195175,
+    "meanOffset": 0.05877817043446772,
+    "stddevOffset": 0.09393785170917876
+  },
+  "attack_slash": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000047,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 1,
+        "mean": 0.034013605442176874,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "attack_slash",
+    "frames": 147,
+    "pathLength": 0,
+    "netDisplacement": 0,
+    "maxFrameDelta": 0,
+    "meanCorrErr": 0.3002147645111017,
+    "stddevCorrErr": 2.2280373399391324e-16,
+    "meanOffset": 0.0019571669645897347,
+    "stddevOffset": 0.004096939707171181
+  },
+  "block_hold": {
+    "channels": {
+      "config_walkSpeed": {
+        "min": 6,
+        "max": 6,
+        "mean": 6,
+        "first": 6,
+        "last": 6
+      },
+      "config_sprintMultiplier": {
+        "min": 1.8,
+        "max": 1.8,
+        "mean": 1.8000000000000063,
+        "first": 1.8,
+        "last": 1.8
+      },
+      "combatFeedbackEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "fireballProjectiles": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "hp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "isDead": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "isJoined": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "lightningEffects": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      },
+      "maxHp": {
+        "min": 100,
+        "max": 100,
+        "mean": 100,
+        "first": 100,
+        "last": 100
+      },
+      "playersOnline": {
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "first": 1,
+        "last": 1
+      },
+      "remoteCount": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "first": 0,
+        "last": 0
+      }
+    },
+    "phase": "block_hold",
+    "frames": 186,
+    "pathLength": 0,
+    "netDisplacement": 0,
+    "maxFrameDelta": 0,
+    "meanCorrErr": 0.30021476451110213,
+    "stddevCorrErr": 6.67931750068816e-16,
+    "meanOffset": 4.688465769957194e-10,
+    "stddevOffset": 1.1342999141691635e-9
+  }
+}

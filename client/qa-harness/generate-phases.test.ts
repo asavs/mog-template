@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { generateCapabilityPhases, generateMovementMatrix } from './generate-phases';
+import {
+  classesWithSpell,
+  generateCapabilityPhases,
+  generateEquipPhases,
+  generateMovementMatrix,
+} from './generate-phases';
 import {
   GENERATED_CAPABILITY_PHASES,
+  GENERATED_EQUIP_PHASES,
   HANDWRITTEN_PHASES,
   PHASES,
   selectPhases,
@@ -71,6 +77,49 @@ describe('generateCapabilityPhases', () => {
     expect(GENERATED_CAPABILITY_PHASES.length).toBeGreaterThan(0);
     for (const capabilityPhase of GENERATED_CAPABILITY_PHASES) {
       expect(capabilityPhase.expect).toEqual({ kind: 'stationary' });
+    }
+  });
+
+  it('includes acolyte (and wizard) on fireball capability phases when catalog has them', () => {
+    const fireball = GENERATED_CAPABILITY_PHASES.find((p) => p.name === 'gen_spell_fireball');
+    expect(fireball).toBeDefined();
+    const classes = fireball?.classes ?? [];
+    expect(classes).toContain('wizard');
+    if (classesWithSpell('fireball').includes('acolyte')) {
+      expect(classes).toContain('acolyte');
+    }
+  });
+});
+
+describe('generateEquipPhases', () => {
+  it('registers equip grant-flip phases in order', () => {
+    const names = generateEquipPhases().map((p) => p.name);
+    expect(names).toEqual([
+      'equip_wand',
+      'cast_after_equip_wand',
+      'equip_sword',
+      'slash_after_equip_sword',
+      'unequip_main_hand',
+    ]);
+    expect(GENERATED_EQUIP_PHASES.map((p) => p.name)).toEqual(names);
+  });
+
+  it('applies to every class (no classes filter) so paladin can equip into cast', () => {
+    for (const phase of GENERATED_EQUIP_PHASES) {
+      expect(phase.classes).toBeUndefined();
+      expect(phase.expect).toEqual({ kind: 'stationary' });
+    }
+  });
+
+  it('is selected under matrix group and for acolyte/wizard/paladin', () => {
+    for (const cls of ['wizard', 'paladin', 'acolyte'] as const) {
+      const selected = selectPhases('matrix', cls, 'smoke');
+      const names = new Set(selected.map((p) => p.name));
+      expect(names.has('equip_wand')).toBe(true);
+      expect(names.has('cast_after_equip_wand')).toBe(true);
+      expect(names.has('equip_sword')).toBe(true);
+      expect(names.has('slash_after_equip_sword')).toBe(true);
+      expect(names.has('unequip_main_hand')).toBe(true);
     }
   });
 });

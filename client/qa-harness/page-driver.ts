@@ -176,14 +176,23 @@ export async function joinAs(session: BotSession, cfg: SessionConfig) {
   const url = new URL(cfg.clientUrl);
   if (!url.searchParams.has('qa')) url.searchParams.set('qa', '');
   if (cfg.stdbUrl) url.searchParams.set('stdb', cfg.stdbUrl);
-  await page.goto(url.toString(), { waitUntil: 'networkidle' });
+  // Prefer domcontentloaded over networkidle: live SpacetimeDB WebSockets keep
+  // the network "busy" forever on preview/prod, so networkidle never resolves.
+  await page.goto(url.toString(), {
+    waitUntil: 'domcontentloaded',
+    timeout: Math.max(cfg.joinTimeoutMs, 60_000),
+  });
   await page.waitForSelector('#username', { timeout: cfg.joinTimeoutMs });
   await page.locator('#username').fill(`QaBot-${characterClass}-${Date.now()}`);
   await page
     .getByRole('button', { name: joinPresetButtonLabel(characterClass), exact: true })
     .click();
   await page.getByRole('button', { name: 'Join Game' }).click();
-  await page.waitForFunction(() => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug, { timeout: cfg.joinTimeoutMs });
+  await page.waitForFunction(
+    () => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug,
+    undefined,
+    { timeout: cfg.joinTimeoutMs },
+  );
 }
 
 export async function acquirePointerLock(page: Page) {
