@@ -31,7 +31,7 @@ const BINDINGS = {
   'motion.react_hit': [UAL1, 'Hit_Chest'],
   'motion.react_death': [UAL1, 'Death01'],
   // actions
-  'motion.act_hurl_1h': [UAL1, 'Spell_Simple_Shoot'],
+  'motion.act_hurl_1h': [UAL2, 'OverhandThrow'],
   'motion.act_swing_1h': [UAL1, 'Sword_Attack'],
   'motion.act_slam_2h': [UAL2, 'Sword_Heavy_Combo'],
   'motion.act_guard_hold': [UAL2, 'Sword_Block'],
