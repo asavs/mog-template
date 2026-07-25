@@ -17,8 +17,7 @@
  * gaits are procedural permanently unless we synthesise them.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
+import { useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
 import { OVERLAY_BANDS, type AnimationBand } from '../anim';
@@ -33,15 +32,9 @@ import {
   type StanceKey,
 } from '../content';
 import { buildCatalog, type Catalog, type CatalogEntry } from './catalog';
-import { DRILLS, drillById } from './drills';
-import { SandboxScenery } from './SandboxScenery';
-import { DEFAULT_SCENE, SCENES, sceneById } from './scenes';
-import {
-  SandboxStage,
-  type DrillStepStatus,
-  type PlaybackMode,
-  type StageReport,
-} from './SandboxStage';
+import { Scenery } from '../stage/Scenery';
+import { DEFAULT_SCENE, SCENES, sceneById } from '../stage/scenes';
+import { SandboxStage, type PlaybackMode, type StageReport } from './SandboxStage';
 import {
   exportBindings,
   loadMarks,
@@ -89,11 +82,6 @@ export function Sandbox() {
   const [maskWidth, setMaskWidth] = useState<MaskWidth>('full');
   const [baseLocomotion, setBaseLocomotion] = useState<string>(MOTION_LOCOMOTION.idle);
   const [stance, setStance] = useState<StanceKey | null>(null);
-  const [drillId, setDrillId] = useState<string>(DRILLS[0]?.id ?? '');
-  const [drillStep, setDrillStep] = useState<{ index: number; status: DrillStepStatus }>({
-    index: -1,
-    status: 'ok',
-  });
   const [movement, setMovement] = useState(0);
   const [rightHand, setRightHand] = useState<PropKey | null>(null);
   const [leftHand, setLeftHand] = useState<PropKey | null>(null);
@@ -123,45 +111,7 @@ export function Sandbox() {
     [catalog, selectedId],
   );
 
-  const drill = useMemo(() => (mode === 'drill' ? drillById(drillId) : null), [mode, drillId]);
-
-  // A drill brings its own set. Overriding rather than merely defaulting keeps
-  // the routine reproducible — a step numbered in a report means the same thing
-  // to both of us, which it would not if the room were whatever was last picked.
-  const scene = useMemo(
-    () => sceneById(drill?.sceneId ?? sceneId),
-    [drill, sceneId],
-  );
-
-  /**
-   * Every library clip by name.
-   *
-   * The controller resolves motions by key, and most of what a drill exercises
-   * is bound to no key — the sword chain, the recoveries, the shield work. So
-   * the drill reaches them by the name they carry in the pack.
-   */
-  const clipsByName = useMemo(() => {
-    const byName = new Map<string, THREE.AnimationClip>();
-    for (const entry of catalog?.entries ?? []) {
-      if (entry.origin === 'library') byName.set(entry.name, entry.clip);
-    }
-    return byName;
-  }, [catalog]);
-
-  const currentStep = drill?.steps[drillStep.index] ?? null;
-
-  // Keep the running step in view. Twenty-odd rows do not fit, and a routine you
-  // have to scroll to follow is one you end up not reading.
-  const activeStepRef = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    activeStepRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [drillStep.index]);
-
-  // A drill fills its own hands, from the stance it wears. Judging sword work
-  // with an empty fist is the mistake the prop import exists to stop.
-  const drillSlots = drill?.stance ? STANCES[drill.stance].slots : [];
-  const drillRightHand = drillSlots.find(slot => slot.socket === SOCKETS.rightHand)?.prop ?? null;
-  const drillLeftHand = drillSlots.find(slot => slot.socket === SOCKETS.leftHand)?.prop ?? null;
+  const scene = useMemo(() => sceneById(sceneId), [sceneId]);
 
   /**
    * Keys nothing resolves. Six of these are expected and deliberate — neither
@@ -377,7 +327,7 @@ export function Sandbox() {
           <shadowMaterial opacity={0.35} />
         </mesh>
 
-        <SandboxScenery scene={scene} />
+        <Scenery scene={scene} />
 
         <SandboxStage
           entry={selected}
@@ -387,12 +337,9 @@ export function Sandbox() {
           bands={MASK_BANDS[maskWidth]}
           baseLocomotion={baseLocomotion}
           stance={stance}
-          drill={drill}
-          clipsByName={clipsByName}
-          onDrillStep={(index, status) => setDrillStep({ index, status })}
           movement={movement}
-          rightHand={drill ? drillRightHand : rightHand}
-          leftHand={drill ? drillLeftHand : leftHand}
+          rightHand={rightHand}
+          leftHand={leftHand}
           playToken={playToken}
           onReport={setReport}
         />
@@ -422,7 +369,7 @@ export function Sandbox() {
         )}
 
         <div className="row row--tabs">
-          {(['raw', 'layered', 'drill'] as const).map(value => (
+          {(['raw', 'layered'] as const).map(value => (
             <button
               key={value}
               type="button"
@@ -435,61 +382,10 @@ export function Sandbox() {
         </div>
         <p className="hint">
           {mode === 'raw'
-            && 'Clip alone, no rules, no gait underneath. What IS this animation.'}
-          {mode === 'layered'
-            && 'Through the real controller, over a gait. Does it still read.'}
-          {mode === 'drill'
-            && 'A scripted routine through everything a loadout needs. Does the set hold together.'}
+            ? 'Clip alone, no rules, no gait underneath. What IS this animation.'
+            : 'Through the real controller, over a gait. Does it still read.'}
         </p>
 
-        {mode === 'drill' && (
-          <>
-            <label className="field">
-              <span>Routine</span>
-              <select value={drillId} onChange={event => setDrillId(event.target.value)}>
-                {DRILLS.map(option => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {drill && (
-              <>
-                <p className="hint">{drill.note}</p>
-                <ol className="drill">
-                  {drill.steps.map((step, index) => (
-                    <li
-                      key={`${step.label}-${index}`}
-                      ref={index === drillStep.index ? activeStepRef : undefined}
-                      className={index === drillStep.index ? 'is-active' : ''}
-                    >
-                      <span className="drill__label">{step.label}</span>
-                      <span className="drill__combo">
-                        {step.gait.replace(/^motion\.loco_/, '')}
-                        {step.action ? ` + ${step.action} · ${step.width ?? 'full'}` : ' · gait only'}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                {currentStep && (
-                  <p className={drillStep.status === 'ok' ? 'hint' : 'warn'}>
-                    {drillStep.status === 'ok'
-                      && (currentStep.note
-                        ?? `step ${drillStep.index + 1} of ${drill.steps.length}`)}
-                    {drillStep.status === 'no-clip'
-                      && `step ${drillStep.index + 1}: no clip named ${currentStep.action} — `
-                        + 'the pack is not staged, or the name is wrong. Nothing is playing.'}
-                    {drillStep.status === 'refused'
-                      && `step ${drillStep.index + 1} was REFUSED — the layer was still owned by `
-                        + 'the previous action, so what you are watching is that one.'}
-                  </p>
-                )}
-              </>
-            )}
-          </>
-        )}
 
         <div className="row">
           <button type="button" onClick={() => setPlayToken(token => token + 1)}>

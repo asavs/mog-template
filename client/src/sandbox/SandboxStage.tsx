@@ -43,11 +43,8 @@ import {
   type StanceKey,
 } from '../content';
 import type { CatalogEntry } from './catalog';
-import { stepSeconds, type Drill } from './drills';
 
-export type PlaybackMode = 'raw' | 'layered' | 'drill';
-
-export type DrillStepStatus = 'ok' | 'no-clip' | 'refused';
+export type PlaybackMode = 'raw' | 'layered';
 
 export type StageReport = {
   bodyLoaded: boolean;
@@ -76,26 +73,6 @@ export type SandboxStageProps = {
    * auditioning them individually cannot answer it, and nothing else here does.
    */
   stance: StanceKey | null;
-  /**
-   * Routine to run, in drill mode. Its own stance overrides the one above,
-   * because a drill is a whole loadout rather than a setting.
-   */
-  drill: Drill | null;
-  /**
-   * Every library clip by name, so a drill can fire clips nobody has bound yet
-   * — which is most of what a drill is for.
-   */
-  clipsByName: ReadonlyMap<string, THREE.AnimationClip>;
-  /**
-   * Which step is running, and whether it actually started.
-   *
-   * The status is not decoration. A step that does not play looks exactly like
-   * a bad animation — the character carries on doing the previous thing while
-   * the label claims otherwise — and the two causes want different fixes, so
-   * they are reported apart. `no-clip` means the name is wrong or the pack is
-   * not staged; `refused` means the layer was still owned by the last action.
-   */
-  onDrillStep?: (index: number, status: DrillStepStatus) => void;
   /** Fraction of move speed the action permits; narrows the overlay above 0. */
   movement: number;
   rightHand: PropKey | null;
@@ -115,9 +92,6 @@ export function SandboxStage({
   bands,
   baseLocomotion,
   stance,
-  drill,
-  clipsByName,
-  onDrillStep,
   movement,
   rightHand,
   leftHand,
@@ -190,7 +164,7 @@ export function SandboxStage({
   useEffect(() => {
     if (!body) return;
 
-    if (mode !== 'raw') {
+    if (mode === 'layered') {
       mixerRef.current?.stopAllAction();
       const controller = new AnimationController(
         body.root,
@@ -216,49 +190,25 @@ export function SandboxStage({
     return undefined;
   }, [body, mode]);
 
-  // --- library clips --------------------------------------------------------
-  // A drill fires clips by their library name, most of which are bound to no
-  // key at all — which is rather the point of running one.
-  useEffect(() => {
-    for (const [name, clip] of clipsByName) clipsRef.current.set(name, clip);
-  }, [clipsByName]);
-
   // --- stance ---------------------------------------------------------------
   // Declared after the driver effect so the controller exists by the time this
   // runs, and keyed on `mode` as well, so a controller rebuilt by a mode switch
-  // re-adopts the pose rather than standing there unarmed. A drill brings its
-  // own, because a drill is a whole loadout rather than a setting.
-  const activeStance = mode === 'drill' ? drill?.stance ?? null : stance;
+  // re-adopts the pose rather than standing there unarmed.
   useEffect(() => {
-    if (mode === 'raw') return;
-    controllerRef.current?.setStance(
-      activeStance === null ? null : STANCES[activeStance].poses,
-    );
-  }, [body, mode, activeStance]);
+    if (mode !== 'layered') return;
+    controllerRef.current?.setStance(stance === null ? null : STANCES[stance].poses);
+  }, [body, mode, stance]);
 
   // --- gait -----------------------------------------------------------------
   // Its own effect, not part of playback, so the gait runs with nothing
   // selected. A stance has to be judged against a walk as much as against an
   // attack — that is the entire claim a stance makes, that one pose covers idle
   // and walk and run — and requiring a clip selection to see one moving would
-  // hide the half that matters. In drill mode the steps own the gait instead.
+  // hide the half that matters.
   useEffect(() => {
     if (mode !== 'layered') return;
     controllerRef.current?.setLocomotion(baseLocomotion ?? '');
   }, [body, mode, baseLocomotion]);
-
-  // --- drill ----------------------------------------------------------------
-  const drillRef = useRef({ index: -1, elapsed: 0 });
-  const onDrillStepRef = useRef(onDrillStep);
-  useEffect(() => {
-    onDrillStepRef.current = onDrillStep;
-  });
-
-  // Start from the top whenever the routine or the body changes, so a run is
-  // the same run every time and a step can be reported by its number.
-  useEffect(() => {
-    drillRef.current = { index: -1, elapsed: 0 };
-  }, [body, mode, drill]);
 
   // --- play ----------------------------------------------------------------
   useEffect(() => {
@@ -337,51 +287,8 @@ export function SandboxStage({
   }, [body, rightHand, leftHand]);
 
   useFrame((_, delta) => {
-    if (mode === 'raw') {
-      mixerRef.current?.update(delta);
-      return;
-    }
-
-    const controller = controllerRef.current;
-    if (mode === 'drill' && drill && controller) {
-      const state = drillRef.current;
-      const current = drill.steps[state.index];
-      const dwell = current
-        ? stepSeconds(current, clipsByName.get(current.action ?? '')?.duration ?? null)
-        : 0;
-
-      state.elapsed += delta;
-      if (state.index < 0 || state.elapsed >= dwell) {
-        // Wraps, so a routine left running loops rather than ending on whatever
-        // its last step happened to be.
-        state.index = (state.index + 1) % drill.steps.length;
-        state.elapsed = 0;
-
-        const step = drill.steps[state.index];
-        controller.setLocomotion(step.gait);
-
-        let status: DrillStepStatus = 'ok';
-        if (step.action) {
-          const width = step.width ?? 'full';
-          if (!clipsByName.has(step.action)) {
-            status = 'no-clip';
-          } else {
-            const played = width === 'full'
-              ? controller.playAbility(step.action, { upperBodyOnly: false })
-              : controller.playAbility(step.action, {
-                upperBodyOnly: true,
-                // Above zero narrows the claim to the arms and leaves the lower
-                // spine to the gait. See `drills.ts`.
-                movement: width === 'arms' ? 0.8 : 0,
-              });
-            if (!played) status = 'refused';
-          }
-        }
-        onDrillStepRef.current?.(state.index, status);
-      }
-    }
-
-    controller?.update(delta);
+    if (mode === 'layered') controllerRef.current?.update(delta);
+    else mixerRef.current?.update(delta);
   });
 
   return <group ref={groupRef} />;

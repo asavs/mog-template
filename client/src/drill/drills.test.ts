@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_MOTION_KEYS, STANCES } from '../content';
 import { DRILLS, stepSeconds, STEP_TAIL_SECONDS } from './drills';
-import { SCENES } from './scenes';
+import { SCENES } from '../stage/scenes';
 
 const WIDTHS = new Set(['full', 'torso', 'arms']);
 

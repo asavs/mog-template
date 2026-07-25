@@ -1,5 +1,5 @@
 /**
- * Puts a scene's props in the world.
+ * Puts a scene's props in the world. Shared by the sandbox and the drill room.
  *
  * Everything here comes through the same `resolveProp` the hands use, so a
  * barrel and a sword are the same kind of thing to this component and neither
@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { resolveProp } from '../content';
 import { WALL_Z, type Scene } from './scenes';
 
-type SandboxSceneryProps = {
+type SceneryProps = {
   scene: Scene;
 };
 
@@ -46,7 +46,7 @@ function buildWall(): THREE.Object3D {
   return group;
 }
 
-export function SandboxScenery({ scene }: SandboxSceneryProps) {
+export function Scenery({ scene }: SceneryProps) {
   const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
