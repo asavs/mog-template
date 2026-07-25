@@ -45,9 +45,14 @@ const WANTED = [
  *
  * `Melee_Hook` is a punch; it is only called melee because it shipped in the
  * pack where UAL1's jabs and crosses did not, and "melee" would be wrong anyway
- * since sword work is melee too. `Interact` is a person pointing at something.
- * `Yes` is a thumbs up. None of these describe what the body does, which is the
- * same rule our own motion ids follow when they refuse to name a spell.
+ * since sword work is melee too.
+ *
+ * The rest are emotes — expressive gestures a player performs at somebody,
+ * carrying no mechanics. `Interact` is a person pointing. `Yes` is a thumbs up.
+ * `Idle_No_Loop` is a head shake, which is only filed under idle because it
+ * happens to loop. Prefixing them puts the four in one family instead of
+ * scattering them as single-clip categories, and the prefix does that by being
+ * the name rather than by being aliased into place.
  *
  * A rename that matches nothing is reported, not ignored — an entry here that
  * silently applies to no clip is a typo that looks like a working config.
@@ -55,8 +60,10 @@ const WANTED = [
 const CLIP_RENAMES = {
   Melee_Hook: 'Punch_Hook',
   Melee_Hook_Rec: 'Punch_Hook_Rec',
-  Interact: 'Point',
-  Yes: 'ThumbsUp',
+  Interact: 'Emote_Point',
+  Yes: 'Emote_ThumbsUp',
+  Dance_Loop: 'Emote_Dance_Loop',
+  Idle_No_Loop: 'Emote_No_Loop',
 };
 
 function sourceRoot() {
