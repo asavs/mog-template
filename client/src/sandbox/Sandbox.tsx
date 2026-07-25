@@ -29,6 +29,8 @@ import {
   type PropKey,
 } from '../content';
 import { buildCatalog, type Catalog, type CatalogEntry } from './catalog';
+import { SandboxScenery } from './SandboxScenery';
+import { DEFAULT_SCENE, SCENES, sceneById } from './scenes';
 import { SandboxStage, type PlaybackMode, type StageReport } from './SandboxStage';
 import {
   exportBindings,
@@ -80,6 +82,7 @@ export function Sandbox() {
   const [rightHand, setRightHand] = useState<PropKey | null>(null);
   const [leftHand, setLeftHand] = useState<PropKey | null>(null);
   const [playToken, setPlayToken] = useState(0);
+  const [sceneId, setSceneId] = useState(DEFAULT_SCENE.id);
 
   const [report, setReport] = useState<StageReport | null>(null);
   const [exported, setExported] = useState<ExportSummary | null>(null);
@@ -103,6 +106,8 @@ export function Sandbox() {
     () => catalog?.entries.find(entry => entry.id === selectedId) ?? null,
     [catalog, selectedId],
   );
+
+  const scene = useMemo(() => sceneById(sceneId), [sceneId]);
 
   /**
    * Keys nothing resolves. Six of these are expected and deliberate — neither
@@ -282,8 +287,17 @@ export function Sandbox() {
 
       <Canvas shadows camera={{ position: [2.6, 1.8, 3.2], fov: 45 }}>
         <color attach="background" args={['#151821']} />
-        <hemisphereLight intensity={0.6} groundColor="#0b0d12" />
-        <directionalLight position={[4, 8, 4]} intensity={1.6} castShadow />
+        {/*
+          Lit for a room, not for a silhouette. The old levels were tuned
+          against an empty grid and a plain mannequin; with textured wood and a
+          wall behind, the same numbers read as murk and you cannot judge a
+          pose you can barely see. The fill from below is doing real work —
+          these props are dark, and without a bounce term the undersides of
+          tables and the insides of a shield go to black.
+        */}
+        <hemisphereLight intensity={1.15} color="#cfd8ee" groundColor="#2a2118" />
+        <directionalLight position={[4, 8, 4]} intensity={2.2} castShadow />
+        <directionalLight position={[-5, 3, -2]} intensity={0.5} color="#ffd9a8" />
         <Grid
           args={[24, 24]}
           cellSize={0.5}
@@ -298,6 +312,8 @@ export function Sandbox() {
           <planeGeometry args={[40, 40]} />
           <shadowMaterial opacity={0.35} />
         </mesh>
+
+        <SandboxScenery scene={scene} />
 
         <SandboxStage
           entry={selected}
@@ -413,6 +429,18 @@ export function Sandbox() {
             </label>
           </>
         )}
+
+        <h3>Scene</h3>
+        <label className="field">
+          <select value={sceneId} onChange={event => setSceneId(event.target.value)}>
+            {SCENES.map(option => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="hint">{scene.note}</p>
 
         <h3>Hands</h3>
         <div className="row">
