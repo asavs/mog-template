@@ -7,6 +7,7 @@
     "dev": "vite",
     "sandbox": "vite --open /sandbox.html",
     "assets:stage": "node ../tools/stage-dev-assets.mjs",
+    "clip:moves": "node ../tools/what-moves.mjs",
     "dev:beta": "vite --base=/beta/",
     "build": "tsc -b && vite build",
     "build:beta": "tsc -b && vite build --base=/beta/",
