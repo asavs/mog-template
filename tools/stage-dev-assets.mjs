@@ -1,24 +1,25 @@
 /**
  * Vendor the upstream animation libraries into something we own.
  *
- * Two jobs, and they are the same job. The packs are copied into a gitignored
- * folder under `public/` so the sandbox can audition every clip in them without
- * ~15 MB of mostly-unshipped animation living in the repo. And while copying,
- * clips whose names describe the wrong thing are RENAMED — in the file, not in
- * a lookup table.
+ * Three jobs, and they are the same job. The packs are copied into a gitignored
+ * folder under `public/` so the sandbox can audition every clip without ~15 MB
+ * of animation living in the repo. Clips whose names describe the wrong thing
+ * are RENAMED — in the file, not in a lookup table. And clips this game will
+ * never use are DROPPED, along with the keyframe data behind them.
  *
- * That distinction is the whole point. A clip's name is the key everything
+ * The rename rule is the important one. A clip's name is the key everything
  * resolves by: the extractor finds it with `getName() === clipName`, the
- * catalog reads it out of `gltf.animations[]`, the binding table stores it. A
+ * catalog reads it from `gltf.animations[]`, the binding table stores it. A
  * nicer name that exists only in our UI is a translation layer, and every
  * translation layer on this branch has turned out to be a bug waiting for the
- * combination nobody tested. So the rename happens once, here, at the boundary
- * where their files become our files, and downstream there is only one name.
+ * combination nobody tested. So it happens once, here, at the boundary where
+ * their files become our files, and downstream there is only one name.
  *
  *   node tools/stage-dev-assets.mjs --source "C:/Users/you/Assets/quaternius"
  *   QUATERNIUS_ROOT=/path/to/packs node tools/stage-dev-assets.mjs
  *
- * The packs are free from quaternius.com. The originals are never modified.
+ * The packs are free from quaternius.com. The originals are never modified, so
+ * every decision here is reversible by editing a table and re-running.
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -52,8 +53,8 @@ const WANTED = [
  * scattering them as single-clip categories, and the prefix does that by being
  * the name rather than by being aliased into place.
  *
- * Each new name says what the body does, checked against what the clip
- * actually drives rather than against the name it arrived with:
+ * Each new name says what the body does, checked with `tools/what-moves.mjs`
+ * against what the clip actually drives rather than the name it arrived with:
  *
  *   Interact      the left index finger extends and the arm rises   -> a point
  *   Yes           the left thumb curls up over a raised forearm     -> a thumbs up
@@ -77,6 +78,211 @@ const CLIP_RENAMES = {
   Idle_No_Loop: 'Emote_HeadShake_Loop',
 };
 
+/**
+ * Clips this game will never use, dropped from the binary.
+ *
+ * A firearms vocabulary and a driving pose are not near-misses for a fantasy
+ * game — no amount of reinterpretation turns a pistol reload into a spell. They
+ * are removed rather than merely left unbound so they stop costing bytes and
+ * stop appearing in every audition list.
+ *
+ * Everything else is kept, including the ones that look wrong at a glance. A
+ * zombie walk is a cursed gait, a zombie scratch is a claw, and judging a clip
+ * by its name is what this whole pipeline exists to stop.
+ */
+const CLIP_DROPS = ['Pistol_', 'Driving_'];
+
+// --- GLB container ------------------------------------------------------
+
+const GLB_MAGIC = 0x46546c67;
+const CHUNK_JSON = 0x4e4f534a;
+const CHUNK_BIN = 0x004e4942;
+
+function readGlb(buffer) {
+  if (buffer.readUInt32LE(0) !== GLB_MAGIC) throw new Error('not a GLB');
+  let offset = 12;
+  let document = null;
+  let bin = Buffer.alloc(0);
+  while (offset + 8 <= buffer.length) {
+    const length = buffer.readUInt32LE(offset);
+    const type = buffer.readUInt32LE(offset + 4);
+    const data = buffer.subarray(offset + 8, offset + 8 + length);
+    if (type === CHUNK_JSON) document = JSON.parse(data.toString('utf8'));
+    else if (type === CHUNK_BIN) bin = data;
+    offset += 8 + length;
+  }
+  if (!document) throw new Error('GLB has no JSON chunk');
+  return { document, bin };
+}
+
+function writeGlb(document, bin) {
+  let json = Buffer.from(JSON.stringify(document), 'utf8');
+  const jsonPad = (4 - (json.length % 4)) % 4;
+  if (jsonPad) json = Buffer.concat([json, Buffer.alloc(jsonPad, 0x20)]);
+
+  let body = bin;
+  const binPad = (4 - (body.length % 4)) % 4;
+  if (binPad) body = Buffer.concat([body, Buffer.alloc(binPad, 0)]);
+
+  const total = 12 + 8 + json.length + (body.length ? 8 + body.length : 0);
+  const out = Buffer.alloc(total);
+  let at = 0;
+  const u32 = value => {
+    out.writeUInt32LE(value, at);
+    at += 4;
+  };
+  u32(GLB_MAGIC);
+  u32(2);
+  u32(total);
+  u32(json.length);
+  u32(CHUNK_JSON);
+  json.copy(out, at);
+  at += json.length;
+  if (body.length) {
+    u32(body.length);
+    u32(CHUNK_BIN);
+    body.copy(out, at);
+  }
+  return out;
+}
+
+// --- edits --------------------------------------------------------------
+
+function renameClips(document, renames) {
+  const applied = [];
+  for (const animation of document.animations ?? []) {
+    const renamed = renames[animation.name];
+    if (!renamed) continue;
+    applied.push([animation.name, renamed]);
+    animation.name = renamed;
+  }
+  return applied;
+}
+
+/**
+ * Remove clips AND the keyframe data behind them.
+ *
+ * Deleting the `animations` entry alone changes nothing about file size: the
+ * samplers' accessors still point into the buffer, and the buffer is still
+ * whole. (That exact mistake once produced "one clip" files the size of the
+ * entire library — see tools/animation-extract/README.md.) So the buffer is
+ * rebuilt from the views that survive, and every accessor and bufferView index
+ * in the document is remapped to match.
+ *
+ * Shapes we cannot rewrite correctly are refused loudly rather than silently
+ * mangled. Better a staging step that stops than a GLB that loads with subtly
+ * wrong geometry.
+ */
+function dropClips(document, bin, prefixes) {
+  const all = document.animations ?? [];
+  const doomed = all.filter(animation =>
+    prefixes.some(prefix => (animation.name ?? '').startsWith(prefix)),
+  );
+  if (doomed.length === 0) return { bin, dropped: [] };
+
+  if ((document.buffers ?? []).length > 1) throw new Error('multi-buffer glTF is not handled');
+  for (const accessor of document.accessors ?? []) {
+    if (accessor.sparse) throw new Error('sparse accessors are not handled');
+  }
+  for (const mesh of document.meshes ?? []) {
+    for (const primitive of mesh.primitives ?? []) {
+      if (primitive.targets) throw new Error('morph targets are not handled');
+    }
+  }
+
+  const removed = new Set(doomed);
+  document.animations = all.filter(animation => !removed.has(animation));
+
+  // Everything still pointing at an accessor.
+  const keepAccessor = new Set();
+  for (const animation of document.animations) {
+    for (const sampler of animation.samplers) {
+      keepAccessor.add(sampler.input);
+      keepAccessor.add(sampler.output);
+    }
+  }
+  for (const mesh of document.meshes ?? []) {
+    for (const primitive of mesh.primitives ?? []) {
+      for (const index of Object.values(primitive.attributes ?? {})) keepAccessor.add(index);
+      if (primitive.indices !== undefined) keepAccessor.add(primitive.indices);
+    }
+  }
+  for (const skin of document.skins ?? []) {
+    if (skin.inverseBindMatrices !== undefined) keepAccessor.add(skin.inverseBindMatrices);
+  }
+
+  // Views behind those accessors, plus any holding an embedded image — those
+  // are referenced directly and would otherwise vanish with their textures.
+  const keepView = new Set();
+  for (const index of keepAccessor) {
+    const view = document.accessors[index].bufferView;
+    if (view !== undefined) keepView.add(view);
+  }
+  for (const image of document.images ?? []) {
+    if (image.bufferView !== undefined) keepView.add(image.bufferView);
+  }
+
+  const viewMap = new Map();
+  const bufferViews = [];
+  const pieces = [];
+  let offset = 0;
+  for (const oldIndex of [...keepView].sort((a, b) => a - b)) {
+    const view = document.bufferViews[oldIndex];
+    const pad = (4 - (offset % 4)) % 4;
+    if (pad) {
+      pieces.push(Buffer.alloc(pad));
+      offset += pad;
+    }
+    const start = view.byteOffset ?? 0;
+    pieces.push(bin.subarray(start, start + view.byteLength));
+    viewMap.set(oldIndex, bufferViews.length);
+    bufferViews.push({ ...view, byteOffset: offset });
+    offset += view.byteLength;
+  }
+
+  const accessorMap = new Map();
+  const accessors = [...keepAccessor]
+    .sort((a, b) => a - b)
+    .map((oldIndex, newIndex) => {
+      accessorMap.set(oldIndex, newIndex);
+      const accessor = { ...document.accessors[oldIndex] };
+      if (accessor.bufferView !== undefined) accessor.bufferView = viewMap.get(accessor.bufferView);
+      return accessor;
+    });
+
+  for (const animation of document.animations) {
+    for (const sampler of animation.samplers) {
+      sampler.input = accessorMap.get(sampler.input);
+      sampler.output = accessorMap.get(sampler.output);
+    }
+  }
+  for (const mesh of document.meshes ?? []) {
+    for (const primitive of mesh.primitives ?? []) {
+      for (const [name, index] of Object.entries(primitive.attributes ?? {})) {
+        primitive.attributes[name] = accessorMap.get(index);
+      }
+      if (primitive.indices !== undefined) primitive.indices = accessorMap.get(primitive.indices);
+    }
+  }
+  for (const skin of document.skins ?? []) {
+    if (skin.inverseBindMatrices !== undefined) {
+      skin.inverseBindMatrices = accessorMap.get(skin.inverseBindMatrices);
+    }
+  }
+  for (const image of document.images ?? []) {
+    if (image.bufferView !== undefined) image.bufferView = viewMap.get(image.bufferView);
+  }
+
+  document.accessors = accessors;
+  document.bufferViews = bufferViews;
+  const body = Buffer.concat(pieces);
+  document.buffers = [{ byteLength: body.length }];
+
+  return { bin: body, dropped: doomed.map(animation => animation.name) };
+}
+
+// --- run ----------------------------------------------------------------
+
 function sourceRoot() {
   const flag = process.argv.indexOf('--source');
   if (flag !== -1 && process.argv[flag + 1]) return resolve(process.argv[flag + 1]);
@@ -91,44 +297,6 @@ function findFiles(dir, out = []) {
     else if (entry.name.toLowerCase().endsWith('.glb')) out.push(full);
   }
   return out;
-}
-
-/**
- * Rewrite animation names inside a GLB.
- *
- * A GLB is a 12-byte header (magic, version, total length) followed by chunks,
- * each an 8-byte header then data. The first chunk is the glTF JSON, padded to
- * a 4-byte boundary with spaces; the rest is binary, padded with zeroes. Only
- * the JSON changes here, so the binary chunk is carried through untouched and
- * two lengths are rewritten.
- */
-function renameClips(buffer, renames) {
-  const jsonLength = buffer.readUInt32LE(12);
-  const jsonType = buffer.readUInt32LE(16);
-  const document = JSON.parse(buffer.subarray(20, 20 + jsonLength).toString('utf8'));
-  const trailing = buffer.subarray(20 + jsonLength);
-
-  const applied = [];
-  for (const animation of document.animations ?? []) {
-    const renamed = renames[animation.name];
-    if (!renamed) continue;
-    applied.push([animation.name, renamed]);
-    animation.name = renamed;
-  }
-  if (applied.length === 0) return { buffer, applied };
-
-  let json = Buffer.from(JSON.stringify(document), 'utf8');
-  const padding = (4 - (json.length % 4)) % 4;
-  if (padding) json = Buffer.concat([json, Buffer.alloc(padding, 0x20)]);
-
-  const header = Buffer.alloc(20);
-  header.writeUInt32LE(0x46546c67, 0); // 'glTF'
-  header.writeUInt32LE(2, 4);
-  header.writeUInt32LE(12 + 8 + json.length + trailing.length, 8);
-  header.writeUInt32LE(json.length, 12);
-  header.writeUInt32LE(jsonType, 16);
-
-  return { buffer: Buffer.concat([header, json, trailing]), applied };
 }
 
 const root = sourceRoot();
@@ -148,6 +316,7 @@ const available = findFiles(root);
 const staged = [];
 const missing = [];
 const renamed = [];
+const dropped = [];
 
 for (const want of WANTED) {
   const hit = available.find(path => basename(path) === want.match);
@@ -158,17 +327,21 @@ for (const want of WANTED) {
   const dest = join(OUT_DIR, want.as);
 
   if (want.kind === 'library') {
-    const result = renameClips(readFileSync(hit), CLIP_RENAMES);
-    writeFileSync(dest, result.buffer);
-    for (const [from, to] of result.applied) renamed.push([want.as, from, to]);
+    const source = readFileSync(hit);
+    const { document, bin } = readGlb(source);
+    const cut = dropClips(document, bin, CLIP_DROPS);
+    for (const name of cut.dropped) dropped.push([want.as, name]);
+    for (const [from, to] of renameClips(document, CLIP_RENAMES)) {
+      renamed.push([want.as, from, to]);
+    }
+    writeFileSync(dest, writeGlb(document, cut.bin));
+    staged.push({ ...want, bytes: statSync(dest).size, was: source.length, clips: (document.animations ?? []).length });
   } else {
     copyFileSync(hit, dest);
+    staged.push({ ...want, bytes: statSync(dest).size, was: statSync(hit).size, clips: null });
   }
-
-  staged.push({ ...want, bytes: statSync(dest).size });
 }
 
-// An index so the client discovers what is staged instead of hard-coding names.
 writeFileSync(
   join(OUT_DIR, 'index.json'),
   `${JSON.stringify(
@@ -183,18 +356,31 @@ writeFileSync(
 
 const mb = bytes => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 console.log('\nStaged into client/public/anim-lib/ (gitignored):\n');
-for (const s of staged) console.log(`  ${s.as.padEnd(18)} ${mb(s.bytes).padStart(9)}  ${s.label}`);
+for (const s of staged) {
+  const saved = s.was > s.bytes ? `  (was ${mb(s.was)})` : '';
+  const clips = s.clips === null ? '' : `  ${s.clips} clips`;
+  console.log(`  ${s.as.padEnd(18)} ${mb(s.bytes).padStart(9)}${clips.padEnd(11)}${saved}`);
+}
+
+if (dropped.length) {
+  console.log(`\nDropped ${dropped.length} clips:`);
+  for (const [file, name] of dropped) console.log(`  ${file.padEnd(10)} ${name}`);
+}
 
 if (renamed.length) {
   console.log('\nRenamed in place:');
   for (const [file, from, to] of renamed) console.log(`  ${file.padEnd(10)} ${from} -> ${to}`);
 }
 
-// A rename that matched nothing is a typo wearing a working config's clothes.
-const landed = new Set(renamed.map(([, from]) => from));
-const inert = Object.keys(CLIP_RENAMES).filter(from => !landed.has(from));
-if (inert.length) {
-  console.log(`\n  WARNING: ${inert.length} rename(s) matched no clip: ${inert.join(', ')}`);
+// A rule that matched nothing is a typo wearing a working config's clothes.
+const landedRenames = new Set(renamed.map(([, from]) => from));
+const inertRenames = Object.keys(CLIP_RENAMES).filter(from => !landedRenames.has(from));
+if (inertRenames.length) {
+  console.log(`\n  WARNING: ${inertRenames.length} rename(s) matched no clip: ${inertRenames.join(', ')}`);
+}
+const inertDrops = CLIP_DROPS.filter(prefix => !dropped.some(([, name]) => name.startsWith(prefix)));
+if (inertDrops.length) {
+  console.log(`  WARNING: ${inertDrops.length} drop rule(s) matched no clip: ${inertDrops.join(', ')}`);
 }
 
 if (missing.length) {
