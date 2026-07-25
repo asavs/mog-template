@@ -13,9 +13,16 @@ body {
   color: #e6e9f0;
 }
 
+/*
+ * Three columns rather than floating panels: with eighty-six clips the browser
+ * needs real height, and a list you have to scroll inside a translucent overlay
+ * is worse than a column.
+ */
 .sandbox {
   position: fixed;
   inset: 0;
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr) 290px;
 }
 
 .sandbox canvas {
@@ -23,37 +30,57 @@ body {
 }
 
 .panel {
-  position: absolute;
-  background: rgba(16, 19, 26, 0.92);
-  border: 1px solid #2a3040;
-  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #101319;
   padding: 12px 14px;
-  backdrop-filter: blur(6px);
-}
-
-.panel--controls {
-  top: 16px;
-  left: 16px;
-  width: 240px;
-}
-
-.panel--seam {
-  top: 16px;
-  right: 16px;
-  width: 320px;
-  max-height: calc(100vh - 32px);
   overflow-y: auto;
 }
 
-.panel h1 {
-  margin: 0 0 12px;
+.panel--browser {
+  border-right: 1px solid #2a3040;
+  padding: 0;
+  overflow: hidden;
+}
+
+.panel--controls {
+  border-left: 1px solid #2a3040;
+}
+
+.browser__head {
+  flex: 0 0 auto;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid #232937;
+}
+
+.browser__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 24px;
+}
+
+h1 {
+  margin: 0 0 6px;
   font-size: 14px;
   letter-spacing: 0.02em;
 }
 
 .panel h2 {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: 13px;
+  word-break: break-word;
+}
+
+.panel h3 {
+  margin: 16px 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7f8aa3;
+  border-top: 1px solid #232937;
+  padding-top: 12px;
 }
 
 .hint {
@@ -62,13 +89,54 @@ body {
   font-size: 12px;
 }
 
-.hint code {
+.hint code,
+.warn code {
   color: #c3cbdd;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* Something is wrong and you would otherwise not notice — the whole point. */
+.warn {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #3a2323;
+  border-left: 3px solid #ff8f8f;
+  color: #ffc9c9;
+  font-size: 12px;
+}
+
+/* A known, deliberate hole — not an error, but not something to forget either. */
+.unbound {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #3a3320;
+  border-left: 3px solid #e8c76a;
+  color: #f0dca6;
+  font-size: 11px;
+}
+
+.unbound strong {
+  font-weight: 600;
+}
+
+.search {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  font: inherit;
+  color: #e6e9f0;
+  background: #1e2330;
+  border: 1px solid #333c50;
+  border-radius: 6px;
 }
 
 .field {
   display: block;
   margin-bottom: 10px;
+  flex: 1 1 0;
 }
 
 .field span {
@@ -79,7 +147,8 @@ body {
 }
 
 select,
-button {
+button,
+textarea {
   width: 100%;
   padding: 6px 8px;
   font: inherit;
@@ -95,56 +164,6 @@ button {
 
 button:hover {
   background: #262c3c;
-}
-
-.panel--seam ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.origin {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  border-top: 1px solid #232937;
-  font-size: 12px;
-}
-
-.origin__tag {
-  flex: 0 0 74px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.origin--procedural .origin__tag {
-  background: #3a3320;
-  color: #e8c76a;
-}
-
-.origin--dropin .origin__tag {
-  background: #1f3a2a;
-  color: #6ee7a0;
-}
-
-.origin--manifest .origin__tag {
-  background: #23304a;
-  color: #7fb0ff;
-}
-
-.origin--unbound .origin__tag {
-  background: #3a2323;
-  color: #ff8f8f;
-}
-
-.origin__key {
-  color: #c3cbdd;
-  font-family: ui-monospace, monospace;
 }
 
 .field--check {
@@ -169,6 +188,7 @@ button:hover {
   display: flex;
   gap: 6px;
   margin-bottom: 10px;
+  align-items: flex-end;
 }
 
 .row button {
@@ -176,15 +196,130 @@ button:hover {
   font-size: 12px;
 }
 
-/* Rig binding summary — how much of an imported asset actually drives bones. */
-.rig-report {
+.row--tabs button {
+  text-transform: lowercase;
+  color: #9aa3b8;
+}
+
+.row--tabs button.is-active {
+  background: #23304a;
+  border-color: #4a7ab5;
+  color: #cfe0ff;
+}
+
+/* --- clip list --------------------------------------------------------- */
+
+.group {
+  margin-bottom: 10px;
+}
+
+.group h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7f8aa3;
+}
+
+/* Which pack a clip arrived in — worth knowing, not worth sorting by. */
+.clip__src {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #232937;
+  color: #7d89a3;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.group__count {
+  margin-left: auto;
+  color: #5d677d;
+}
+
+.group ul {
+  margin: 0;
+  padding: 0;
   list-style: none;
-  margin: 0 0 0.75rem;
-  padding: 0.5rem 0.6rem;
+}
+
+.clip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  margin-bottom: 1px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
   border-radius: 4px;
-  background: #1c2130;
-  border-left: 3px solid #4a7ab5;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: #b7c2d6;
+}
+
+.clip:hover {
+  background: #1a1f2b;
+}
+
+.clip.is-selected {
+  background: #23304a;
+  border-color: #4a7ab5;
+}
+
+.clip.is-keep {
+  border-left-color: #6ee7a0;
+}
+
+.clip.is-cut {
+  border-left-color: #ff8f8f;
+  opacity: 0.55;
+}
+
+.clip.is-unsure {
+  border-left-color: #e8c76a;
+}
+
+.clip__name {
+  flex: 1 1 auto;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #d7deec;
+  overflow-wrap: anywhere;
+}
+
+.clip__meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #6b7488;
+  font-size: 10px;
+}
+
+/* A clip that already backs a motion key. Filled = actually carved into
+   dropin/ and playing in the game; outlined = only a row in the table. */
+.bound {
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid #4a7ab5;
+  color: #7fb0ff;
+  font-style: normal;
+  font-size: 9px;
+}
+
+.bound--active {
+  background: #1f3a2a;
+  border-color: #3f7a55;
+  color: #6ee7a0;
+}
+
+.export {
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  resize: vertical;
 }
