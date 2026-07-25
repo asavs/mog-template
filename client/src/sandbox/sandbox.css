@@ -291,6 +291,16 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+/* The pack's own name, shown only where we relabelled it. Never hidden: this
+   is the string the extractor resolves by. */
+.clip__real {
+  margin-left: 6px;
+  color: #6b7488;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 400;
+}
+
 .clip__meta {
   flex: 0 0 auto;
   display: flex;

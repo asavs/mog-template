@@ -27,8 +27,11 @@ export type ClipOrigin = 'library' | 'procedural';
 export type CatalogEntry = {
   /** Stable and unique across libraries — both packs ship an `A_TPose`. */
   id: string;
+  /** The upstream clip name. What the extractor resolves by. Never renamed. */
   name: string;
-  /** Leading token of the name, for grouping: `Sword_Attack` -> `Sword`. */
+  /** What we call it. Equals `name` unless the pack's name misleads. */
+  label: string;
+  /** Leading token of the label, for grouping: `Sword_Attack` -> `Sword`. */
   family: string;
   origin: ClipOrigin;
   /** Library id (`ual1`), or null for procedural. */
@@ -69,31 +72,41 @@ const KEY_BY_CLIP = new Map<string, string>(
 );
 
 /**
- * What we call a family, where the packs called it something unhelpful.
+ * What we call a clip, where the pack's name misleads.
  *
- * Two different problems, one fix. The packs disagree with EACH OTHER — UAL1
- * files its jabs and crosses under `Punch_*` while UAL2 files its hooks under
- * `Melee_*`, so the same gesture vocabulary lands in two groups and you never
- * notice you are choosing between five clips rather than two and three.
+ * UAL2 files its hooks as `Melee_*` while UAL1 files jabs and crosses as
+ * `Punch_*`. A hook is a punch, so the split is a packaging accident, and
+ * calling the family "melee" would be wrong in the other direction — sword work
+ * is melee too. Unarmed is what these four actually are.
  *
- * And some names describe nothing. `Interact` is a person pointing at
- * something; `Yes` is a thumbs up. Both are named for the intent an animator
- * imagined rather than the gesture the body performs, which is the same reason
- * our own motion ids are forbidden from naming spells or classes.
- *
- * This renames the GROUP only. Each clip still shows its true upstream name,
- * because that is the string `clipBindings.json` and the extractor look it up
- * by — a friendly label that hides the real id would reintroduce exactly the
- * confusion it is meant to clear up.
+ * Display only. `CatalogEntry.name` stays the upstream id, and the browser
+ * shows it alongside the label whenever the two differ, because that string is
+ * what `clipBindings.json` and the extractor resolve by. A friendly name that
+ * covered the real one would recreate exactly the confusion it clears up.
+ */
+const CLIP_ALIASES: Record<string, string> = {
+  Melee_Hook: 'Punch_Hook',
+  Melee_Hook_Rec: 'Punch_Hook_Rec',
+};
+
+/**
+ * What we call a family. Some pack names describe an intent rather than a
+ * gesture — `Interact` is a person pointing, `Yes` is a thumbs up — which is
+ * the same failure our own motion ids are forbidden from making when they name
+ * a spell instead of a movement.
  */
 const FAMILY_ALIASES: Record<string, string> = {
-  Punch: 'Melee',
+  Punch: 'Unarmed',
+  // Nothing lands here today, since both Melee_* clips are relabelled above.
+  // Kept so a future Melee_Kick files itself correctly instead of alone.
+  Melee: 'Unarmed',
   Interact: 'Point',
   Yes: 'ThumbsUp',
 };
 
-const familyOf = (name: string) => {
-  const head = name.split(/[_\s]/)[0] || name;
+/** Grouped by the LABEL, so a relabelled clip lands with its new family. */
+const familyOf = (label: string) => {
+  const head = label.split(/[_\s]/)[0] || label;
   return FAMILY_ALIASES[head] ?? head;
 };
 
@@ -125,6 +138,7 @@ function proceduralEntries(): CatalogEntry[] {
     entries.push({
       id: `procedural/${id}`,
       name: id,
+      label: id,
       family: id.split('_')[0],
       origin: 'procedural',
       library: null,
@@ -154,10 +168,12 @@ export async function buildCatalog(): Promise<Catalog> {
         const gltf = await loader.loadAsync(assetUrl(`anim-lib/${file}`));
         for (const clip of gltf.animations) {
           const motionKey = KEY_BY_CLIP.get(`${id}/${clip.name}`) ?? null;
+          const label = CLIP_ALIASES[clip.name] ?? clip.name;
           libraryEntries.push({
             id: `${id}/${clip.name}`,
             name: clip.name,
-            family: familyOf(clip.name),
+            label,
+            family: familyOf(label),
             origin: 'library',
             library: id,
             duration: clip.duration,
