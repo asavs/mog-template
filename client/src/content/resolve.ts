@@ -309,3 +309,38 @@ export async function resolveProp(key: ContentKey): Promise<THREE.Object3D | nul
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Procedural-only resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve strictly from the procedural registry, ignoring every binding.
+ *
+ * Two callers want this and both want it for the same reason: they are asking
+ * about the PLACEHOLDER, not about whatever is currently bound. Grip geometry
+ * tests measure the mannequin's own proportions, and they run in Node, where a
+ * `.glb` behind a URL cannot be fetched at all — so once a real asset lands in
+ * `dropin/`, going through the seam would hand them null and the assertions
+ * would quietly stop asserting.
+ *
+ * Real assets are checked in the browser, where they can actually load. These
+ * exist so that check and this one do not have to be the same check.
+ */
+export function proceduralMotion(key: ContentKey): THREE.AnimationClip | null {
+  const generator = getMotionGenerator(key);
+  if (!generator) return null;
+  return generator({
+    key,
+    boneName: (boneId: string) => MOG_BONES[boneId as MogBoneId] ?? boneId,
+    restPose: MOG_REST_POSE,
+  });
+}
+
+export function proceduralBody(key: ContentKey): ResolvedBody | null {
+  return getBodyGenerator(key)?.() ?? null;
+}
+
+export function proceduralProp(key: ContentKey): THREE.Object3D | null {
+  return getPropGenerator(key)?.() ?? null;
+}

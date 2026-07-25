@@ -30,7 +30,15 @@ export {
   type StanceKey,
   type StanceSlot,
 } from './stances';
-export { applyGrip, gripFor, SOCKETS, type Grip, type SocketId } from './sockets';
+export {
+  applyGrip,
+  fistFrame,
+  gripFor,
+  SOCKETS,
+  type FistFrame,
+  type Grip,
+  type SocketId,
+} from './sockets';
 
 export { bindingFor, contentSeamReport, CONTENT_MANIFEST } from './manifest';
 export {
@@ -41,7 +49,14 @@ export {
   type ClipBindingReport,
   type RigBindingReport,
 } from './inspect';
-export { resolveBody, resolveMotion, resolveProp } from './resolve';
+export {
+  proceduralBody,
+  proceduralMotion,
+  proceduralProp,
+  resolveBody,
+  resolveMotion,
+  resolveProp,
+} from './resolve';
 export { MOG_BONE_ORDER, MOG_REST_POSE } from './restPose';
 export {
   registerBodyGenerator,

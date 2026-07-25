@@ -30,3 +30,6 @@ client/qa-harness/runs/
 # Agent / assistant local tooling (never publish)
 .agent-runs/
 .claude/
+
+# Authoring tool, installed on demand — see tools/animation-extract/README.md
+tools/animation-extract/node_modules/

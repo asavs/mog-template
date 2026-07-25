@@ -1,0 +1,13 @@
+{
+  "name": "mog-animation-extract",
+  "private": true,
+  "type": "module",
+  "description": "Carve bound clips out of upstream animation libraries into per-key GLBs.",
+  "scripts": {
+    "extract": "node extract.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.0.0",
+    "@gltf-transform/functions": "^4.0.0"
+  }
+}
