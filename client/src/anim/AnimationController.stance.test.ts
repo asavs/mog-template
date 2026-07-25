@@ -137,7 +137,7 @@ describe('stances', () => {
     expect(controller.setStance('stance_staff')).toBe(true);
     settle(controller, 0.5);
 
-    expect(controller.getState().stanceMotion).toBe('stance_staff');
+    expect(controller.getState().stanceMotions).toEqual(['stance_staff']);
     expect(rig.chest.position.x).toBeLessThan(0);
     expect(rig.spine.position.x).toBeGreaterThan(0);
     expect(rig.leg.position.x).toBeGreaterThan(0);
@@ -154,7 +154,7 @@ describe('stances', () => {
     controller.setLocomotion('run_forward');
     settle(controller, 0.5);
 
-    expect(controller.getState().stanceMotion).toBe('stance_staff');
+    expect(controller.getState().stanceMotions).toEqual(['stance_staff']);
     expect(rig.chest.position.x).toBeLessThan(0);
   });
 
@@ -189,7 +189,7 @@ describe('stances', () => {
     expect(controller.setStance(null)).toBe(true);
     settle(controller, 0.5);
 
-    expect(controller.getState().stanceMotion).toBeNull();
+    expect(controller.getState().stanceMotions).toEqual([]);
     expect(rig.chest.position.x).toBeGreaterThan(0);
   });
 
@@ -203,8 +203,121 @@ describe('stances', () => {
 
     expect(controller.setStance('stance.not_authored_yet')).toBe(true);
     settle(controller, 0.5);
-    expect(controller.getState().stanceMotion).toBeNull();
+    expect(controller.getState().stanceMotions).toEqual([]);
     // Falling back must be visible motion, not the rest pose.
     expect(rig.chest.position.x).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Composed stances: one held pose built from more than one clip.
+ *
+ * This exists because no clip in the library is sword-and-board. `Idle_Shield_Loop`
+ * raises the left arm and leaves the right within thirteen degrees of plain idle,
+ * so a sword in that untouched hand intersects the shield. The fix is to take
+ * each arm from the clip that actually poses it.
+ */
+describe('composed stances', () => {
+  type ArmRig = {
+    root: THREE.Group;
+    chest: THREE.Bone;
+    leftArm: THREE.Bone;
+    rightArm: THREE.Bone;
+    leg: THREE.Bone;
+  };
+
+  function armRig(): ArmRig {
+    const root = new THREE.Group();
+    const bones = [
+      MOG_BONES.spine2,
+      MOG_BONES.leftUpperArm,
+      MOG_BONES.rightUpperArm,
+      MOG_BONES.leftUpperLeg,
+    ].map(name => {
+      const bone = new THREE.Bone();
+      bone.name = name;
+      return bone;
+    });
+    root.add(...bones);
+    return { root, chest: bones[0], leftArm: bones[1], rightArm: bones[2], leg: bones[3] };
+  }
+
+  /** Poses BOTH arms and the shared axis, so which one wins is the assertion. */
+  function heldPose(name: string, x: number): THREE.AnimationClip {
+    const hold = (bone: string) =>
+      new THREE.VectorKeyframeTrack(`${bone}.position`, [0, 1], [x, 0, 0, x, 0, 0]);
+    return new THREE.AnimationClip(name, 1, [
+      hold(MOG_BONES.spine2),
+      hold(MOG_BONES.leftUpperArm),
+      hold(MOG_BONES.rightUpperArm),
+    ]);
+  }
+
+  const gait = new THREE.AnimationClip('walk_forward', 1, [
+    track(MOG_BONES.spine2, 1, 6),
+    track(MOG_BONES.leftUpperArm, 1, 6),
+    track(MOG_BONES.rightUpperArm, 1, 6),
+    track(MOG_BONES.leftUpperLeg, 1, 6),
+  ]);
+  const shield = heldPose('stance_shield', -40);
+  const sword = heldPose('stance_sword', 90);
+
+  const swordAndBoard = [
+    { motion: 'stance_shield', bands: ['core', 'armL'] },
+    { motion: 'stance_sword', bands: ['armR'] },
+  ] as const;
+
+  it('takes each arm from the clip that poses it', () => {
+    const rig = armRig();
+    const controller = new AnimationController(rig.root, resolverFor([gait, shield, sword]));
+
+    controller.setLocomotion('walk_forward');
+    expect(controller.setStance(swordAndBoard)).toBe(true);
+    settle(controller, 0.5);
+
+    expect(controller.getState().stanceMotions).toEqual(['stance_shield', 'stance_sword']);
+    // Both source clips drive both arms; only the masking decides which lands
+    // where. Opposite signs prove the arms are separately owned.
+    expect(rig.leftArm.position.x).toBeCloseTo(-40, 1);
+    expect(rig.rightArm.position.x).toBeCloseTo(90, 1);
+    // The shared axis went with the shield, and the legs are still walking.
+    expect(rig.chest.position.x).toBeCloseTo(-40, 1);
+    expect(rig.leg.position.x).toBeGreaterThan(0);
+  });
+
+  it('leaves an unposed arm to the gait rather than to the rest pose', () => {
+    const rig = armRig();
+    // The sword pose has no clip: half the stance is missing art.
+    const controller = new AnimationController(rig.root, resolverFor([gait, shield]));
+
+    controller.setLocomotion('walk_forward');
+    expect(controller.setStance(swordAndBoard)).toBe(true);
+    settle(controller, 0.5);
+
+    expect(controller.getState().stanceMotions).toEqual(['stance_shield']);
+    expect(rig.leftArm.position.x).toBeCloseTo(-40, 1);
+    // The right arm keeps swinging with the walk. Falling to zero here would be
+    // the arm snapping to its bind pose, which is the failure worth catching.
+    expect(rig.rightArm.position.x).toBeGreaterThan(0);
+  });
+
+  it('treats the same clips on opposite arms as a different stance', () => {
+    const rig = armRig();
+    const controller = new AnimationController(rig.root, resolverFor([gait, shield, sword]));
+
+    controller.setLocomotion('walk_forward');
+    controller.setStance(swordAndBoard);
+    settle(controller, 0.5);
+
+    // Same two motions, mirrored. Identity has to cover the bands, or this is a
+    // no-op and the character keeps holding the shield in the wrong hand.
+    expect(controller.setStance([
+      { motion: 'stance_shield', bands: ['core', 'armR'] },
+      { motion: 'stance_sword', bands: ['armL'] },
+    ])).toBe(true);
+    settle(controller, 0.5);
+
+    expect(rig.leftArm.position.x).toBeCloseTo(90, 1);
+    expect(rig.rightArm.position.x).toBeCloseTo(-40, 1);
   });
 });

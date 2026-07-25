@@ -12,6 +12,7 @@
  * stance key; nothing here knows about classes.
  */
 
+import type { AnimationBand } from '../anim/mask';
 import { MOTION_STANCE, PROP_KEYS, type MotionKey, type PropKey } from './keys';
 import { SOCKETS, type SocketId } from './sockets';
 
@@ -28,11 +29,23 @@ export type StanceSlot = {
   socket: SocketId;
 };
 
+/**
+ * One clip supplying one part of a held pose.
+ *
+ * A stance is a list of these rather than a single clip because the poses we
+ * own are per-arm. Bands must not overlap within a stance — two poses driving
+ * one bone is the thing the band split exists to prevent.
+ */
+export type StancePose = {
+  motion: MotionKey;
+  bands: readonly AnimationBand[];
+};
+
 export type Stance = {
   key: StanceKey;
   label: string;
-  /** Held pose. Null means locomotion's own upper body is used unchanged. */
-  motion: MotionKey | null;
+  /** Held pose, in one or more parts. Empty means locomotion's upper body is used unchanged. */
+  poses: readonly StancePose[];
   slots: readonly StanceSlot[];
 };
 
@@ -40,19 +53,28 @@ export const STANCES: Record<StanceKey, Stance> = {
   [STANCE_KEYS.unarmed]: {
     key: STANCE_KEYS.unarmed,
     label: 'unarmed',
-    motion: null,
+    poses: [],
     slots: [],
   },
   [STANCE_KEYS.staff]: {
     key: STANCE_KEYS.staff,
     label: 'staff',
-    motion: MOTION_STANCE.staff,
+    // A one-handed vertical grip, but the clip poses the whole upper body, so
+    // it takes the whole upper body. Splitting it would leave the free arm to
+    // locomotion, which is a different look and not one anyone has asked for.
+    poses: [{ motion: MOTION_STANCE.staff, bands: ['core', 'armL', 'armR'] }],
     slots: [{ prop: PROP_KEYS.staff, socket: SOCKETS.rightHand }],
   },
   [STANCE_KEYS.swordShield]: {
     key: STANCE_KEYS.swordShield,
     label: 'sword + shield',
-    motion: MOTION_STANCE.swordShield,
+    // Composed, because no clip in the library is sword-and-board. The shield
+    // pose takes `core` along with its arm: at 74 degrees off idle it is much
+    // the more committed of the two, and the torso was authored to support it.
+    poses: [
+      { motion: MOTION_STANCE.shield, bands: ['core', 'armL'] },
+      { motion: MOTION_STANCE.sword, bands: ['armR'] },
+    ],
     slots: [
       { prop: PROP_KEYS.sword, socket: SOCKETS.rightHand },
       { prop: PROP_KEYS.shield, socket: SOCKETS.leftHand },

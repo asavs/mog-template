@@ -12,7 +12,7 @@
  */
 
 import * as THREE from 'three';
-import { bandOfBoneName } from '../anim/mask';
+import { ALL_BANDS, bandOfBoneName } from '../anim/mask';
 import { MOG_BONES, boneNameCandidates, type MogBoneId } from '../avatar/rig';
 
 const ALL_BONE_IDS = Object.keys(MOG_BONES) as MogBoneId[];
@@ -102,7 +102,12 @@ export function inspectClipBinding(
   const present = boneNamesIn(root);
   const bound: string[] = [];
   const unbound: string[] = [];
-  const byBand: Record<string, number> = { lower: 0, mid: 0, upper: 0, unclassified: 0 };
+  // Derived from the band list rather than spelled out, so splitting a band
+  // cannot leave this quietly reporting zero for one that now exists.
+  const byBand: Record<string, number> = {
+    ...Object.fromEntries(ALL_BANDS.map(band => [band, 0])),
+    unclassified: 0,
+  };
 
   for (const track of clip.tracks) {
     const target = trackTarget(track.name);

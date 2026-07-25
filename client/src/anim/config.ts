@@ -50,7 +50,8 @@ export const MOTION_RULES = {
     exitBlendSeconds: 0.2,
     clampWhenFinished: false,
     retrigger: false,
-    overlayWidth: 'arms',
+    // No overlayWidth: each of a stance's poses names the bands it holds, since
+    // a composed stance holds different bands with different clips.
   },
   ability: {
     layer: 'upper',

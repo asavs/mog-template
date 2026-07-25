@@ -102,10 +102,13 @@ Two honest fixes, and the second is more interesting:
 
 1. Author a right-arm offset for the sword-and-board stance.
 2. **Compose it** — take the left arm from `Idle_Shield_Loop` and the right arm from
-   `Sword_Idle`. The band system splits the rig by height (lower / mid / upper) and cannot
-   express this. A per-side mask is one axis away.
+   `Sword_Idle`.
 
-That second option pays for itself twice; see §4.
+**Resolved by composing.** The upper band now splits into `core` / `armL` / `armR`, a stance
+is a list of poses each naming the bands it holds, and sword-and-board is built from the two
+clips that each pose one arm. There is no `motion.stance_sword_shield` any more, because there
+was never a clip that was one — there is `stance_shield` and `stance_sword`, and naming the arm
+rather than the loadout is what stops the combinations multiplying. See §4.
 
 ### `stance_staff` → `Idle_Torch_Loop` is defensible, and its mirror is better
 
@@ -177,7 +180,8 @@ reversed walk and a yaw offset with the lower band masked — not an asset gap.
 | `Sword_Heavy_Combo` | ual2 | 4.33 s, pelvis travels 4.74 u | **system** — see §2. Unbound; a committed heavy or chain finisher once the chain exists. |
 | `Sword_Dash` | ual2 | 1.57 s, upperarm swing 178° | **system** → gap closer. |
 | `Sword_Block` | ual2 | 1.23 s, cycles | bind ✔ `act_guard_hold` *(already)* |
-| `Sword_Idle` | ual1 | legs 49° from idle — bladed stance | **bind** → new `stance_sword` (1h, no shield). There is currently no stance for a sword alone. Mask to upper if it must play over a walk. |
+| `Sword_Idle` | ual1 | legs 49° from idle — bladed stance; right forearm 35°, hand 21° | bind ✔ `stance_sword` — the right arm of sword-and-board, and the whole stance for a sword alone. |
+| `Idle_Shield_Loop` | ual2 | left arm 74°/72°, right within 13° of idle, legs untouched | bind ✔ `stance_shield` — the left arm of sword-and-board, and it carries `core` because it is the more committed pose. |
 | `Shield_OneShot` | ual2 | 0.83 s, 76 % upper, no travel | **bind** → shield bash. Upper-only, so it overlays a walk cleanly. |
 | `Shield_Dash` | ual2 | 1.10 s, net 0.40, 62 % lower | **system** → shield charge. |
 | `Idle_Shield_Break` | ual2 | left arm thrown open 75°, legs 19° | **bind** → new `react_guard_break`. The exact left arm `Idle_Shield_Loop` raises gets knocked aside — a verified pair, and the feedback that makes blocking a real exchange. |
@@ -289,15 +293,21 @@ Two independent findings ask for the same missing thing:
 - `Spell_Simple_*`, `Consume` and `Idle_Torch_Loop` are entirely left-handed, while the sword
   work, `OverhandThrow`, `Idle_Lantern_Loop` and `Idle_Rail_Call` are entirely right-handed.
 
-The bands split the rig by height: `lower`, `mid`, `upper`. Adding a **left/right split within
-the upper band** resolves both — compose a sword-and-board stance from two clips' arms, and
-play a left-hand cast over a right-hand weapon stance. Sword-and-spell simultaneity is one mask
-away, and it is not a feature anybody set out to build; it falls out of the asset measurements.
+The bands used to split the rig by height alone: `lower`, `mid`, `upper`. A **left/right split
+within the upper band** resolves both — compose a sword-and-board stance from two clips' arms,
+and play a left-hand cast over a right-hand weapon stance. Neither is a feature anybody set out
+to build; both fall out of the asset measurements.
 
-The cost is real, and it is in the disjointness invariant `mask.ts` documents: today the bands
-in play never overlap, which is what lets tracks blend without an additive reference pose.
-Splitting `upper` keeps that property only if the split is clean at the clavicle, and the head
-and spine_03 have to belong to exactly one side. Worth prototyping before committing.
+**Done, for the stance half.** `upper` is now `core` / `armL` / `armR`, the disjointness
+invariant survives because `core` — spine2, neck, head — belongs to exactly one claimant rather
+than to both arms, and the fallback heuristic reads sidedness from every spelling we import
+(`thumb_03_l`, `LeftForeArm`, `mixamorig:RightHandIndex1`) while never mistaking `calf_l` for
+an arm.
+
+**Not done: single-arm overlays.** A left-hand cast over a right-hand stance additionally needs
+`armLeft` / `armRight` overlay widths and locomotion split per band. The bands make it small;
+it waits for a motion that requests it, because a claim nobody has watched resolve is not worth
+shipping.
 
 ---
 
@@ -320,8 +330,8 @@ and spine_03 have to belong to exactly one side. Worth prototyping before commit
 
 Nothing here is blocked by anything above it; this is ordered by payoff per unit of work.
 
-1. **Fix the two wrong bindings.** `act_slam_2h` — done, deleted. The sword-and-board stance
-   is the other, and it wants the per-side mask in §4 rather than a cheaper rebind.
+1. **Fix the two wrong bindings.** Both done: `act_slam_2h` deleted, and sword-and-board
+   composed per arm off the split in §4.
 2. **Bind the free wins.** `Sprint_Loop`, `Hit_Head`, `Hit_Knockback`, `LayToIdle`,
    `Idle_Shield_Break`, `Sword_Idle`, `Idle_FoldArms_Loop`, `Walk_Formal_Loop`, the
    `Walk_Carry_Loop` double-bind, the NinjaJump triad, and the five emotes. Roughly twenty

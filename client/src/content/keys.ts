@@ -70,10 +70,21 @@ export const MOTION_ACTION = {
  * anything else: it replaces the idle/locomotion upper body for as long as the
  * loadout is equipped, so one pose covers idle, walk, and run alike rather than
  * multiplying every gait by every weapon.
+ *
+ * These are poses for ONE ARM, not for a loadout. There is no
+ * `stance_sword_shield` key, because the library has no such clip: the shield
+ * pose raises the left arm and leaves the right within thirteen degrees of
+ * plain idle. Sword-and-board is composed from two of these, per side, in
+ * `stances.ts`. Naming the arm rather than the loadout is what keeps that from
+ * multiplying — a shield pairs with a sword, an axe, or an empty hand without
+ * needing a clip for each.
  */
 export const MOTION_STANCE = {
   staff: 'motion.stance_staff',
-  swordShield: 'motion.stance_sword_shield',
+  /** Shield raised across the body. Left arm. */
+  shield: 'motion.stance_shield',
+  /** Blade held ready, bladed stance. Right arm. */
+  sword: 'motion.stance_sword',
 } as const;
 
 /** Involuntary responses to being acted upon. */

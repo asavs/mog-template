@@ -52,17 +52,29 @@ Summary. Durations are targets at 1.0 playback rate; contact beats are contractu
 
 ### Bands, and why an overlay has two widths
 
-The rig splits into three disjoint **bands**:
+The rig splits into five disjoint **bands**:
 
-| Band    | Bones                                   | Normally driven by         |
-|---------|-----------------------------------------|----------------------------|
-| `lower` | Hips, both legs, both feet              | locomotion, always         |
-| `mid`   | Spine, Spine1                           | locomotion                 |
-| `upper` | Spine2, Neck, Head, both arms and hands | stance / action / reaction |
+| Band    | Bones                              | Normally driven by         |
+|---------|------------------------------------|----------------------------|
+| `lower` | Hips, both legs, both feet         | locomotion, always         |
+| `mid`   | Spine, Spine1                      | locomotion                 |
+| `core`  | Spine2, Neck, Head                 | stance / action / reaction |
+| `armL`  | Left clavicle, arm, hand, fingers  | stance / action / reaction |
+| `armR`  | Right clavicle, arm, hand, fingers | stance / action / reaction |
 
 Every clip is filtered to a band set before it plays, and the sets in play at any
 moment never overlap. That is what lets overlays blend normally instead of
 additively: no bone is ever driven by two actions, or by none.
+
+The arms are separate bands because the poses we import are one-armed. A shield
+pose raises the left arm and leaves the right where idle put it; the cast clips
+are entirely left-handed and every sword clip is entirely right-handed. Splitting
+lets one held pose be **composed** from two clips, one per arm — which is the only
+reason sword-and-board exists, since no clip in the library is both.
+
+`core` is what cannot be split. Spine2, neck and head are shared, so they go to
+exactly one claimant — by convention whichever pose is the more committed, since
+the torso was authored to support it.
 
 An overlay claims one of two widths:
 
@@ -100,11 +112,17 @@ that fights the gait a little.
 
 ### Stances
 
-A **stance** is a looping `upper`-band pose that stands in for locomotion's own
-upper body for as long as a loadout is equipped. It is not a gait, and this is the
-whole point: equipping a staff changes idle, walk, and run at once. The alternative
-— a gait set per weapon — multiplies every new weapon by every direction and speed,
-and is the kind of content debt that stops people adding weapons.
+A **stance** is a looping pose over the upper bands that stands in for locomotion's
+own upper body for as long as a loadout is equipped. It is not a gait, and this is
+the whole point: equipping a staff changes idle, walk, and run at once. The
+alternative — a gait set per weapon — multiplies every new weapon by every direction
+and speed, and is the kind of content debt that stops people adding weapons.
+
+A stance may be composed from several clips, each naming the bands it holds, so a
+pose per arm covers every combination of what is in each hand without a clip per
+pair. Bands must not repeat within one stance. Whatever a stance does not hold —
+because no part covers it, or because an action claimed that arm — stays with
+locomotion rather than falling to the bind pose.
 
 A stance is authored knowing the pelvis and lower spine belong to somebody else. It
 never widens to `torso`; a background pose that fought every gait it was worn over

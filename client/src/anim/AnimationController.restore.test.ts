@@ -64,8 +64,10 @@ describe('base upper layer after an overlay finishes', () => {
     // unmasked clip — only the per-band clips derived from it — so querying by
     // the source clip finds nothing, and `clipAction` would quietly mint a dead
     // action to hand back.
+    // `armL`, because that is the only upper band this fixture animates — the
+    // clip drives LeftUpperArm and LeftUpperLeg and nothing else.
     const upperAction = controller.mixer.existingAction(
-      maskClipToBands(clips.get('loco')!, ['upper']),
+      maskClipToBands(clips.get('loco')!, ['armL']),
     );
 
     const state = controller.getState();

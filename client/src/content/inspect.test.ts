@@ -71,7 +71,7 @@ describe('rig binding inspection', () => {
     expect(report.bound).toHaveLength(2);
     expect(report.unbound).toEqual(['SomeOtherRigBone.position']);
     expect(report.byBand.lower).toBe(1);
-    expect(report.byBand.upper).toBe(1);
+    expect(report.byBand.core).toBe(1);
     expect(report.coverage).toBeCloseTo(2 / 3);
   });
 });

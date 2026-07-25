@@ -7,14 +7,28 @@ import {
   type MotionRuleName,
 } from './config';
 import {
+  ALL_BANDS,
   maskClipToBands,
   maskClipToOverlay,
   OVERLAY_BANDS,
+  UPPER_BANDS,
   type AnimationBand,
   type OverlayWidth,
 } from './mask';
 
 export type MotionResolver = (key: string) => THREE.AnimationClip | null;
+
+/**
+ * One clip supplying one part of a held pose.
+ *
+ * Structurally what `content/stances.ts` calls a `StancePose`, restated here so
+ * the controller keeps knowing nothing about the content vocabulary, and so the
+ * dependency runs one way — stances already import the band names.
+ */
+export type StancePart = {
+  motion: string;
+  bands: readonly AnimationBand[];
+};
 
 export type AbilityPlaybackOptions = {
   /**
@@ -50,7 +64,8 @@ export type AnimationControllerOptions = {
 
 export type AnimationControllerState = {
   baseMotion: string | null;
-  stanceMotion: string | null;
+  /** Motions supplying the held pose, one per part. Empty when there is none. */
+  stanceMotions: readonly string[];
   overlayMotion: string | null;
   hitMotion: string | null;
   overrideMotion: string | null;
@@ -66,17 +81,33 @@ type LayerAction = {
   width: OverlayWidth;
 };
 
-type StanceLayer = {
-  key: string;
+type StancePartLayer = {
+  motion: string;
   action: THREE.AnimationAction;
+  bands: readonly AnimationBand[];
 };
 
-/** Locomotion, split across the three disjoint rig bands. See `mask.ts`. */
+/**
+ * A held pose, in as many parts as it took to build. One part for a stance the
+ * library ships whole; two for one composed per arm.
+ */
+type StanceLayer = {
+  /** Identity of the whole pose, so re-setting the same one is a no-op. */
+  key: string;
+  parts: readonly StancePartLayer[];
+};
+
+/**
+ * Locomotion, split across every disjoint rig band. See `mask.ts`.
+ *
+ * Per band rather than per region because a stance may hold some of the upper
+ * body and not the rest — a shield pose with no sword pose beside it holds the
+ * left arm only. Locomotion keeps whatever the stance is not holding, and bones
+ * that would otherwise be driven by nothing keep moving with the gait.
+ */
 type BaseLayer = {
   key: string;
-  lower: THREE.AnimationAction | null;
-  mid: THREE.AnimationAction | null;
-  upper: THREE.AnimationAction | null;
+  bands: Partial<Record<AnimationBand, THREE.AnimationAction | null>>;
 };
 
 type PendingStop = {
@@ -162,9 +193,9 @@ export class AnimationController {
     this.fadeBase(this.base, rule.exitBlendSeconds);
     this.base = {
       key,
-      lower: this.armBand(source, ['lower'], rule),
-      mid: this.armBand(source, ['mid'], rule),
-      upper: this.armBand(source, ['upper'], rule),
+      bands: Object.fromEntries(
+        ALL_BANDS.map(band => [band, this.armBand(source, [band], rule)]),
+      ) as BaseLayer['bands'],
     };
     this.syncBands(rule.enterBlendSeconds);
     return true;
@@ -174,23 +205,53 @@ export class AnimationController {
    * Adopt a held pose for as long as a loadout is equipped, or `null` to drop
    * back to locomotion's own upper body.
    *
-   * The stance stands in for the upper band of locomotion rather than layering
-   * on top of it, so one pose covers idle, walk, and run without authoring a
-   * gait set per weapon. A stance with no clip degrades to no stance: equipment
-   * is never blocked by missing art.
+   * The stance stands in for the upper bands of locomotion rather than layering
+   * on top of them, so one pose covers idle, walk, and run without authoring a
+   * gait set per weapon.
+   *
+   * A bare motion key is the common case and takes the whole upper body. A list
+   * of parts composes one pose from several clips, which is how sword-and-board
+   * exists at all: the library has a shield pose and a sword pose and nothing
+   * that is both.
+   *
+   * Parts that resolve to nothing are dropped rather than failing the stance —
+   * equipment is never blocked by missing art, and the bands a dropped part
+   * would have held stay with locomotion.
    */
-  setStance(key: string | null): boolean {
+  setStance(stance: string | readonly StancePart[] | null): boolean {
     if (this.dead) return false;
 
     const rule = MOTION_RULES.stance;
-    const clip = key === null ? null : this.stanceClip(key);
-    const nextKey = clip === null ? null : key;
+    const requested: readonly StancePart[] = stance === null
+      ? []
+      : typeof stance === 'string'
+        ? [{ motion: stance, bands: UPPER_BANDS }]
+        : stance;
+
+    const resolved = requested
+      .map(part => ({ part, clip: this.stanceClip(part.motion, part.bands) }))
+      .filter((entry): entry is { part: StancePart; clip: THREE.AnimationClip } => entry.clip !== null);
+
+    // Identity covers the bands as well as the clips: the same two poses swapped
+    // between arms is a different stance, and re-setting it must rebuild.
+    const nextKey = resolved.length === 0
+      ? null
+      : resolved.map(({ part }) => `${part.motion}@${[...part.bands].join('+')}`).join('|');
     if ((this.stance?.key ?? null) === nextKey) return false;
 
-    if (this.stance) this.fadeAndStop(this.stance.action, rule.exitBlendSeconds);
-    this.stance = clip === null || nextKey === null
+    if (this.stance) {
+      for (const part of this.stance.parts) this.fadeAndStop(part.action, rule.exitBlendSeconds);
+    }
+    this.stance = nextKey === null
       ? null
-      : { key: nextKey, action: this.armAction(clip, rule) };
+      : {
+        key: nextKey,
+        parts: resolved.map(({ part, clip }) => ({
+          motion: part.motion,
+          action: this.armAction(clip, rule),
+          bands: part.bands,
+        })),
+      };
     this.syncBands(rule.enterBlendSeconds);
     return true;
   }
@@ -318,7 +379,7 @@ export class AnimationController {
   getState(): AnimationControllerState {
     return {
       baseMotion: this.base?.key ?? null,
-      stanceMotion: this.stance?.key ?? null,
+      stanceMotions: this.stance?.parts.map(part => part.motion) ?? [],
       overlayMotion: this.overlay?.key ?? null,
       hitMotion: this.hit?.key ?? null,
       overrideMotion: this.override?.key ?? null,
@@ -347,15 +408,28 @@ export class AnimationController {
    */
   private syncBands(seconds: number): void {
     const overridden = this.override !== null;
-    const stanceAction = this.stance?.action ?? null;
 
-    this.setAudible(this.base?.lower ?? null, !overridden, seconds);
-    this.setAudible(this.base?.mid ?? null, !overridden && !this.claimed('mid'), seconds);
+    // Stance first, because locomotion's answer depends on it. A part is
+    // audible only when every band it owns is free: an action carries one
+    // weight and cannot be half-suppressed, so a part whose arm has been
+    // claimed steps aside whole.
+    const held = new Set<AnimationBand>();
+    for (const part of this.stance?.parts ?? []) {
+      const free = !overridden && part.bands.every(band => !this.claimed(band));
+      this.setAudible(part.action, free, seconds);
+      if (free) for (const band of part.bands) held.add(band);
+    }
 
-    const upperFree = !overridden && !this.claimed('upper');
-    // A stance replaces locomotion's upper body; they are never both audible.
-    this.setAudible(this.base?.upper ?? null, upperFree && stanceAction === null, seconds);
-    this.setAudible(stanceAction, upperFree, seconds);
+    // A stance replaces locomotion band by band, so whatever it is not holding
+    // right now — because no part covers it, or because the part covering it
+    // stepped aside — keeps moving with the gait instead of falling to rest.
+    for (const band of ALL_BANDS) {
+      this.setAudible(
+        this.base?.bands[band] ?? null,
+        !overridden && !this.claimed(band) && !held.has(band),
+        seconds,
+      );
+    }
 
     this.setAudible(this.overlay?.action ?? null, !overridden, seconds);
     this.setAudible(this.hit?.action ?? null, !overridden, seconds);
@@ -532,12 +606,12 @@ export class AnimationController {
     return null;
   }
 
-  private stanceClip(key: string): THREE.AnimationClip | null {
+  private stanceClip(key: string, bands: readonly AnimationBand[]): THREE.AnimationClip | null {
     const source = this.resolveMotion(key);
     if (!source) return null;
     // A stance never widens — it is a background pose, and one that reached into
     // the lower spine would fight every gait it is worn over.
-    const clip = maskClipToOverlay(source, MOTION_RULES.stance.overlayWidth ?? 'arms');
+    const clip = maskClipToBands(source, bands);
     return clip.tracks.length > 0 ? clip : null;
   }
 
@@ -561,14 +635,14 @@ export class AnimationController {
 
   private fadeBase(base: BaseLayer | null, seconds: number): void {
     if (!base) return;
-    this.fadeAndStop(base.lower, seconds);
-    this.fadeAndStop(base.mid, seconds);
-    this.fadeAndStop(base.upper, seconds);
+    for (const band of ALL_BANDS) this.fadeAndStop(base.bands[band] ?? null, seconds);
   }
 
   private stopLowerLayers(seconds: number): void {
     this.fadeBase(this.base, seconds);
-    if (this.stance) this.fadeAndStop(this.stance.action, seconds);
+    if (this.stance) {
+      for (const part of this.stance.parts) this.fadeAndStop(part.action, seconds);
+    }
     if (this.overlay) this.fadeAndStop(this.overlay.action, seconds);
     if (this.hit) this.fadeAndStop(this.hit.action, seconds);
     this.base = null;

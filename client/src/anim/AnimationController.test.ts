@@ -214,7 +214,7 @@ describe('AnimationController', () => {
     const deathAction = controller.mixer.existingAction(death);
     expect(controller.getState()).toEqual({
       baseMotion: null,
-      stanceMotion: null,
+      stanceMotions: [],
       overlayMotion: null,
       hitMotion: null,
       overrideMotion: 'react_death',

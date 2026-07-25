@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { MOG_BONES } from '../avatar/rig';
 import { AnimationController } from './AnimationController';
 import { MOTION_RULES } from './config';
-import { maskClipToBands } from './mask';
+import { ALL_BANDS, maskClipToBands } from './mask';
 
-/** One track per band — see `mask.ts`. */
+/** One track per vertical band — see `mask.ts`. The arms stay empty. */
 function testClip(name: string, duration = 1): THREE.AnimationClip {
   return new THREE.AnimationClip(name, duration, [
     new THREE.VectorKeyframeTrack(
@@ -96,10 +96,16 @@ describe('AnimationController lifecycle', () => {
     expect(controller.setLocomotion('walk_forward')).toBe(true);
     controller.update(0.25);
 
-    const lower = controller.mixer.existingAction(maskClipToBands(walk, ['lower']));
-    const upper = controller.mixer.existingAction(maskClipToBands(walk, ['upper']));
-    expect(lower?.time).toBeCloseTo(upper?.time ?? -1);
-    expect(lower?.getEffectiveWeight()).toBe(0);
-    expect(upper?.getEffectiveWeight()).toBe(0);
+    // Every band the gait drives must advance together, or the layers desync
+    // while the override hides them and snap apart when it lets go.
+    const banded = ALL_BANDS
+      .map(band => controller.mixer.existingAction(maskClipToBands(walk, [band])))
+      .filter((action): action is THREE.AnimationAction => action !== undefined && action !== null);
+
+    expect(banded.length).toBeGreaterThan(1);
+    for (const action of banded) {
+      expect(action.time).toBeCloseTo(banded[0].time);
+      expect(action.getEffectiveWeight()).toBe(0);
+    }
   });
 });

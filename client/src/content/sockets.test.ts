@@ -19,10 +19,22 @@ describe('prop grips, in the stance that holds them', () => {
     // actually asks: does the key resolve to anything at all. An unbound stance
     // is a loadout that equips props and then stands in a T-pose holding them.
     for (const stance of Object.values(STANCES)) {
-      if (!stance.motion) continue;
-      expect(bindingFor(stance.motion).origin, `${stance.motion} is unbound`).not.toBe('unbound');
+      for (const pose of stance.poses) {
+        expect(bindingFor(pose.motion).origin, `${pose.motion} is unbound`).not.toBe('unbound');
+      }
     }
     expect(Object.values(MOTION_STANCE).length).toBeGreaterThan(0);
+  });
+
+  it('never lets two poses in one stance drive the same bone', () => {
+    // The composition only works because the bands partition the rig. Two poses
+    // sharing a band would put two actions on one bone, which is exactly what
+    // the band split exists to prevent — and it would blend to a pose that is
+    // neither of them rather than failing loudly.
+    for (const stance of Object.values(STANCES)) {
+      const claimed = stance.poses.flatMap(pose => pose.bands);
+      expect(new Set(claimed).size, `${stance.key} claims a band twice`).toBe(claimed.length);
+    }
   });
 
   it('gives every stance slot a grip for the socket it uses', () => {
