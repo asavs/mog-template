@@ -31,11 +31,28 @@ describe('drills', () => {
         expect(Object.keys(STANCES)).toContain(drill.stance);
       });
 
-      it('names a real motion key for every gait', () => {
-        // A gait is resolved through the content seam, so it must be a KEY —
-        // unlike an action, which is a library clip name.
+      it('names either a real motion key or a library clip for every gait', () => {
+        // Both resolve, and a gait nothing has bound yet — a crouch — is worth
+        // running under an action. But a string that LOOKS like a key and is
+        // not one resolves to nothing and leaves the character standing still,
+        // so a mistyped key is caught here rather than noticed later.
         for (const step of drill.steps) {
-          expect(ALL_MOTION_KEYS, `${drill.id}: "${step.label}" gait`).toContain(step.gait);
+          if (step.gait.startsWith('motion.')) {
+            expect(ALL_MOTION_KEYS, `${drill.id}: "${step.label}" gait`).toContain(step.gait);
+          } else {
+            expect(step.gait.trim(), `${drill.id}: "${step.label}" gait`).not.toBe('');
+          }
+        }
+      });
+
+      it('opens a cancel window before the step it is meant to be cut short by', () => {
+        // A cancelAfter later than the step's own dwell never fires, and the
+        // combination silently becomes two separate punches with a gap — which
+        // looks like a bad animation rather than a bad number.
+        for (const step of drill.steps) {
+          if (step.cancelAfter === undefined) continue;
+          const dwell = stepSeconds(step, 1);
+          expect(step.cancelAfter, `${drill.id}: "${step.label}"`).toBeLessThan(dwell);
         }
       });
 
@@ -54,8 +71,12 @@ describe('drills', () => {
         expect(new Set(labels).size).toBe(labels.length);
       });
 
-      it('dwells long enough on every step to see it', () => {
+      it('dwells long enough on any step meant to be watched', () => {
+        // A step with a cancel window is a link in a combination: it is
+        // deliberately cut short, and holding it long enough to read would stop
+        // it being a combination at all. Everything else has to last.
         for (const step of drill.steps) {
+          if (step.cancelAfter !== undefined) continue;
           expect(stepSeconds(step, 1.2), `${drill.id}: "${step.label}"`).toBeGreaterThan(1);
         }
       });

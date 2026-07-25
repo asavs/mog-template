@@ -97,6 +97,8 @@ export function DrillStage({
   const controllerRef = useRef<AnimationController | null>(null);
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
   const elapsedRef = useRef(0);
+  /** Whether this step's recovery window has been opened yet. */
+  const cancelledRef = useRef(false);
 
   const callbacks = useRef({ onStatus, onReport, onElapsed, onEquipped });
   useEffect(() => {
@@ -204,6 +206,7 @@ export function DrillStage({
     if (!body || !controller || !step) return;
 
     elapsedRef.current = 0;
+    cancelledRef.current = false;
     controller.setLocomotion(step.gait);
 
     if (!step.action) {
@@ -252,6 +255,19 @@ export function DrillStage({
 
     if (!playing || !step) return;
     elapsedRef.current += delta;
+
+    // Open the recovery window on time, so the NEXT step can cut in rather than
+    // queue behind this one. Gameplay is meant to own ability timing, so the
+    // drill goes through the same door the game would.
+    if (
+      step.cancelAfter !== undefined
+      && !cancelledRef.current
+      && elapsedRef.current >= step.cancelAfter / Math.max(speed, 0.05)
+    ) {
+      cancelledRef.current = true;
+      controller.enterAbilityRecovery();
+    }
+
     // Slowing playback has to stretch the dwell too, or half the routine cuts
     // away mid-clip the moment you slow it down to look at something.
     const clipLength = step.action

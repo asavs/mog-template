@@ -36,13 +36,35 @@ export type DrillStep = {
   label: string;
   /** What to watch for. Shown while the step runs. */
   note?: string;
-  /** Motion key of the gait underneath. */
+  /**
+   * The gait underneath — a motion key, or the name of a library clip for a
+   * gait nothing has bound yet. Both resolve, and a crouch has no key while
+   * being exactly the sort of thing worth trying under an action.
+   */
   gait: string;
   /** Library clip name to fire over it. Omitted for a step that is just a gait. */
   action?: string;
   width?: DrillWidth;
   /** Override the dwell. Defaults to the action's length plus a beat. */
   seconds?: number;
+  /**
+   * Replace the pause after a one-shot. Zero runs straight into the next step.
+   *
+   * A pause is right when you are inspecting one motion and wrong when you are
+   * asking whether two of them join — which is most of what a combination is.
+   */
+  tail?: number;
+  /**
+   * Seconds into the action when its recovery window opens, letting the NEXT
+   * step interrupt instead of waiting.
+   *
+   * This is what a combination is: not two clips played back to back, but a
+   * second cutting into the first before it has finished recovering. The
+   * controller already gates on exactly this — gameplay is meant to own ability
+   * timing — so a drill goes through the same door the game would, and what you
+   * see here is what the game would do.
+   */
+  cancelAfter?: number;
 };
 
 export type Drill = {
@@ -240,7 +262,194 @@ const SWORD_AND_BOARD: Drill = {
   ],
 };
 
-export const DRILLS: readonly Drill[] = [SWORD_AND_BOARD];
+/**
+ * Unarmed.
+ *
+ * Shadowboxing, and shaped that way because unarmed is where combinations are
+ * the whole content. A sword has reach and weight to sell a single swing; a
+ * fist has neither, and a jab on its own reads as a twitch. So this routine
+ * throws each punch alone first — which is the only way to see what it is — and
+ * then throws the same punches as a one-two and a one-two-three, cancelling
+ * each into the next through the controller's real recovery window.
+ *
+ * Expect the joins to be the interesting part, and expect some of them to be
+ * bad. `Punch_Hook` drops the body 0.29 and `Punch_Hook_Rec` raises it back,
+ * so a hook cancelled early leaves the fighter standing up out of a crouch
+ * nobody saw them enter.
+ *
+ * There is no guard stance here, and that is not an oversight: no clip in
+ * either library is a fighting guard. Unarmed wears locomotion's own upper
+ * body, so the hands hang at rest between punches. It is the most visible hole
+ * this routine has and worth seeing rather than papering over.
+ */
+const UNARMED: Drill = {
+  id: 'fighter-unarmed',
+  label: 'fighter — unarmed',
+  note: 'Every punch alone, then the same punches as combinations. The joins are the point.',
+  sceneId: 'sparring-pit',
+  stance: STANCE_KEYS.unarmed,
+  steps: [
+    {
+      label: 'loose',
+      note: 'No guard: nothing in either library is one, so the hands hang where the gait puts them.',
+      gait: IDLE,
+      seconds: 3,
+    },
+    {
+      label: 'circling',
+      gait: WALK,
+      seconds: 3.5,
+    },
+    {
+      label: 'stepping in',
+      gait: JOG,
+      seconds: 3,
+    },
+
+    {
+      label: 'jab',
+      note: 'Left lead. 0.87 s, and the left forearm swings 120 degrees.',
+      gait: IDLE,
+      action: 'Punch_Jab',
+      width: 'full',
+    },
+    {
+      label: 'jab, moving',
+      note: 'Same punch at arms width over a walk — the narrowest claim, and the test of whether it survives being thrown on the move.',
+      gait: WALK,
+      action: 'Punch_Jab',
+      width: 'arms',
+    },
+    {
+      label: 'cross',
+      note: 'Rear hand. The mirror of the jab, 126 degrees on the right forearm.',
+      gait: IDLE,
+      action: 'Punch_Cross',
+      width: 'full',
+    },
+    {
+      label: 'cross, moving',
+      gait: JOG,
+      action: 'Punch_Cross',
+      width: 'arms',
+    },
+    {
+      label: 'hook',
+      note: 'Drops the body 0.29 and steps 0.21. It is a whole-body punch and will not survive a narrow mask.',
+      gait: IDLE,
+      action: 'Punch_Hook',
+      width: 'full',
+    },
+    {
+      label: 'hook, recovering',
+      note: 'Rises 0.33 — the way back up out of the hook. Alone it looks like standing up for no reason.',
+      gait: IDLE,
+      action: 'Punch_Hook_Rec',
+      width: 'full',
+    },
+
+    {
+      label: 'one–two: jab',
+      note: 'Cancelled at 0.45 s so the cross can cut in. Watch the join, not the punch.',
+      gait: IDLE,
+      action: 'Punch_Jab',
+      width: 'full',
+      cancelAfter: 0.45,
+      seconds: 0.5,
+    },
+    {
+      label: 'one–two: cross',
+      gait: IDLE,
+      action: 'Punch_Cross',
+      width: 'full',
+      tail: 0.5,
+    },
+
+    {
+      label: 'one–two–three: jab',
+      gait: IDLE,
+      action: 'Punch_Jab',
+      width: 'full',
+      cancelAfter: 0.4,
+      seconds: 0.45,
+    },
+    {
+      label: 'one–two–three: cross',
+      gait: IDLE,
+      action: 'Punch_Cross',
+      width: 'full',
+      cancelAfter: 0.5,
+      seconds: 0.55,
+    },
+    {
+      label: 'one–two–three: hook',
+      note: 'The finisher, cut into from the cross. If any join in the routine is going to look wrong it is this one.',
+      gait: IDLE,
+      action: 'Punch_Hook',
+      width: 'full',
+      tail: 0,
+    },
+    {
+      label: 'out of the hook',
+      gait: IDLE,
+      action: 'Punch_Hook_Rec',
+      width: 'full',
+    },
+
+    {
+      label: 'ducking',
+      note: 'Crouch as a gait. No key is bound to it, so this runs the library clip by name.',
+      gait: 'Crouch_Idle_Loop',
+      seconds: 3,
+    },
+    {
+      label: 'weaving',
+      gait: 'Crouch_Fwd_Loop',
+      seconds: 3.5,
+    },
+    {
+      label: 'rolling away',
+      note: 'A dodge. Travels 0.37, so the game would have to move the body to match.',
+      gait: IDLE,
+      action: 'Roll',
+      width: 'full',
+    },
+
+    {
+      label: 'caught on the chin',
+      gait: IDLE,
+      action: 'Hit_Head',
+      width: 'arms',
+    },
+    {
+      label: 'caught in the body, moving',
+      note: 'Narrow enough not to interrupt the legs, which is what makes it usable mid-exchange.',
+      gait: JOG,
+      action: 'Hit_Chest',
+      width: 'arms',
+    },
+    {
+      label: 'dropped',
+      gait: IDLE,
+      action: 'Hit_Knockback',
+      width: 'full',
+    },
+    {
+      label: 'down',
+      gait: IDLE,
+      action: 'Death01',
+      width: 'full',
+    },
+    {
+      label: 'up at the count',
+      gait: IDLE,
+      action: 'LayToIdle',
+      width: 'full',
+    },
+  ],
+};
+
+export const DRILLS: readonly Drill[] = [SWORD_AND_BOARD, UNARMED];
 
 export function drillById(id: string): Drill | null {
   return DRILLS.find(drill => drill.id === id) ?? null;
@@ -250,5 +459,5 @@ export function drillById(id: string): Drill | null {
 export function stepSeconds(step: DrillStep, clipDuration: number | null): number {
   if (step.seconds !== undefined) return step.seconds;
   if (clipDuration === null) return 2;
-  return clipDuration + STEP_TAIL_SECONDS;
+  return clipDuration + (step.tail ?? STEP_TAIL_SECONDS);
 }

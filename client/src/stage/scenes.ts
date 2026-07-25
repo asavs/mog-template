@@ -136,6 +136,29 @@ export const SCENES: readonly Scene[] = [
   },
 
   {
+    id: 'sparring-pit',
+    label: 'sparring pit',
+    note: 'Unarmed work. Deliberately nothing to pick up — a room with a weapon rack in it quietly asks why the fighter is empty-handed.',
+    wall: true,
+    place: [
+      // Closer than the drill yard's dummy. A fist has no reach, and a target
+      // placed for a sword makes every punch read as falling short.
+      { key: SCENERY_KEYS.dummy, at: [0.2, 0, 1.55], turn: 180 },
+      // A hung bag would be better and the kit has none, but a sack in the
+      // corner at least belongs to this room rather than to the armoury.
+      { key: SCENERY_KEYS.sack, at: [-2.1, 0, 0.75], turn: 25 },
+      { key: SCENERY_KEYS.rope, at: [1.85, 0, -0.55], turn: 35 },
+      { key: SCENERY_KEYS.bench, at: [2.75, 0, 0.7], turn: -78 },
+      { key: SCENERY_KEYS.stool, at: [-1.7, 0, -1.85], turn: 15 },
+      { key: SCENERY_KEYS.barrel, at: [-3.0, 0, -1.3] },
+      { key: SCENERY_KEYS.crate, at: [2.8, 0, -1.6], turn: -15 },
+      { key: SCENERY_KEYS.pegRack, at: [0.6, 1.55, WALL_Z + 0.06] },
+      { key: SCENERY_KEYS.torchSconce, at: [-1.5, 1.5, WALL_Z + 0.06] },
+      { key: SCENERY_KEYS.torchSconce, at: [2.1, 1.5, WALL_Z + 0.06] },
+    ],
+  },
+
+  {
     id: 'tavern',
     label: 'tavern corner',
     note: 'Sitting, drinking, talking and the emotes. Stools are the right height to test a sit against.',
