@@ -1,0 +1,24 @@
+{
+  "note": "Which upstream library clip backs each motion key. Decided in the animation sandbox by auditioning clips, not by reading their names — a name is not evidence. Read by tools/animation-extract/extract.mjs to carve dropin GLBs, and by the sandbox to show what is already spoken for. Keys with no entry fall through to procedural motion.",
+  "libraries": {
+    "ual1": "Universal Animation Library",
+    "ual2": "Universal Animation Library 2"
+  },
+  "bindings": {
+    "motion.loco_idle": { "library": "ual1", "clip": "Idle_Loop" },
+    "motion.loco_walk_f": { "library": "ual1", "clip": "Walk_Loop" },
+    "motion.loco_run_f": { "library": "ual1", "clip": "Jog_Fwd_Loop" },
+    "motion.air_jump": { "library": "ual1", "clip": "Jump_Start" },
+    "motion.air_fall": { "library": "ual1", "clip": "Jump_Loop" },
+    "motion.air_land": { "library": "ual1", "clip": "Jump_Land" },
+    "motion.react_hit": { "library": "ual1", "clip": "Hit_Chest" },
+    "motion.react_death": { "library": "ual1", "clip": "Death01" },
+    "motion.act_hurl_1h": { "library": "ual2", "clip": "OverhandThrow" },
+    "motion.act_swing_1h": { "library": "ual1", "clip": "Sword_Attack" },
+    "motion.act_slam_2h": { "library": "ual2", "clip": "Sword_Heavy_Combo" },
+    "motion.act_guard_hold": { "library": "ual2", "clip": "Sword_Block" },
+    "motion.act_drink": { "library": "ual2", "clip": "Consume" },
+    "motion.stance_staff": { "library": "ual1", "clip": "Idle_Torch_Loop" },
+    "motion.stance_sword_shield": { "library": "ual2", "clip": "Idle_Shield_Loop" }
+  }
+}

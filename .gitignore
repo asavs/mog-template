@@ -20,6 +20,11 @@ Thumbs.db
 glb storage/
 .worktrees/
 
+# Upstream animation libraries, staged for the sandbox by
+# tools/stage-dev-assets.mjs. Dev-only: the sandbox falls back to procedural
+# motion when they are absent, so a fresh clone still runs.
+client/public/anim-lib/
+
 # Editor
 .vscode/settings.json
 .idea/

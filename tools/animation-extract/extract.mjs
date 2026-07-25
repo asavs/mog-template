@@ -13,33 +13,41 @@
 
 import { NodeIO } from '@gltf-transform/core';
 import { prune, dedup } from '@gltf-transform/functions';
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const [UAL1, UAL2, OUT] = process.argv.slice(2);
 mkdirSync(OUT, { recursive: true });
 
-/** motion key -> [source library, clip name in that library] */
-const BINDINGS = {
-  // locomotion + air + reactions come from UAL1
-  'motion.loco_idle': [UAL1, 'Idle_Loop'],
-  'motion.loco_walk_f': [UAL1, 'Walk_Loop'],
-  'motion.loco_run_f': [UAL1, 'Jog_Fwd_Loop'],
-  'motion.air_jump': [UAL1, 'Jump_Start'],
-  'motion.air_fall': [UAL1, 'Jump_Loop'],
-  'motion.air_land': [UAL1, 'Jump_Land'],
-  'motion.react_hit': [UAL1, 'Hit_Chest'],
-  'motion.react_death': [UAL1, 'Death01'],
-  // actions
-  'motion.act_hurl_1h': [UAL2, 'OverhandThrow'],
-  'motion.act_swing_1h': [UAL1, 'Sword_Attack'],
-  'motion.act_slam_2h': [UAL2, 'Sword_Heavy_Combo'],
-  'motion.act_guard_hold': [UAL2, 'Sword_Block'],
-  'motion.act_drink': [UAL2, 'Consume'],
-  // stances — held poses, masked to the upper band at runtime
-  'motion.stance_staff': [UAL1, 'Idle_Torch_Loop'],
-  'motion.stance_sword_shield': [UAL2, 'Idle_Shield_Loop'],
-};
+/**
+ * The binding table is NOT kept here.
+ *
+ * It is decided in the animation sandbox, by watching clips play on the actual
+ * body — which is the only way to know that `OverhandThrow` is a throw and that
+ * `Idle_Torch_Loop` is a torch. A table maintained next to the extractor is a
+ * table maintained by whoever last read the clip names, and clip names lie.
+ *
+ * So the sandbox owns it and this tool consumes it. One file, one decision
+ * point, and the thing that carved the GLBs cannot drift from the thing that
+ * chose them.
+ */
+const TABLE_PATH = fileURLToPath(
+  new URL('../../client/src/content/clipBindings.json', import.meta.url),
+);
+const table = JSON.parse(readFileSync(TABLE_PATH, 'utf8'));
+
+const LIBRARY_PATHS = { ual1: UAL1, ual2: UAL2 };
+
+const BINDINGS = {};
+for (const [key, { library, clip }] of Object.entries(table.bindings)) {
+  const path = LIBRARY_PATHS[library];
+  if (!path) {
+    console.error(`  SKIP     ${key}: no path given for library "${library}"`);
+    continue;
+  }
+  BINDINGS[key] = [path, clip];
+}
 
 const io = new NodeIO();
 const cache = new Map();
