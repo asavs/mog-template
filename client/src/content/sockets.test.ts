@@ -3,73 +3,24 @@
  *
  * "The shield looks wrong" is not a signal anyone can act on twice. "The shield's
  * face normal points into the chest" is.
- *
- * Everything here is measured on a POSED skeleton, never the rest pose. The rest
- * pose is a T-pose: arms straight out along ±X, which is a pose nothing is ever
- * actually rendered in. A grip that reads correctly there would read wrong in
- * every stance, and vice versa — so the stance is part of the measurement.
  */
 
-import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { BODY_KEYS, MOTION_STANCE, PROP_KEYS } from './keys';
-import { proceduralBody, proceduralMotion, proceduralProp } from './resolve';
-import { STANCES, STANCE_KEYS } from './stances';
-import { SOCKETS, applyGrip, gripFor } from './sockets';
-import type { StanceKey } from './stances';
+import { PROP_KEYS, MOTION_STANCE } from './keys';
+import { bindingFor } from './manifest';
+import { STANCES } from './stances';
+import { SOCKETS, gripFor } from './sockets';
 import './procedural';
 
-/** The direction the mannequin faces. */
-const FORWARD = new THREE.Vector3(0, 0, 1);
-const UP = new THREE.Vector3(0, 1, 0);
-
-/**
- * Build the body, equip a stance's loadout, and hold the stance pose for a
- * moment so the skeleton is where a player would see it.
- */
-async function posed(stanceKey: StanceKey): Promise<Map<string, THREE.Object3D>> {
-  const body = proceduralBody(BODY_KEYS.humanoid);
-  expect(body).not.toBeNull();
-  if (!body) throw new Error('unreachable');
-
-  const stance = STANCES[stanceKey];
-  const held = new Map<string, THREE.Object3D>();
-  for (const slot of stance.slots) {
-    const object = proceduralProp(slot.prop);
-    expect(object, `${slot.prop} did not resolve`).not.toBeNull();
-    if (!object) continue;
-    applyGrip(object, slot.prop, slot.socket);
-    body.bones[slot.socket].add(object);
-    held.set(slot.prop, object);
-  }
-
-  if (stance.motion) {
-    const clip = proceduralMotion(stance.motion);
-    expect(clip, `${stance.motion} did not resolve`).not.toBeNull();
-    if (clip) {
-      const mixer = new THREE.AnimationMixer(body.root);
-      mixer.clipAction(clip).play();
-      mixer.update(0.5);
-    }
-  }
-
-  body.root.updateMatrixWorld(true);
-  return held;
-}
-
-/** World-space direction of a local axis after the full socket chain. */
-function worldAxis(object: THREE.Object3D, local: THREE.Vector3): THREE.Vector3 {
-  return local
-    .clone()
-    .applyQuaternion(object.getWorldQuaternion(new THREE.Quaternion()))
-    .normalize();
-}
-
 describe('prop grips, in the stance that holds them', () => {
-  it('binds a stance pose for every stance that declares one', async () => {
+  it('resolves a pose for every stance that declares one', () => {
+    // This used to assert a PROCEDURAL placeholder existed for each stance.
+    // Procedural motion is gone, so the meaningful question is the one the game
+    // actually asks: does the key resolve to anything at all. An unbound stance
+    // is a loadout that equips props and then stands in a T-pose holding them.
     for (const stance of Object.values(STANCES)) {
       if (!stance.motion) continue;
-      expect(proceduralMotion(stance.motion), `${stance.motion} has no placeholder`).not.toBeNull();
+      expect(bindingFor(stance.motion).origin, `${stance.motion} is unbound`).not.toBe('unbound');
     }
     expect(Object.values(MOTION_STANCE).length).toBeGreaterThan(0);
   });
@@ -98,9 +49,10 @@ describe('prop grips, in the stance that holds them', () => {
 });
 
 /**
- * The geometric checks that used to live here measured the procedural mannequin
- * while the grips are calibrated for the bound rig, so they were asserting about
- * a combination nothing renders. Grip orientation is verified in the browser
- * harness against the rig that is actually loaded; see the note in `sockets.ts`
- * about why a single table cannot serve both rigs yet.
+ * The geometric checks that used to live here posed the procedural mannequin
+ * with a procedural stance clip and measured the result. Both halves of that
+ * setup are gone — the stance clips are imported now, and a `.glb` cannot be
+ * fetched in Node — so the measurement moved to where the real rig exists.
+ * Grip orientation is verified in the browser, against the body that actually
+ * loads; the sandbox reports it per clip.
  */
