@@ -48,11 +48,22 @@ const WANTED = [
  * since sword work is melee too.
  *
  * The rest are emotes — expressive gestures a player performs at somebody,
- * carrying no mechanics. `Interact` is a person pointing. `Yes` is a thumbs up.
- * `Idle_No_Loop` is a head shake, which is only filed under idle because it
- * happens to loop. Prefixing them puts the four in one family instead of
+ * carrying no mechanics. Prefixing them puts the four in one family instead of
  * scattering them as single-clip categories, and the prefix does that by being
  * the name rather than by being aliased into place.
+ *
+ * Each new name says what the body does, checked against what the clip
+ * actually drives rather than against the name it arrived with:
+ *
+ *   Interact      the left index finger extends and the arm rises   -> a point
+ *   Yes           the left thumb curls up over a raised forearm     -> a thumbs up
+ *   Dance_Loop    calves, thighs and feet lead                      -> footwork
+ *   Idle_No_Loop  head travels 143 degrees while never getting more
+ *                 than 19 from where it started                     -> a shake
+ *
+ * That last one is why it is `HeadShake` and not `No`. `Emote_No_Loop` reads as
+ * "an emote that does not loop", which is the opposite of true, and describes a
+ * meaning rather than a movement — the same failure as calling a clip Interact.
  *
  * A rename that matches nothing is reported, not ignored — an entry here that
  * silently applies to no clip is a typo that looks like a working config.
@@ -63,7 +74,7 @@ const CLIP_RENAMES = {
   Interact: 'Emote_Point',
   Yes: 'Emote_ThumbsUp',
   Dance_Loop: 'Emote_Dance_Loop',
-  Idle_No_Loop: 'Emote_No_Loop',
+  Idle_No_Loop: 'Emote_HeadShake_Loop',
 };
 
 function sourceRoot() {
