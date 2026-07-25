@@ -189,7 +189,7 @@ export function SandboxAvatar({
       void (async () => {
         const object = await resolveProp(slot.prop);
         if (disposed || !object) return;
-        applyGrip(object, slot.prop, slot.socket);
+        applyGrip(object, slot.prop, slot.socket, socket);
         socket.add(object);
         attached.push(object);
       })();
@@ -211,7 +211,7 @@ export function SandboxAvatar({
     void (async () => {
       const object = await resolveProp(gripTest);
       if (disposed || !object) return;
-      applyGrip(object, gripTest, SOCKETS.rightHand);
+      applyGrip(object, gripTest, SOCKETS.rightHand, socket);
       attached = object;
       socket.add(object);
     })();
