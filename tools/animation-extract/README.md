@@ -14,20 +14,33 @@ dependency, and nobody cloning the game should pay to install it.
 ## Source
 
 [Quaternius Universal Animation Library 1 and 2](https://quaternius.com/packs/universalanimationlibrary2.html),
-CC0. Take the `Unreal-Godot/*.glb` files, and the one **without** the `_RM`
-suffix — `_RM` has root motion baked in, and our controller expects the game's
-physics to move the character, so baked root motion fights it and slides.
+CC0 — but this tool does not read the packs directly. It reads the **staged**
+libraries in `client/public/anim-lib/`, produced by `tools/stage-dev-assets.mjs`.
+
+That indirection is deliberate. Staging is where a pack's clip names are
+normalised into ours — `Melee_Hook` becomes `Punch_Hook` in the file itself, not
+in a lookup table. Reading the originals here would mean this tool resolving
+clips by names nothing else uses, which is how a binding table and the thing it
+drives quietly drift apart.
+
+Staging also picks the `Unreal-Godot/*.glb` **without** the `_RM` suffix: `_RM`
+has root motion baked in, and our controller expects the game's physics to move
+the character, so baked root motion fights it and slides.
 
 ## Run
 
 ```sh
-npm install
-node extract.mjs <UAL1.glb> <UAL2.glb> <output-dir>
+cd ../../client && npm run assets:stage -- --source <unpacked packs>
+cd ../tools/animation-extract && npm install
+node extract.mjs <output-dir>
 cp <output-dir>/*.glb ../../client/src/content/dropin/
 ```
 
-Which clip serves which key is the `BINDINGS` table at the top of `extract.mjs`.
-Change a line there and re-run to re-pick a gesture.
+Which clip serves which key is `client/src/content/clipBindings.json`, written by
+the animation sandbox. Decide there — by watching clips play on the real body —
+and re-run this to re-cut. The table does not live in this file on purpose: a
+table maintained next to the extractor is a table maintained by whoever last read
+the clip names, and clip names lie.
 
 ## What it does
 

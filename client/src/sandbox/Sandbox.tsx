@@ -129,14 +129,7 @@ export function Sandbox() {
 
     for (const entry of catalog.entries) {
       if (sourceFilter !== 'all' && entry.origin !== sourceFilter) continue;
-      // Match either name: you may be hunting the pack's id or ours.
-      if (
-        needle
-        && !entry.label.toLowerCase().includes(needle)
-        && !entry.name.toLowerCase().includes(needle)
-      ) {
-        continue;
-      }
+      if (needle && !entry.name.toLowerCase().includes(needle)) continue;
       if (verdictFilter !== 'all') {
         const mark = marks[entry.id];
         if (verdictFilter === 'unmarked' ? mark : mark?.verdict !== verdictFilter) continue;
@@ -148,7 +141,7 @@ export function Sandbox() {
     }
 
     for (const group of byKey.values()) {
-      group.entries.sort((a, b) => a.label.localeCompare(b.label));
+      group.entries.sort((a, b) => a.name.localeCompare(b.name));
     }
     return [...byKey.values()].sort(
       (a, b) => b.entries.length - a.entries.length || a.family.localeCompare(b.family),
@@ -268,14 +261,7 @@ export function Sandbox() {
                         onClick={() => select(entry)}
                       >
                         <span className="clip__src">{entry.library ?? 'proc'}</span>
-                        <span className="clip__name">
-                          {entry.label}
-                          {entry.label !== entry.name && (
-                            <em className="clip__real" title="name in the pack">
-                              {entry.name}
-                            </em>
-                          )}
-                        </span>
+                        <span className="clip__name">{entry.name}</span>
                         <span className="clip__meta">
                           {entry.duration.toFixed(2)}s
                           {entry.motionKey && (
@@ -331,12 +317,7 @@ export function Sandbox() {
       </Canvas>
 
       <aside className="panel panel--controls">
-        <h2>
-          {selected ? selected.label : 'nothing selected'}
-          {selected && selected.label !== selected.name && (
-            <em className="clip__real">{selected.name}</em>
-          )}
-        </h2>
+        <h2>{selected ? selected.name : 'nothing selected'}</h2>
 
         {report && (
           <p className={report.totalTracks > 0 && report.boundTracks === 0 ? 'warn' : 'hint'}>
@@ -497,8 +478,8 @@ export function Sandbox() {
               </label>
             ) : (
               <p className="hint">
-                Procedural motion is generated, not carved from a pack — it has no row in the
-                binding table. It is what a key falls back to.
+                Generated at runtime, so there is no clip name for the binding table to point
+                at. Nothing to assign.
               </p>
             )}
           </>

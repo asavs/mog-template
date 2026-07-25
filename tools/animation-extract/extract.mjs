@@ -13,11 +13,28 @@
 
 import { NodeIO } from '@gltf-transform/core';
 import { prune, dedup } from '@gltf-transform/functions';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const [UAL1, UAL2, OUT] = process.argv.slice(2);
+/**
+ * Read the STAGED libraries, not the raw packs.
+ *
+ * Staging is where a pack's clip names are normalised into ours — a hook stops
+ * being `Melee_Hook` in the file itself. Reading the originals here would mean
+ * this tool resolving by names nothing else uses, which is how a binding table
+ * and the thing it drives drift apart. It also retires the old positional
+ * arguments, where the only thing telling you which library was which was the
+ * order you typed them in.
+ */
+const STAGED_DIR = fileURLToPath(new URL('../../client/public/anim-lib/', import.meta.url));
+const libraryPath = id => join(STAGED_DIR, `${id}.glb`);
+
+const [OUT] = process.argv.slice(2);
+if (!OUT) {
+  console.error('\n  usage: node extract.mjs <output-dir>\n');
+  process.exit(1);
+}
 mkdirSync(OUT, { recursive: true });
 
 /**
@@ -37,16 +54,22 @@ const TABLE_PATH = fileURLToPath(
 );
 const table = JSON.parse(readFileSync(TABLE_PATH, 'utf8'));
 
-const LIBRARY_PATHS = { ual1: UAL1, ual2: UAL2 };
-
 const BINDINGS = {};
+const unstaged = new Set();
 for (const [key, { library, clip }] of Object.entries(table.bindings)) {
-  const path = LIBRARY_PATHS[library];
-  if (!path) {
-    console.error(`  SKIP     ${key}: no path given for library "${library}"`);
+  const path = libraryPath(library);
+  if (!existsSync(path)) {
+    unstaged.add(library);
     continue;
   }
   BINDINGS[key] = [path, clip];
+}
+if (unstaged.size) {
+  console.error(
+    `\n  ${[...unstaged].join(', ')} not staged. Run:\n`
+      + '    cd client && npm run assets:stage -- --source <packs>\n',
+  );
+  process.exit(1);
 }
 
 const io = new NodeIO();
@@ -96,7 +119,7 @@ for (const [key, [libPath, clipName]] of Object.entries(BINDINGS)) {
 
 // The body: mesh and skeleton, no animation at all.
 {
-  const doc = await io.read(UAL1);
+  const doc = await io.read(libraryPath('ual1'));
   for (const anim of doc.getRoot().listAnimations()) {
     for (const channel of anim.listChannels()) channel.dispose();
     for (const sampler of anim.listSamplers()) sampler.dispose();

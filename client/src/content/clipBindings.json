@@ -1,5 +1,5 @@
 {
-  "note": "Which upstream library clip backs each motion key. Decided in the animation sandbox by auditioning clips, not by reading their names — a name is not evidence. Read by tools/animation-extract/extract.mjs to carve dropin GLBs, and by the sandbox to show what is already spoken for. Keys with no entry fall through to procedural motion.",
+  "note": "Which library clip backs each motion key. Decided in the animation sandbox by auditioning clips, not by reading their names — a name is not evidence. Read by tools/animation-extract/extract.mjs to carve dropin GLBs, and by the sandbox to show what is already spoken for. Clip names are the ones in the staged libraries, normalised by tools/stage-dev-assets.mjs. A key with no entry here resolves to nothing at all and is named in the sandbox header.",
   "libraries": {
     "ual1": "Universal Animation Library",
     "ual2": "Universal Animation Library 2"

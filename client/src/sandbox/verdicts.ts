@@ -59,9 +59,10 @@ export type ExportSummary = {
 /**
  * Turn marks into the binding table.
  *
- * Only library clips can be exported: procedural motion is generated code, not
- * a clip carved out of a pack, so it has no row here — it is what a key falls
- * back to when this table says nothing.
+ * Only library clips can be exported — a row here names a clip inside a staged
+ * pack, and anything generated at runtime has no such name to point at. A key
+ * left out of the table resolves to nothing, which the sandbox says out loud
+ * rather than leaving to be discovered as a sliding character.
  */
 export function exportBindings(
   marks: Marks,
