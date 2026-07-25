@@ -69,13 +69,27 @@ const KEY_BY_CLIP = new Map<string, string>(
 );
 
 /**
- * Packs disagree about what to call the same family. UAL1 files its jabs and
- * crosses under `Punch_*` while UAL2 files its hooks under `Melee_*` — same
- * gesture vocabulary, two names, and split across two groups you would never
- * notice you were choosing between them.
+ * What we call a family, where the packs called it something unhelpful.
+ *
+ * Two different problems, one fix. The packs disagree with EACH OTHER — UAL1
+ * files its jabs and crosses under `Punch_*` while UAL2 files its hooks under
+ * `Melee_*`, so the same gesture vocabulary lands in two groups and you never
+ * notice you are choosing between five clips rather than two and three.
+ *
+ * And some names describe nothing. `Interact` is a person pointing at
+ * something; `Yes` is a thumbs up. Both are named for the intent an animator
+ * imagined rather than the gesture the body performs, which is the same reason
+ * our own motion ids are forbidden from naming spells or classes.
+ *
+ * This renames the GROUP only. Each clip still shows its true upstream name,
+ * because that is the string `clipBindings.json` and the extractor look it up
+ * by — a friendly label that hides the real id would reintroduce exactly the
+ * confusion it is meant to clear up.
  */
 const FAMILY_ALIASES: Record<string, string> = {
   Punch: 'Melee',
+  Interact: 'Point',
+  Yes: 'ThumbsUp',
 };
 
 const familyOf = (name: string) => {
