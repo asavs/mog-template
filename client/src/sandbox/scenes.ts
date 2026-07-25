@@ -25,6 +25,15 @@ export type Placement = {
   at: readonly [number, number, number];
   /** Yaw in degrees. */
   turn?: number;
+  /**
+   * Full orientation in degrees, when yaw alone will not do.
+   *
+   * Held props need this and scenery does not. Scenery is authored standing on
+   * its base, so turning it is the only sensible move; a weapon is authored
+   * origin-at-grip with +Y toward its point, so putting one in a rack means
+   * tipping it as well as turning it. Overrides `turn` when both are given.
+   */
+  rotate?: readonly [number, number, number];
   scale?: number;
 };
 
@@ -39,6 +48,43 @@ export type Scene = {
 };
 
 const WALL_Z = -2.6;
+
+/**
+ * A weapon stand with weapons actually on it.
+ *
+ * Held props are set dressing here, which the kit does not author them for:
+ * scenery stands on its base, a weapon hangs from its grip. So each one is
+ * placed by its grip and tipped upright, using measurements off the meshes —
+ * the sword is 1.13 long with its grip 0.21 above the pommel, the stand is 1.11
+ * tall, and the shield is a 0.61 disc.
+ *
+ * Offsets are given relative to the stand and rotated with it, so moving the
+ * stand takes its weapons along instead of leaving them hanging in the air.
+ */
+function weaponRack(
+  at: readonly [number, number, number],
+  turn: number,
+): readonly Placement[] {
+  const radians = (turn * Math.PI) / 180;
+  const from = (dx: number, dy: number, dz: number): readonly [number, number, number] => [
+    at[0] + dx * Math.cos(radians) + dz * Math.sin(radians),
+    at[1] + dy,
+    at[2] - dx * Math.sin(radians) + dz * Math.cos(radians),
+  ];
+
+  return [
+    { key: SCENERY_KEYS.weaponStand, at, turn },
+    // Blade up. A grip 0.38 off the floor puts the pommel just clear of it and
+    // the point above the frame, which is how a rack holds a sword.
+    { key: PROP_KEYS.sword, at: from(-0.34, 0.38, 0.1), rotate: [5, turn, -8] },
+    // The axe is the one prop not authored in the documented frame: its haft
+    // runs along X rather than Y, so standing it up is a roll of about 90
+    // degrees rather than the tilt every other weapon needs.
+    { key: PROP_KEYS.axe, at: from(0.2, 0.66, 0.08), rotate: [4, turn, 86] },
+    // Leaning against the frame, boss outward.
+    { key: PROP_KEYS.shield, at: from(0.62, 0.33, 0.28), rotate: [-14, turn + 10, 0] },
+  ];
+}
 
 export const SCENES: readonly Scene[] = [
   {
@@ -58,13 +104,34 @@ export const SCENES: readonly Scene[] = [
       // Far enough out that a swing has somewhere to travel; a target you are
       // already standing inside tells you nothing about reach.
       { key: SCENERY_KEYS.dummy, at: [2.3, 0, 1.7], turn: 205 },
-      { key: SCENERY_KEYS.weaponStand, at: [-1.9, 0, -0.7], turn: 15 },
+      ...weaponRack([-1.9, 0, -0.7], 15),
       { key: SCENERY_KEYS.crate, at: [2.6, 0, -1.4], turn: -20 },
       { key: SCENERY_KEYS.barrel, at: [-2.9, 0, 0.4] },
       { key: SCENERY_KEYS.rope, at: [2.1, 0, -0.1], turn: 40 },
       { key: SCENERY_KEYS.sack, at: [-2.4, 0, -1.6], turn: -35 },
       { key: SCENERY_KEYS.pegRack, at: [-0.9, 1.55, WALL_Z + 0.06] },
       { key: SCENERY_KEYS.torchSconce, at: [1.7, 1.5, WALL_Z + 0.06] },
+    ],
+  },
+
+  {
+    id: 'drill-yard',
+    label: 'drill yard',
+    note: 'Where a routine runs. The dummy is straight ahead so a strike has something to be aimed at, and the rack is off to the side where it will not be swung through.',
+    wall: true,
+    place: [
+      // Directly in front and turned to face back. The body stands at the origin
+      // facing +Z, and a target off to one side makes every attack read as a
+      // near-miss — which is a judgement about placement, not about the clip.
+      { key: SCENERY_KEYS.dummy, at: [0.35, 0, 2.05], turn: 180 },
+      // Behind and to the left, clear of the swing arc.
+      ...weaponRack([-2.35, 0, -1.15], 28),
+      { key: SCENERY_KEYS.barrel, at: [2.9, 0, -1.1], turn: 12 },
+      { key: SCENERY_KEYS.crate, at: [-3.2, 0, 0.9], turn: -18 },
+      { key: SCENERY_KEYS.sack, at: [2.5, 0, 0.6], turn: 40 },
+      { key: SCENERY_KEYS.whetstone, at: [3.2, 0, 1.9], turn: -30 },
+      { key: SCENERY_KEYS.torchSconce, at: [-1.2, 1.5, WALL_Z + 0.06] },
+      { key: SCENERY_KEYS.torchSconce, at: [1.6, 1.5, WALL_Z + 0.06] },
     ],
   },
 

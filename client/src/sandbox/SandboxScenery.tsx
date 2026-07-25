@@ -67,7 +67,12 @@ export function SandboxScenery({ scene }: SandboxSceneryProps) {
         const object = await resolveProp(placement.key);
         if (disposed || !object) return;
         object.position.set(...placement.at);
-        if (placement.turn) object.rotation.y = THREE.MathUtils.degToRad(placement.turn);
+        if (placement.rotate) {
+          const [x, y, z] = placement.rotate.map(THREE.MathUtils.degToRad);
+          object.rotation.set(x, y, z, 'XYZ');
+        } else if (placement.turn) {
+          object.rotation.y = THREE.MathUtils.degToRad(placement.turn);
+        }
         if (placement.scale) object.scale.setScalar(placement.scale);
         object.traverse(child => {
           if ((child as THREE.Mesh).isMesh) {

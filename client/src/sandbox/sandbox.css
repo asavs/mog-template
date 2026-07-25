@@ -323,3 +323,54 @@ button:hover {
   line-height: 1.45;
   resize: vertical;
 }
+
+/* --- drill routine ------------------------------------------------------- */
+
+/*
+ * The running step has to be findable at a glance while you are watching the
+ * character, not the panel — so the active row is marked by colour AND by a
+ * left bar, and the list scrolls to keep it in view.
+ */
+.drill {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  counter-reset: drill-step;
+}
+
+.drill li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  margin-bottom: 1px;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  counter-increment: drill-step;
+  opacity: 0.5;
+}
+
+.drill li.is-active {
+  background: #23304a;
+  border-left-color: #6ee7a0;
+  opacity: 1;
+}
+
+.drill__label {
+  font-size: 11px;
+  color: #d7deec;
+}
+
+.drill__label::before {
+  content: counter(drill-step) ". ";
+  color: #6b7488;
+}
+
+.drill__combo {
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  color: #6b7488;
+  overflow-wrap: anywhere;
+}
