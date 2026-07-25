@@ -5,7 +5,7 @@ Turns an upstream animation library into the per-key GLBs that live in
 
 This exists so the assets in the repo have provenance. Without it, `dropin/` is a
 pile of binaries nobody can regenerate, re-pick, or re-cut — and the first time
-someone wants a different clip for `act_slam_2h` they are back to an afternoon of
+someone wants a different clip for `act_swing_1h` they are back to an afternoon of
 rediscovery.
 
 Deliberately its own package: it is a one-off authoring step, not a build

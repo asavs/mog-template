@@ -15,7 +15,6 @@
     "motion.react_death": { "library": "ual1", "clip": "Death01" },
     "motion.act_hurl_1h": { "library": "ual2", "clip": "OverhandThrow" },
     "motion.act_swing_1h": { "library": "ual1", "clip": "Sword_Attack" },
-    "motion.act_slam_2h": { "library": "ual2", "clip": "Sword_Heavy_Combo" },
     "motion.act_guard_hold": { "library": "ual2", "clip": "Sword_Block" },
     "motion.act_drink": { "library": "ual2", "clip": "Consume" },
     "motion.stance_staff": { "library": "ual1", "clip": "Idle_Torch_Loop" },

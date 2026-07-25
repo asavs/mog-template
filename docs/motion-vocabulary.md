@@ -43,7 +43,6 @@ Summary. Durations are targets at 1.0 playback rate; contact beats are contractu
 | `air_fall`        | Suspended, braced                 | Full body  | Loop     | ~0.8 s    |
 | `air_land`        | Weight arriving                   | Full body  | One-shot | ~0.3 s    |
 | `act_hurl_1h`     | Gathering, then throwing energy   | Overlay    | One-shot | ~0.9 s    |
-| `act_slam_2h`     | Overhead raise, downward commit   | Overlay    | One-shot | ~1.1 s    |
 | `act_swing_1h`    | A weapon cutting through space    | Overlay    | One-shot | ~0.9 s    |
 | `act_guard_hold`  | Braced wall, deliberate           | Overlay    | Hold     | enter+loop|
 | `act_drink`       | Consuming, briefly vulnerable     | Overlay    | One-shot | ~1.4 s    |
@@ -91,9 +90,9 @@ values.
 This has a consequence for authoring, and it is the reason it is stated here rather
 than in code: **a motion with `movement > 0` must be authored to read on top of
 somebody else's walk.** No weight shift you cannot see the legs doing, no hip drive,
-no big torso rotation. If a gesture genuinely needs the whole body to read — a
-committed two-handed slam — then it roots you, and that is a design decision about
-the ability, made deliberately, not a rendering accident.
+no big torso rotation. If a gesture genuinely needs the whole body to read — a dodge
+roll — then it roots you, and that is a design decision about the ability, made
+deliberately, not a rendering accident.
 
 If a narrow mask would leave a clip with no tracks at all, the width widens instead
 of the motion vanishing. An action that plays as nothing is worse than an action
@@ -311,7 +310,7 @@ Logical motion ids, snake_case (repo-wide rule), pattern:
 |----------|--------------------------------|---------------------------------------------|
 | `loco`   | Ground movement                | `loco_idle`, `loco_walk_f`, `loco_run_l`    |
 | `air`    | Airborne                       | `air_jump`, `air_fall`, `air_land`          |
-| `act`    | Anything an ability performs   | `act_hurl_1h`, `act_slam_2h`, `act_drink`   |
+| `act`    | Anything an ability performs   | `act_hurl_1h`, `act_swing_1h`, `act_drink`  |
 | `stance` | Held poses for a loadout       | `stance_staff`, `stance_sword_shield`       |
 | `react`  | Involuntary responses          | `react_hit`, `react_death`                  |
 
@@ -331,8 +330,7 @@ Rules:
   the game it is `act_swing_1h` / `act_hurl_1h`.
 - **Never a specific ability's name in a motion id.** `fireball` is an *ability*
   id (loadout authority); its motion is `act_hurl_1h`. This is what lets fireball and
-  lightning share a gesture, and lets a future ability request the old holy-slam
-  gesture as `act_slam_2h` on purpose rather than by accident.
+  lightning share a gesture without either owning it.
 - The motion id **is** the clip name inside the GLB. Shared libraries
   (`animations/locomotion.glb`, `animations/combat.glb`) hold many named clips;
   loaders must select clips by name, never by index.

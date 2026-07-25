@@ -15,8 +15,8 @@
  * - Ability -> motion is MANY-TO-ONE. Fireball and lightning both request
  *   `act_hurl_1h`; they differ in projectile, VFX, and timing data, not in
  *   skeleton motion.
- * - A gesture that was once a class signature becomes ordinary vocabulary. An
- *   overhead two-handed slam is `act_slam_2h`: any ability may request it
+ * - A gesture is vocabulary, not property. `act_swing_1h` is a lateral cut: a
+ *   sword art, a claw, and a thrown net's wind-up may all request it
  *   deliberately, and none inherits it by accident from the body it runs on.
  *
  * A motion id is also the clip name inside a GLB, so shared libraries can hold
@@ -57,8 +57,6 @@ export const MOTION_AIR = {
 export const MOTION_ACTION = {
   /** Overhand throw from the shoulder, one arm. Off-arm free. */
   hurl1h: 'motion.act_hurl_1h',
-  /** Overhead raise and downward slam, both arms committed. */
-  slam2h: 'motion.act_slam_2h',
   /** Lateral cut across the body, one arm. Off-arm free. */
   swing1h: 'motion.act_swing_1h',
   /** Braced defensive hold. Looping — held for as long as the input is held. */
