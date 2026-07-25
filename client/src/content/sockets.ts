@@ -183,15 +183,24 @@ type Hold = {
 
 const HOLDS: Partial<Record<PropKey, Hold>> = {
   // Blade out of the top of the fist, flat of the blade facing the palm side.
-  [PROP_KEYS.sword]: { lengthAxis: 'grip', lengthSign: 1, faceAxis: 'palm', faceSign: 1 },
+  // Trimmed by hand in the drill room, in the RIGHT hand: the axes alone put
+  // the blade about twenty-six degrees off, which is the cant a fist puts on a
+  // hilt and the amount no naming of axes can express.
+  [PROP_KEYS.sword]: {
+    lengthAxis: 'grip', lengthSign: 1, faceAxis: 'palm', faceSign: 1,
+    offset: { along: 0.003, palm: 0.025, grip: -0.018 },
+    trim: [-25.7, -16.1, 0.6],
+  },
   // Staff runs the other way down the fist so the length reaches the ground.
   [PROP_KEYS.staff]: { lengthAxis: 'grip', lengthSign: -1, faceAxis: 'palm', faceSign: 1 },
   [PROP_KEYS.potion]: { lengthAxis: 'grip', lengthSign: 1, faceAxis: 'palm', faceSign: 1 },
   // A shield is strapped across the forearm, not gripped: its face looks out of
-  // the back of the hand, and it sits back toward the elbow.
+  // the back of the hand, and it sits back toward the elbow. Trimmed by hand in
+  // the LEFT hand, which is where the sword-and-board stance puts it.
   [PROP_KEYS.shield]: {
     lengthAxis: 'along', lengthSign: -1, faceAxis: 'palm', faceSign: 1,
-    offset: { along: -0.06 },
+    offset: { along: -0.102, palm: 0.055, grip: -0.036 },
+    trim: [1.9, 25.6, 10.3],
   },
 };
 

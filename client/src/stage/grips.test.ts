@@ -40,20 +40,40 @@ function frameOf(bone: THREE.Object3D): FistFrame {
 }
 
 describe('grip trim', () => {
-  it('reads zero from a prop the solver has just placed', () => {
-    // Nothing has been dragged, so the correction must be nothing — otherwise
-    // merely opening the editor would author a change.
-    const bone = hand();
-    const sword = new THREE.Object3D();
-    bone.add(sword);
-    applyGrip(sword, PROP_KEYS.sword, 'rightHand', bone);
+  it('reads a freshly solved prop back as the correction it was solved with', () => {
+    // Idempotence, and it is the property the whole tool rests on: open the
+    // editor, touch nothing, export — and get back what was already in the
+    // table. Anything else means every visit quietly rewrites the grip.
+    for (const prop of [PROP_KEYS.sword, PROP_KEYS.shield] as const) {
+      const hold = holdFor(prop)!;
+      const bone = hand();
+      const object = new THREE.Object3D();
+      bone.add(object);
+      applyGrip(object, prop, 'rightHand', bone);
 
-    const correction = gripTrimOf(holdFor(PROP_KEYS.sword)!, frameOf(bone), sword);
-    expect(correction).not.toBeNull();
-    for (const value of correction!.trim) expect(Math.abs(value)).toBeLessThan(0.05);
-    expect(Math.abs(correction!.offset.along)).toBeLessThan(0.001);
-    expect(Math.abs(correction!.offset.palm)).toBeLessThan(0.001);
-    expect(Math.abs(correction!.offset.grip)).toBeLessThan(0.001);
+      const correction = gripTrimOf(hold, frameOf(bone), object);
+      expect(correction, prop).not.toBeNull();
+
+      const trim = hold.trim ?? [0, 0, 0];
+      correction!.trim.forEach((value, axis) => {
+        expect(Math.abs(value - trim[axis]), `${prop} trim axis ${axis}`).toBeLessThan(0.05);
+      });
+      const offset = hold.offset ?? {};
+      expect(Math.abs(correction!.offset.along - (offset.along ?? 0))).toBeLessThan(0.001);
+      expect(Math.abs(correction!.offset.palm - (offset.palm ?? 0))).toBeLessThan(0.001);
+      expect(Math.abs(correction!.offset.grip - (offset.grip ?? 0))).toBeLessThan(0.001);
+    }
+  });
+
+  it('reads zero from a hold that carries no correction', () => {
+    const bone = hand();
+    const staff = new THREE.Object3D();
+    bone.add(staff);
+    applyGrip(staff, PROP_KEYS.staff, 'rightHand', bone);
+
+    const correction = gripTrimOf(holdFor(PROP_KEYS.staff)!, frameOf(bone), staff)!;
+    for (const value of correction.trim) expect(Math.abs(value)).toBeLessThan(0.05);
+    expect(Math.abs(correction.offset.along)).toBeLessThan(0.001);
   });
 
   it('round-trips a drag: solving the exported hold puts the prop back', () => {
