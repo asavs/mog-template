@@ -14,8 +14,10 @@ describe('mog_humanoid rig', () => {
   });
 
   it('wires hand sockets to hand bones', () => {
-    expect(SOCKET_BONE_CANDIDATES.right_hand[0]).toBe('RightHand');
-    expect(SOCKET_BONE_CANDIDATES.left_hand[0]).toBe('LeftHand');
+    // The socket table points at the hand bones whatever they are spelled;
+    // that the spelling matches shipped art is the fixture test below.
+    expect(SOCKET_BONE_CANDIDATES.right_hand[0]).toBe(MOG_BONES.rightHand);
+    expect(SOCKET_BONE_CANDIDATES.left_hand[0]).toBe(MOG_BONES.leftHand);
   });
 });
 
