@@ -23,9 +23,11 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
-import { Grid, OrbitControls } from '@react-three/drei';
+import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
 import { Scenery } from '../stage/Scenery';
+import { placementOf, sceneSource } from '../stage/placements';
 import { sceneById } from '../stage/scenes';
 import { DRILLS, drillById, type DrillWidth } from './drills';
 import { DrillStage, type StageReport, type StepStatus } from './DrillStage';
@@ -62,6 +64,16 @@ export function DrillRoom() {
   const [report, setReport] = useState<StageReport | null>(null);
   const [notes, setNotes] = useState<Notes>(() => loadNotes());
   const [exported, setExported] = useState<string | null>(null);
+
+  // --- placing the set ------------------------------------------------------
+  // The rack weapons were positioned from measured bounding boxes, which gets
+  // them roughly upright and no further. Dragging them is the only way to
+  // finish that, and the export is what stops the result dying on reload.
+  const [placed, setPlaced] = useState<readonly (THREE.Object3D | null)[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [gizmo, setGizmo] = useState<'translate' | 'rotate'>('rotate');
+  const [editing, setEditing] = useState(false);
+  const [nudge, setNudge] = useState(0);
 
   const drill = useMemo(() => drillById(drillId), [drillId]);
   const scene = useMemo(() => sceneById(drill?.sceneId ?? ''), [drill]);
@@ -118,7 +130,26 @@ export function DrillRoom() {
             <shadowMaterial opacity={0.35} />
           </mesh>
 
-          <Scenery scene={scene} />
+          <Scenery
+            scene={scene}
+            onPlaced={(index, object) => setPlaced(current => {
+              const next = [...current];
+              next[index] = object;
+              return next;
+            })}
+          />
+
+          {editing && selected !== null && placed[selected] && (
+            <TransformControls
+              object={placed[selected] as THREE.Object3D}
+              mode={gizmo}
+              // Rotation snap is what makes a rack readable: weapons that agree
+              // on an angle look racked, and weapons a degree apart look
+              // dropped. Translation stays free — a grip has no natural grid.
+              rotationSnap={THREE.MathUtils.degToRad(5)}
+              onObjectChange={() => setNudge(value => value + 1)}
+            />
+          )}
 
           <DrillStage
             drill={drill}
@@ -135,7 +166,9 @@ export function DrillRoom() {
             }}
           />
 
-          <OrbitControls target={[0, 0.95, 0]} enableDamping />
+          {/* makeDefault lets the gizmo suspend orbiting while you drag it;
+              without it a drag rotates the camera and the prop at once. */}
+          <OrbitControls makeDefault target={[0, 0.95, 0]} enableDamping />
         </Canvas>
 
         <div className="now">
@@ -271,6 +304,79 @@ export function DrillRoom() {
               setNotes(current => withNote(current, key, { ...note, text: event.target.value }))}
           />
         </label>
+
+        <h3>Set dressing</h3>
+        <label className="field field--check">
+          <input
+            type="checkbox"
+            checked={editing}
+            onChange={event => setEditing(event.target.checked)}
+          />
+          <span>Place props by hand</span>
+        </label>
+        {editing && (
+          <>
+            <p className="hint">
+              Pick a prop, drag the gizmo, then export and paste over that scene&apos;s
+              <code> place</code> array in <code>stage/scenes.ts</code>. Rotation snaps to 5°.
+            </p>
+            <div className="row row--tabs">
+              {(['rotate', 'translate'] as const).map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  className={gizmo === value ? 'is-active' : ''}
+                  onClick={() => setGizmo(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            <ol className="props">
+              {scene.place.map((placement, position) => (
+                <li key={`${placement.key}-${position}`}>
+                  <button
+                    type="button"
+                    className={selected === position ? 'is-active' : ''}
+                    disabled={!placed[position]}
+                    onClick={() => setSelected(selected === position ? null : position)}
+                  >
+                    {placement.key.replace(/^prop\./, '')}
+                    {!placed[position] && ' (not loaded)'}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {selected !== null && placed[selected] && (
+              <p className="hint">
+                {/* `nudge` is read here so the readout re-renders while dragging. */}
+                <code data-nudge={nudge}>
+                  {JSON.stringify(
+                    placementOf(scene.place[selected].key, placed[selected] as THREE.Object3D),
+                  )}
+                </code>
+              </p>
+            )}
+            <div className="row">
+              <button
+                type="button"
+                onClick={() => setExported(sceneSource(
+                  scene.place.map((placement, position) => {
+                    const object = placed[position];
+                    return object ? placementOf(placement.key, object) : placement;
+                  }),
+                ))}
+              >
+                Export placements
+              </button>
+            </div>
+            <p className="hint">
+              Exported absolutely, including the rack weapons that
+              <code> weaponRack</code> derives from the stand — once one has been dragged, that
+              relationship is no longer what put it there.
+            </p>
+          </>
+        )}
 
         <h3>Routine</h3>
         <ol className="steps">

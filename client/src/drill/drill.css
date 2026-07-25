@@ -260,3 +260,53 @@ body {
   font-family: ui-monospace, monospace;
   font-size: 10px;
 }
+
+/* --- placing props ------------------------------------------------------- */
+
+.props {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.props li {
+  margin-bottom: 1px;
+}
+
+.props li button {
+  width: 100%;
+  padding: 3px 8px;
+  text-align: left;
+  color: #d7deec;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.props li button:hover:not(:disabled) {
+  background: #1a1f2b;
+}
+
+.props li button.is-active {
+  background: #23304a;
+  border-color: #4a7ab5;
+}
+
+.props li button:disabled {
+  color: #5a6174;
+  cursor: default;
+}
+
+.hint code {
+  padding: 1px 4px;
+  background: #0b0e14;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}

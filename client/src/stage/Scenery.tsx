@@ -19,6 +19,16 @@ import { WALL_Z, type Scene } from './scenes';
 
 type SceneryProps = {
   scene: Scene;
+  /**
+   * Hands back each placed object, so an editor can attach a gizmo to it.
+   *
+   * Reporting the object rather than accepting edited placements as a prop is
+   * deliberate: a gizmo moves things dozens of times a second, and a
+   * placement-driven Scenery would reload every mesh in the room on each frame
+   * of a drag. The editor mutates what is already standing there and reads the
+   * numbers back off it.
+   */
+  onPlaced?: (index: number, object: THREE.Object3D) => void;
 };
 
 /** Something for the wall fittings to hang on, and a back to the room. */
@@ -46,8 +56,14 @@ function buildWall(): THREE.Object3D {
   return group;
 }
 
-export function Scenery({ scene }: SceneryProps) {
+export function Scenery({ scene, onPlaced }: SceneryProps) {
   const groupRef = useRef<THREE.Group>(null);
+
+  // Read through a ref so a changing callback never re-triggers the load.
+  const onPlacedRef = useRef(onPlaced);
+  useEffect(() => {
+    onPlacedRef.current = onPlaced;
+  });
 
   useEffect(() => {
     const parent = groupRef.current;
@@ -62,7 +78,7 @@ export function Scenery({ scene }: SceneryProps) {
       placed.push(wall);
     }
 
-    for (const placement of scene.place) {
+    scene.place.forEach((placement, index) => {
       void (async () => {
         const object = await resolveProp(placement.key);
         if (disposed || !object) return;
@@ -82,8 +98,9 @@ export function Scenery({ scene }: SceneryProps) {
         });
         parent.add(object);
         placed.push(object);
+        onPlacedRef.current?.(index, object);
       })();
-    }
+    });
 
     return () => {
       disposed = true;
