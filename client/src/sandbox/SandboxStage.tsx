@@ -29,6 +29,7 @@ import {
   MOTION_ACTION,
   MOTION_REACTION,
   SOCKETS,
+  STANCES,
   applyGrip,
   describeRigBinding,
   inspectClipBinding,
@@ -39,6 +40,7 @@ import {
   type PropKey,
   type ResolvedBody,
   type SocketId,
+  type StanceKey,
 } from '../content';
 import type { CatalogEntry } from './catalog';
 
@@ -62,6 +64,15 @@ export type SandboxStageProps = {
   bands: readonly AnimationBand[] | null;
   /** Gait running underneath, in layered mode. */
   baseLocomotion: string | null;
+  /**
+   * Held pose worn under everything else, in layered mode.
+   *
+   * The reason this exists: a stance is the one thing the clip browser could
+   * not show. Sword-and-board is composed from two clips, one per arm, and
+   * whether that composition reads is not a question about either clip — so
+   * auditioning them individually cannot answer it, and nothing else here does.
+   */
+  stance: StanceKey | null;
   /** Fraction of move speed the action permits; narrows the overlay above 0. */
   movement: number;
   rightHand: PropKey | null;
@@ -80,6 +91,7 @@ export function SandboxStage({
   speed,
   bands,
   baseLocomotion,
+  stance,
   movement,
   rightHand,
   leftHand,
@@ -173,6 +185,26 @@ export function SandboxStage({
     return undefined;
   }, [body, mode]);
 
+  // --- stance ---------------------------------------------------------------
+  // Declared after the driver effect so the controller exists by the time this
+  // runs, and keyed on `mode` as well, so a controller rebuilt by a mode switch
+  // re-adopts the pose rather than standing there unarmed.
+  useEffect(() => {
+    if (mode !== 'layered') return;
+    controllerRef.current?.setStance(stance === null ? null : STANCES[stance].poses);
+  }, [body, mode, stance]);
+
+  // --- gait -----------------------------------------------------------------
+  // Its own effect, not part of playback, so the gait runs with nothing
+  // selected. A stance has to be judged against a walk as much as against an
+  // attack — that is the entire claim a stance makes, that one pose covers idle
+  // and walk and run — and requiring a clip selection to see one moving would
+  // hide the half that matters.
+  useEffect(() => {
+    if (mode !== 'layered') return;
+    controllerRef.current?.setLocomotion(baseLocomotion ?? '');
+  }, [body, mode, baseLocomotion]);
+
   // --- play ----------------------------------------------------------------
   useEffect(() => {
     if (!body || !entry) return;
@@ -195,7 +227,8 @@ export function SandboxStage({
     if (mode === 'layered') {
       const controller = controllerRef.current;
       if (!controller) return;
-      controller.setLocomotion(baseLocomotion ?? '');
+      // The gait and the stance have their own effects; this one only fires the
+      // action, so re-selecting a clip does not restart what it plays over.
       clipsRef.current.set(entry.id, entry.clip);
       controller.playAbility(entry.id, {
         upperBodyOnly: bands !== null,
@@ -218,7 +251,7 @@ export function SandboxStage({
     return () => {
       action.stop();
     };
-  }, [body, entry, mode, bands, loop, speed, movement, baseLocomotion, playToken]);
+  }, [body, entry, mode, bands, loop, speed, movement, playToken]);
 
   // --- props ---------------------------------------------------------------
   useEffect(() => {

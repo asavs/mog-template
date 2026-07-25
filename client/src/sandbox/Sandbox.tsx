@@ -25,8 +25,11 @@ import {
   ALL_MOTION_KEYS,
   ALL_PROP_KEYS,
   MOTION_LOCOMOTION,
+  SOCKETS,
+  STANCES,
   contentSeamReport,
   type PropKey,
+  type StanceKey,
 } from '../content';
 import { buildCatalog, type Catalog, type CatalogEntry } from './catalog';
 import { SandboxScenery } from './SandboxScenery';
@@ -78,6 +81,7 @@ export function Sandbox() {
   const [speed, setSpeed] = useState(1);
   const [maskWidth, setMaskWidth] = useState<MaskWidth>('full');
   const [baseLocomotion, setBaseLocomotion] = useState<string>(MOTION_LOCOMOTION.idle);
+  const [stance, setStance] = useState<StanceKey | null>(null);
   const [movement, setMovement] = useState(0);
   const [rightHand, setRightHand] = useState<PropKey | null>(null);
   const [leftHand, setLeftHand] = useState<PropKey | null>(null);
@@ -120,6 +124,16 @@ export function Sandbox() {
     () => contentSeamReport().filter(binding => binding.origin === 'unbound'),
     [],
   );
+
+  /**
+   * Which keys resolve to anything, so the gait picker can say so.
+   *
+   * Six of the nine locomotion keys have no clip in either library and are
+   * deliberately empty. Offering them unlabelled means picking "walk left" and
+   * watching the character stand still, which reads as a broken stance rather
+   * than as the absent content it is.
+   */
+  const unboundKeys = useMemo(() => new Set(unbound.map(binding => binding.key)), [unbound]);
 
   const tally = useMemo(() => {
     const counts = { keep: 0, cut: 0, unsure: 0 };
@@ -322,6 +336,7 @@ export function Sandbox() {
           speed={speed}
           bands={MASK_BANDS[maskWidth]}
           baseLocomotion={baseLocomotion}
+          stance={stance}
           movement={movement}
           rightHand={rightHand}
           leftHand={leftHand}
@@ -410,10 +425,42 @@ export function Sandbox() {
                 {Object.values(MOTION_LOCOMOTION).map(key => (
                   <option key={key} value={key}>
                     {key.replace(/^motion\./, '')}
+                    {unboundKeys.has(key) ? ' — no clip' : ''}
                   </option>
                 ))}
               </select>
             </label>
+
+            <label className="field">
+              <span>Stance</span>
+              <select
+                value={stance ?? ''}
+                onChange={event => {
+                  const next = (event.target.value || null) as StanceKey | null;
+                  setStance(next);
+                  // A stance already says what it holds, so picking one fills the
+                  // hands. Judging sword-and-board with empty hands is the exact
+                  // mistake the prop import was done to stop.
+                  const slots = next === null ? [] : STANCES[next].slots;
+                  setRightHand(slots.find(s => s.socket === SOCKETS.rightHand)?.prop ?? null);
+                  setLeftHand(slots.find(s => s.socket === SOCKETS.leftHand)?.prop ?? null);
+                }}
+              >
+                <option value="">none — locomotion&apos;s own upper body</option>
+                {Object.values(STANCES).map(option => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {stance !== null && STANCES[stance].poses.length > 0 && (
+              <p className="hint">
+                {STANCES[stance].poses
+                  .map(pose => `${pose.motion.replace(/^motion\./, '')} → ${pose.bands.join('+')}`)
+                  .join(' · ')}
+              </p>
+            )}
             <label className="field">
               <span>
                 Movement while acting: {movement === 0 ? 'rooted' : `${Math.round(movement * 100)}%`}
