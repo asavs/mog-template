@@ -61,6 +61,21 @@ export type DrillStageProps = {
   onReport: (report: StageReport) => void;
   /** The step has run its course. The room decides what happens next. */
   onElapsed: () => void;
+  /**
+   * What ended up in each hand, with the bone it hangs from.
+   *
+   * Handed up so the grip editor can put a gizmo on a held prop. The bone comes
+   * with it because a grip is only meaningful relative to the hand — the fist
+   * frame is solved from that bone's fingers.
+   */
+  onEquipped?: (held: readonly HeldProp[]) => void;
+};
+
+export type HeldProp = {
+  prop: PropKey;
+  socket: SocketId;
+  object: THREE.Object3D;
+  hand: THREE.Object3D;
 };
 
 const EMPTY_BANDS: Record<string, number> = {};
@@ -75,6 +90,7 @@ export function DrillStage({
   onStatus,
   onReport,
   onElapsed,
+  onEquipped,
 }: DrillStageProps) {
   const groupRef = useRef<THREE.Group>(null);
   const [body, setBody] = useState<ResolvedBody | null>(null);
@@ -82,9 +98,9 @@ export function DrillStage({
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
   const elapsedRef = useRef(0);
 
-  const callbacks = useRef({ onStatus, onReport, onElapsed });
+  const callbacks = useRef({ onStatus, onReport, onElapsed, onEquipped });
   useEffect(() => {
-    callbacks.current = { onStatus, onReport, onElapsed };
+    callbacks.current = { onStatus, onReport, onElapsed, onEquipped };
   });
 
   const step = drill.steps[stepIndex];
@@ -155,7 +171,7 @@ export function DrillStage({
   useEffect(() => {
     if (!body || !drill.stance) return;
     let disposed = false;
-    const attached: THREE.Object3D[] = [];
+    const held: HeldProp[] = [];
 
     for (const slot of STANCES[drill.stance].slots) {
       const bone = body.bones[slot.socket as SocketId];
@@ -165,13 +181,20 @@ export function DrillStage({
         if (disposed || !object) return;
         applyGrip(object, slot.prop, slot.socket, bone);
         bone.add(object);
-        attached.push(object);
+        held.push({
+          prop: slot.prop as PropKey,
+          socket: slot.socket as SocketId,
+          object,
+          hand: bone,
+        });
+        callbacks.current.onEquipped?.([...held]);
       })();
     }
 
     return () => {
       disposed = true;
-      for (const object of attached) object.removeFromParent();
+      for (const entry of held) entry.object.removeFromParent();
+      callbacks.current.onEquipped?.([]);
     };
   }, [body, drill]);
 

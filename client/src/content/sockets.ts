@@ -164,6 +164,21 @@ type Hold = {
   faceSign: 1 | -1;
   /** Extra shift from the fist, along the frame's own axes. */
   offset?: { along?: number; palm?: number; grip?: number };
+  /**
+   * Fine correction after the axes have done their work, in degrees, about the
+   * PROP's own authoring frame.
+   *
+   * The axes above can only say "blade out of the top of the fist, flat toward
+   * the palm", which lands a sword within about fifteen degrees of right and no
+   * closer — a real hand cants a hilt, and no amount of naming axes expresses
+   * that. This is where the rest goes.
+   *
+   * Deliberately in the prop's frame rather than the hand's: "roll the blade
+   * eight degrees" is a fact about the sword and survives a change of rig,
+   * whereas the same correction written against the bone would not. Derived by
+   * dragging it in the drill room; see `stage/grips.ts`.
+   */
+  trim?: readonly [number, number, number];
 };
 
 const HOLDS: Partial<Record<PropKey, Hold>> = {
@@ -180,11 +195,14 @@ const HOLDS: Partial<Record<PropKey, Hold>> = {
   },
 };
 
-/** Solve a prop's local transform from the fist frame and its hold. */
-function holdInFist(prop: PropKey, frame: FistFrame): Grip | null {
-  const hold = HOLDS[prop];
-  if (!hold) return null;
-
+/**
+ * The orientation a hold asks for, before any trim.
+ *
+ * Split out because the grip editor needs exactly this: the trim it derives is
+ * the difference between where a prop was dragged to and what the axes alone
+ * would have produced.
+ */
+export function holdBasis(hold: Hold, frame: FistFrame): THREE.Quaternion | null {
   const length = frame[hold.lengthAxis].clone().multiplyScalar(hold.lengthSign);
   const face = frame[hold.faceAxis].clone().multiplyScalar(hold.faceSign);
   // Orthogonalise: the two named axes may not be exactly perpendicular.
@@ -192,10 +210,26 @@ function holdInFist(prop: PropKey, frame: FistFrame): Grip | null {
   if (z.lengthSq() < 0.5) return null;
   const x = new THREE.Vector3().crossVectors(length, z).normalize();
 
-  const rotation = new THREE.Euler().setFromRotationMatrix(
+  return new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(x, length, z),
-    'XYZ',
   );
+}
+
+/** Solve a prop's local transform from the fist frame and its hold. */
+function holdInFist(prop: PropKey, frame: FistFrame): Grip | null {
+  const hold = HOLDS[prop];
+  if (!hold) return null;
+
+  const basis = holdBasis(hold, frame);
+  if (!basis) return null;
+
+  // Trim is in the prop's own frame, so it multiplies on the right — the prop
+  // turns about its own blade, not about the hand.
+  if (hold.trim) {
+    const [x, y, z] = hold.trim.map(THREE.MathUtils.degToRad);
+    basis.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z, 'XYZ')));
+  }
+  const rotation = new THREE.Euler().setFromQuaternion(basis, 'XYZ');
 
   const position = frame.origin.clone();
   const shift = hold.offset ?? {};
@@ -207,6 +241,13 @@ function holdInFist(prop: PropKey, frame: FistFrame): Grip | null {
     position: [position.x, position.y, position.z],
     rotation: [rotation.x, rotation.y, rotation.z],
   };
+}
+
+export type { Hold };
+
+/** The hold a prop is currently authored with, for tools that want to edit it. */
+export function holdFor(prop: PropKey): Hold | null {
+  return HOLDS[prop] ?? null;
 }
 
 const IDENTITY_GRIP: Grip = { position: [0, 0, 0], rotation: [0, 0, 0] };

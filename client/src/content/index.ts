@@ -37,9 +37,12 @@ export {
   applyGrip,
   fistFrame,
   gripFor,
+  holdBasis,
+  holdFor,
   SOCKETS,
   type FistFrame,
   type Grip,
+  type Hold,
   type SocketId,
 } from './sockets';
 

@@ -30,7 +30,9 @@ import { Scenery } from '../stage/Scenery';
 import { placementOf, sceneSource } from '../stage/placements';
 import { sceneById } from '../stage/scenes';
 import { DRILLS, drillById, type DrillWidth } from './drills';
-import { DrillStage, type StageReport, type StepStatus } from './DrillStage';
+import { fistFrame, holdFor } from '../content';
+import { gripTrimOf, holdSource } from '../stage/grips';
+import { DrillStage, type HeldProp, type StageReport, type StepStatus } from './DrillStage';
 import {
   exportNotes,
   loadNotes,
@@ -74,6 +76,14 @@ export function DrillRoom() {
   const [gizmo, setGizmo] = useState<'translate' | 'rotate'>('rotate');
   const [editing, setEditing] = useState(false);
   const [nudge, setNudge] = useState(0);
+
+  // --- fixing a grip --------------------------------------------------------
+  // The thing that actually needed a gizmo. A held prop is not placed, it is
+  // solved from the rig's fingers, so this exports a HOLD correction rather
+  // than a position — see `stage/grips.ts` for why a position would not stick.
+  const [held, setHeld] = useState<readonly HeldProp[]>([]);
+  const [gripIndex, setGripIndex] = useState<number | null>(null);
+  const grip = gripIndex === null ? null : held[gripIndex] ?? null;
 
   const drill = useMemo(() => drillById(drillId), [drillId]);
   const scene = useMemo(() => sceneById(drill?.sceneId ?? ''), [drill]);
@@ -139,13 +149,23 @@ export function DrillRoom() {
             })}
           />
 
-          {editing && selected !== null && placed[selected] && (
+          {grip && (
+            <TransformControls
+              object={grip.object}
+              mode={gizmo}
+              // No snap here. A hand cants a hilt by whatever it cants it by,
+              // and rounding that to five degrees is the difference between
+              // right and nearly right.
+              onObjectChange={() => setNudge(value => value + 1)}
+            />
+          )}
+
+          {!grip && editing && selected !== null && placed[selected] && (
             <TransformControls
               object={placed[selected] as THREE.Object3D}
               mode={gizmo}
-              // Rotation snap is what makes a rack readable: weapons that agree
-              // on an angle look racked, and weapons a degree apart look
-              // dropped. Translation stays free — a grip has no natural grid.
+              // Snap is what makes a rack readable: weapons that agree on an
+              // angle look racked, weapons a degree apart look dropped.
               rotationSnap={THREE.MathUtils.degToRad(5)}
               onObjectChange={() => setNudge(value => value + 1)}
             />
@@ -160,6 +180,7 @@ export function DrillRoom() {
             replayToken={replayToken}
             onStatus={setStatus}
             onReport={setReport}
+            onEquipped={setHeld}
             onElapsed={() => {
               if (loopStep) setReplayToken(token => token + 1);
               else setIndex(current => (current + 1) % total);
@@ -304,6 +325,89 @@ export function DrillRoom() {
               setNotes(current => withNote(current, key, { ...note, text: event.target.value }))}
           />
         </label>
+
+        <h3>Grips</h3>
+        <p className="hint">
+          Where a weapon sits in the hand. Picking one pauses the routine — the hand
+          moves every frame otherwise, and the gizmo goes with it.
+        </p>
+        <div className="row row--tabs">
+          {held.map((entry, position) => (
+            <button
+              key={entry.socket}
+              type="button"
+              className={gripIndex === position ? 'is-active' : ''}
+              onClick={() => {
+                const next = gripIndex === position ? null : position;
+                setGripIndex(next);
+                if (next !== null) {
+                  setPlaying(false);
+                  setSelected(null);
+                }
+              }}
+            >
+              {entry.prop.replace(/^prop\./, '')}
+            </button>
+          ))}
+          {held.length === 0 && <span className="hint">nothing in hand</span>}
+        </div>
+
+        {grip && (
+          <>
+            <div className="row row--tabs">
+              {(['rotate', 'translate'] as const).map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  className={gizmo === value ? 'is-active' : ''}
+                  onClick={() => setGizmo(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            {(() => {
+              const hold = holdFor(grip.prop);
+              const frame = fistFrame(grip.hand);
+              if (!hold || !frame) {
+                return (
+                  <p className="warn">
+                    {!hold
+                      ? `${grip.prop} has no hold to correct — add one to HOLDS first.`
+                      : 'This hand has no fingers to solve a fist from, so the static grip '
+                        + 'table is in charge and a trim would not apply.'}
+                  </p>
+                );
+              }
+              const correction = gripTrimOf(hold, frame, grip.object);
+              if (!correction) return <p className="warn">Could not solve this hold.</p>;
+              return (
+                <>
+                  <p className="hint" data-nudge={nudge}>
+                    trim {correction.trim.join(', ')}°
+                    <br />
+                    offset along {correction.offset.along} · palm {correction.offset.palm}
+                    {' · '}grip {correction.offset.grip}
+                  </p>
+                  <div className="row">
+                    <button
+                      type="button"
+                      onClick={() => setExported(holdSource(grip.prop, hold, correction))}
+                    >
+                      Export hold
+                    </button>
+                  </div>
+                  <p className="hint">
+                    Paste over that prop&apos;s entry in <code>HOLDS</code>, in
+                    {' '}<code>content/sockets.ts</code>. The axes are carried through
+                    unchanged — a gizmo cannot revise &ldquo;blade out of the top of the
+                    fist&rdquo;, only the correction on top of it.
+                  </p>
+                </>
+              );
+            })()}
+          </>
+        )}
 
         <h3>Set dressing</h3>
         <label className="field field--check">
