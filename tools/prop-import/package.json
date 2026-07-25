@@ -1,0 +1,13 @@
+{
+  "name": "mog-prop-import",
+  "private": true,
+  "type": "module",
+  "description": "Import props from upstream kits into one GLB the content seam can pick from by name.",
+  "scripts": {
+    "import": "node import.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.0.0",
+    "@gltf-transform/functions": "^4.0.0"
+  }
+}

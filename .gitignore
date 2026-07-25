@@ -36,5 +36,5 @@ client/qa-harness/runs/
 .agent-runs/
 .claude/
 
-# Authoring tool, installed on demand — see tools/animation-extract/README.md
-tools/animation-extract/node_modules/
+# Authoring tools, installed on demand — see each tool's README.
+tools/*/node_modules/

@@ -22,7 +22,7 @@
  * Nothing here may name a character class. See `keys.ts`.
  */
 
-import { ALL_MOTION_KEYS, ALL_PROP_KEYS, BODY_KEYS } from './keys';
+import { ALL_MOTION_KEYS, ALL_PROP_KEYS, ALL_SCENERY_KEYS, BODY_KEYS, PROP_KEYS } from './keys';
 import { getBodyGenerator, getMotionGenerator, getPropGenerator } from './registry';
 import type { ContentBinding, ContentKey, ContentSource } from './types';
 
@@ -47,12 +47,43 @@ const DROPIN_URLS: ReadonlyMap<ContentKey, string> = new Map(
 );
 
 /**
- * Explicit bindings. Empty by default: every key falls through to the
- * procedural generator registered under the same id. Add an entry here to pin a
- * key to a specific asset that does not follow the drop-in naming convention
- * (e.g. one clip inside a multi-take export).
+ * Props and scenery imported from the Fantasy Props kit.
+ *
+ * All of them live in ONE file, because the kit's textures are trim sheets
+ * shared across every prop in it — separate files would embed the same sheet
+ * dozens of times. So this is exactly the case the manifest exists for: a key
+ * pinned to an object inside a multi-object asset, which the drop-in naming
+ * convention cannot express.
+ *
+ * Node names in that file are the content keys with dots swapped for
+ * underscores, so no mapping table is needed and none can go stale. The swap is
+ * not decoration: three.js runs glTF node names through
+ * `PropertyBinding.sanitizeNodeName`, which replaces dots, so a node called
+ * `prop.sword` arrives as `prop_sword` and looking it up by key finds nothing.
+ * Built by `tools/prop-import/import.mjs`.
+ *
+ * Drop-in still wins over this, so a single prop can be replaced by putting
+ * `prop.sword.glb` in `dropin/` without disturbing the other twenty-eight.
  */
-export const CONTENT_MANIFEST: Readonly<Record<ContentKey, ContentSource>> = {};
+const FANTASY_PROPS_URL = `${(import.meta.env.BASE_URL || '/').replace(/\/+$/, '')}/props/fantasy.glb`;
+
+/** `staff` is not in the kit and stays procedural; everything else is imported. */
+const IMPORTED: readonly ContentKey[] = [
+  ...ALL_PROP_KEYS.filter(key => key !== PROP_KEYS.staff),
+  ...ALL_SCENERY_KEYS,
+];
+
+/**
+ * Explicit bindings. Add an entry here to pin a key to a specific asset that
+ * does not follow the drop-in naming convention — one clip inside a multi-take
+ * export, or one object inside a prop pack.
+ */
+export const CONTENT_MANIFEST: Readonly<Record<ContentKey, ContentSource>> = Object.fromEntries(
+  IMPORTED.map(key => [
+    key,
+    { kind: 'file', url: FANTASY_PROPS_URL, objectName: key.replaceAll('.', '_') },
+  ]),
+);
 
 /** Which source a key resolves to right now, and why. */
 export function bindingFor(key: ContentKey): ContentBinding {
@@ -79,6 +110,11 @@ export function bindingFor(key: ContentKey): ContentBinding {
  * it is obvious at a glance which content is still placeholder.
  */
 export function contentSeamReport(): readonly ContentBinding[] {
-  const keys: ContentKey[] = [...ALL_MOTION_KEYS, ...ALL_PROP_KEYS, BODY_KEYS.humanoid];
+  const keys: ContentKey[] = [
+    ...ALL_MOTION_KEYS,
+    ...ALL_PROP_KEYS,
+    ...ALL_SCENERY_KEYS,
+    BODY_KEYS.humanoid,
+  ];
   return keys.map(bindingFor);
 }

@@ -8,6 +8,9 @@
 export {
   ALL_MOTION_KEYS,
   ALL_PROP_KEYS,
+  ALL_SCENERY_KEYS,
+  SCENERY_KEYS,
+  type SceneryKey,
   BODY_KEYS,
   MOTION_ACTION,
   MOTION_AIR,

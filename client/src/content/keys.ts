@@ -97,20 +97,66 @@ export const BODY_KEYS = {
   humanoid: 'body.humanoid',
 } as const;
 
-/** Held/attached props. Placeholder geometry today, real meshes later. */
+/**
+ * Things a body can hold. Each is authored with its origin at the grip, so
+ * `sockets.ts` can put it in a fist without knowing what it is.
+ *
+ * `staff` is still the procedural stick: the Fantasy Props kit has no staff,
+ * and neither its torch nor its lantern can be carried — both are wall
+ * fittings. `candlestick` is the closest thing in the kit to a light you hold.
+ */
 export const PROP_KEYS = {
   staff: 'prop.staff',
   sword: 'prop.sword',
   shield: 'prop.shield',
   potion: 'prop.potion',
+  axe: 'prop.axe',
+  mug: 'prop.mug',
+  candlestick: 'prop.candlestick',
+} as const;
+
+/**
+ * Things that stand in the world rather than in a hand.
+ *
+ * Same resolution path as props — they are meshes behind a key — but no grip,
+ * because the kit already puts their origin on the floor, which is where you
+ * want it for something you place. Kept in a separate vocabulary so the
+ * sandbox's hand pickers do not offer you a workbench to hold.
+ */
+export const SCENERY_KEYS = {
+  dummy: 'prop.dummy',
+  anvil: 'prop.anvil',
+  anvilLog: 'prop.anvil_log',
+  whetstone: 'prop.whetstone',
+  workbench: 'prop.workbench',
+  weaponStand: 'prop.weapon_stand',
+  barrel: 'prop.barrel',
+  crate: 'prop.crate_wooden',
+  chest: 'prop.chest_wood',
+  farmCrate: 'prop.farm_crate_carrot',
+  table: 'prop.table_large',
+  bench: 'prop.bench',
+  stool: 'prop.stool',
+  bookcase: 'prop.bookcase_2',
+  cauldron: 'prop.cauldron',
+  pot: 'prop.pot_1',
+  torchSconce: 'prop.torch_metal',
+  lanternSconce: 'prop.lantern_wall',
+  candelabra: 'prop.candle_stick_triple',
+  candle: 'prop.candle_1',
+  pegRack: 'prop.peg_rack',
+  rope: 'prop.rope_1',
+  sack: 'prop.bag',
 } as const;
 
 export type MotionKey = (typeof MOTION_KEYS)[keyof typeof MOTION_KEYS];
 export type BodyKey = (typeof BODY_KEYS)[keyof typeof BODY_KEYS];
 export type PropKey = (typeof PROP_KEYS)[keyof typeof PROP_KEYS];
+export type SceneryKey = (typeof SCENERY_KEYS)[keyof typeof SCENERY_KEYS];
 
 export const ALL_MOTION_KEYS: readonly MotionKey[] = Object.values(MOTION_KEYS);
 export const ALL_PROP_KEYS: readonly PropKey[] = Object.values(PROP_KEYS);
+export const ALL_SCENERY_KEYS: readonly SceneryKey[] = Object.values(SCENERY_KEYS);
 
 /**
  * The motion id a key carries, i.e. the clip name to look for inside an asset.
