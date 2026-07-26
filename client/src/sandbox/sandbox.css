@@ -324,6 +324,39 @@ button:hover {
   resize: vertical;
 }
 
+/* --- chain audition ------------------------------------------------------ */
+
+.chain-steps {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  counter-reset: chain-step;
+}
+
+.chain-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  margin-bottom: 2px;
+  background: #1a1f2b;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.chain-steps li span {
+  flex: 1 1 auto;
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+.chain-steps li button {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
 /* --- drill routine ------------------------------------------------------- */
 
 /*

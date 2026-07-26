@@ -34,7 +34,14 @@ import {
 import { buildCatalog, type Catalog, type CatalogEntry } from './catalog';
 import { Scenery } from '../stage/Scenery';
 import { DEFAULT_SCENE, SCENES, sceneById } from '../stage/scenes';
-import { SandboxStage, type PlaybackMode, type StageReport } from './SandboxStage';
+import {
+  SandboxStage,
+  type ChainAudition,
+  type ChainAuditionState,
+  type PhasedAudition,
+  type PlaybackMode,
+  type StageReport,
+} from './SandboxStage';
 import {
   exportBindings,
   loadMarks,
@@ -46,7 +53,7 @@ import {
 } from './verdicts';
 
 type MaskWidth = 'full' | 'torso' | 'arms';
-type SourceFilter = 'all' | 'library' | 'procedural';
+type SourceFilter = 'all' | 'library' | 'procedural' | 'unbound';
 type VerdictFilter = 'all' | 'unmarked' | Verdict;
 
 const MASK_BANDS: Record<MaskWidth, readonly AnimationBand[] | null> = {
@@ -91,6 +98,21 @@ export function Sandbox() {
   const [report, setReport] = useState<StageReport | null>(null);
   const [exported, setExported] = useState<ExportSummary | null>(null);
 
+  // --- phased audition -------------------------------------------------------
+  const [phaseEnterId, setPhaseEnterId] = useState<string>(NONE);
+  const [phaseHeldId, setPhaseHeldId] = useState<string>(NONE);
+  const [phaseExitId, setPhaseExitId] = useState<string>(NONE);
+  const [phaseDesired, setPhaseDesired] = useState(false);
+
+  // --- chain audition ---------------------------------------------------------
+  const [chainPicks, setChainPicks] = useState<readonly string[]>([]);
+  const [chainFromFraction, setChainFromFraction] = useState(0.5);
+  const [chainToFraction, setChainToFraction] = useState(1);
+  const [chainQueueEarly, setChainQueueEarly] = useState(true);
+  const [chainStartToken, setChainStartToken] = useState(0);
+  const [chainAdvanceToken, setChainAdvanceToken] = useState(0);
+  const [chainState, setChainState] = useState<ChainAuditionState | null>(null);
+
   useEffect(() => {
     let disposed = false;
     void buildCatalog().then(
@@ -112,6 +134,47 @@ export function Sandbox() {
   );
 
   const scene = useMemo(() => sceneById(sceneId), [sceneId]);
+
+  /** Every clip, addressable by catalog id — what the phased/chain pickers pull from. */
+  const entriesById = useMemo(() => {
+    const map = new Map<string, CatalogEntry>();
+    for (const entry of catalog?.entries ?? []) map.set(entry.id, entry);
+    return map;
+  }, [catalog]);
+
+  const pickableEntries = useMemo(
+    () => [...(catalog?.entries ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [catalog],
+  );
+
+  const phased: PhasedAudition | null = useMemo(() => {
+    const held = entriesById.get(phaseHeldId);
+    if (!held) return null;
+    return {
+      enter: entriesById.get(phaseEnterId) ?? null,
+      held,
+      exit: entriesById.get(phaseExitId) ?? null,
+      desired: phaseDesired,
+    };
+  }, [entriesById, phaseEnterId, phaseHeldId, phaseExitId, phaseDesired]);
+
+  const chainEntries = useMemo(
+    () => chainPicks.map(id => entriesById.get(id)).filter((entry): entry is CatalogEntry => !!entry),
+    [chainPicks, entriesById],
+  );
+
+  const chainAudition: ChainAudition | null = useMemo(
+    () => (chainEntries.length === 0
+      ? null
+      : {
+        steps: chainEntries,
+        cancelWindow: { fromFraction: chainFromFraction, toFraction: chainToFraction },
+        outsideWindow: chainQueueEarly ? 'queue' : 'ignore',
+        startToken: chainStartToken,
+        advanceToken: chainAdvanceToken,
+      }),
+    [chainEntries, chainFromFraction, chainToFraction, chainQueueEarly, chainStartToken, chainAdvanceToken],
+  );
 
   /**
    * Keys nothing resolves. Six of these are expected and deliberate — neither
@@ -231,7 +294,7 @@ export function Sandbox() {
             onChange={event => setQuery(event.target.value)}
           />
           <div className="row row--tabs">
-            {(['all', 'library', 'procedural'] as const).map(value => (
+            {(['all', 'library', 'procedural', 'unbound'] as const).map(value => (
               <button
                 key={value}
                 type="button"
@@ -279,7 +342,9 @@ export function Sandbox() {
                           .join(' ')}
                         onClick={() => select(entry)}
                       >
-                        <span className="clip__src">{entry.library ?? 'proc'}</span>
+                        <span className="clip__src">
+                          {entry.origin === 'unbound' ? 'empty' : entry.library ?? 'proc'}
+                        </span>
                         <span className="clip__name">{entry.name}</span>
                         <span className="clip__meta">
                           {entry.duration.toFixed(2)}s
@@ -342,6 +407,9 @@ export function Sandbox() {
           leftHand={leftHand}
           playToken={playToken}
           onReport={setReport}
+          phased={phased}
+          chain={chainAudition}
+          onChainState={setChainState}
         />
 
         <OrbitControls target={[0, 0.9, 0]} enableDamping />
@@ -475,6 +543,156 @@ export function Sandbox() {
                 onChange={event => setMovement(Number(event.target.value) / 100)}
               />
             </label>
+
+            <h3>Phased audition</h3>
+            <p className="hint">
+              Drives <code>playPhased</code> directly, on three picks rather than one clip: enter
+              once, hold as long as you like, exit once. Only Held is required — a missing
+              Enter or Exit degrades straight to/from the hold, same as any real caller. Uses
+              the Mask and Movement controls above.
+            </p>
+            <label className="field">
+              <span>Enter (optional)</span>
+              <select value={phaseEnterId} onChange={event => setPhaseEnterId(event.target.value)}>
+                <option value={NONE}>none — starts held directly</option>
+                {pickableEntries.map(candidate => (
+                  <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Held</span>
+              <select value={phaseHeldId} onChange={event => setPhaseHeldId(event.target.value)}>
+                <option value={NONE}>pick a clip…</option>
+                {pickableEntries.map(candidate => (
+                  <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Exit (optional)</span>
+              <select value={phaseExitId} onChange={event => setPhaseExitId(event.target.value)}>
+                <option value={NONE}>none — releases straight from the hold</option>
+                {pickableEntries.map(candidate => (
+                  <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                ))}
+              </select>
+            </label>
+            <div className="row">
+              <button
+                type="button"
+                className={phaseDesired ? 'is-active' : ''}
+                disabled={!phased}
+                onClick={() => setPhaseDesired(value => !value)}
+              >
+                {phaseDesired ? 'held — release it' : 'hold'}
+              </button>
+            </div>
+
+            <h3>Chain audition</h3>
+            <p className="hint">
+              Build an ordered run from any clips below, then fire it through the SAME
+              <code>startChain</code> / <code>advanceChain</code> a drill combo uses. The window
+              is the fraction of whichever step is currently playing during which an advance
+              request lands as a crossfade — outside it, it is either dropped or held until the
+              window opens.
+            </p>
+            <label className="field">
+              <span>Add a step</span>
+              <select
+                value={NONE}
+                onChange={event => {
+                  if (event.target.value === NONE) return;
+                  setChainPicks(picks => [...picks, event.target.value]);
+                }}
+              >
+                <option value={NONE}>pick a clip…</option>
+                {pickableEntries.map(candidate => (
+                  <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                ))}
+              </select>
+            </label>
+            {chainPicks.length > 0 && (
+              <ol className="chain-steps">
+                {chainPicks.map((id, position) => (
+                  <li key={`${id}-${position}`}>
+                    <span>{position}. {entriesById.get(id)?.name ?? id}</span>
+                    <button
+                      type="button"
+                      onClick={() => setChainPicks(picks => picks.filter((_, i) => i !== position))}
+                    >
+                      remove
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <label className="field">
+              <span>Cancel window: {Math.round(chainFromFraction * 100)}%–{Math.round(chainToFraction * 100)}% of the step</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(chainFromFraction * 100)}
+                onChange={event => {
+                  const next = Number(event.target.value) / 100;
+                  setChainFromFraction(Math.min(next, chainToFraction));
+                }}
+              />
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(chainToFraction * 100)}
+                onChange={event => {
+                  const next = Number(event.target.value) / 100;
+                  setChainToFraction(Math.max(next, chainFromFraction));
+                }}
+              />
+            </label>
+            <label className="field field--check">
+              <input
+                type="checkbox"
+                checked={chainQueueEarly}
+                onChange={event => setChainQueueEarly(event.target.checked)}
+              />
+              <span>queue an early advance instead of dropping it</span>
+            </label>
+            <div className="row">
+              <button
+                type="button"
+                disabled={chainPicks.length === 0}
+                onClick={() => {
+                  setChainState(null);
+                  setChainStartToken(token => token + 1);
+                }}
+              >
+                start chain
+              </button>
+              <button
+                type="button"
+                disabled={chainPicks.length === 0}
+                onClick={() => setChainAdvanceToken(token => token + 1)}
+              >
+                advance
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setChainPicks([]);
+                  setChainState(null);
+                }}
+              >
+                clear
+              </button>
+            </div>
+            {chainState && (
+              <p className={chainState.lastResult === 'ignored' || chainState.lastResult === 'inactive' ? 'warn' : 'hint'}>
+                {chainState.lastResult} — now playing: {chainState.activeMotion ?? 'nothing'}
+              </p>
+            )}
           </>
         )}
 
@@ -552,6 +770,11 @@ export function Sandbox() {
                   ))}
                 </select>
               </label>
+            ) : selected.origin === 'unbound' ? (
+              <p className="hint">
+                Nothing backs this key at all — no clip, no generator. Judge one from the
+                library on the left, then bind it in <code>clipBindings.json</code>.
+              </p>
             ) : (
               <p className="hint">
                 Generated at runtime, so there is no clip name for the binding table to point

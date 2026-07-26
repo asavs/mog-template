@@ -45,14 +45,36 @@ describe('drills', () => {
         }
       });
 
-      it('opens a cancel window before the step it is meant to be cut short by', () => {
-        // A cancelAfter later than the step's own dwell never fires, and the
-        // combination silently becomes two separate punches with a gap — which
-        // looks like a bad animation rather than a bad number.
+      it('a chain step names the same clip the spec has at that index', () => {
+        // The `chain` field and `action` are two views of the same fact — the
+        // room and the report both read `action`, `startChain`/`advanceChain`
+        // both read `chain.spec`. A step whose action drifts from its own
+        // spec would silently animate one clip while reporting another.
         for (const step of drill.steps) {
-          if (step.cancelAfter === undefined) continue;
-          const dwell = stepSeconds(step, 1);
-          expect(step.cancelAfter, `${drill.id}: "${step.label}"`).toBeLessThan(dwell);
+          if (!step.chain) continue;
+          expect(step.chain.index, `${drill.id}: "${step.label}"`).toBeGreaterThanOrEqual(0);
+          expect(step.chain.index, `${drill.id}: "${step.label}"`).toBeLessThan(step.chain.spec.steps.length);
+          expect(
+            step.chain.spec.steps[step.chain.index],
+            `${drill.id}: "${step.label}" chain step`,
+          ).toBe(step.action);
+        }
+      });
+
+      it('every chain used by this drill actually opens somewhere in it', () => {
+        // `advanceChain` only ever continues a chain that `startChain` began.
+        // A spec referenced only at index > 0 would ask the controller to
+        // advance something that was never started — `advanceChain` handles
+        // that gracefully at runtime (see DrillStage's fallback), but a drill
+        // that means to run a combo should still open every chain it uses.
+        const specs = new Set(
+          drill.steps.filter(step => step.chain).map(step => step.chain!.spec),
+        );
+        for (const spec of specs) {
+          const opens = drill.steps.some(
+            step => step.chain?.spec === spec && step.chain.index === 0,
+          );
+          expect(opens, `${drill.id}: a chain over [${spec.steps.join(', ')}] never opens`).toBe(true);
         }
       });
 
@@ -72,11 +94,11 @@ describe('drills', () => {
       });
 
       it('dwells long enough on any step meant to be watched', () => {
-        // A step with a cancel window is a link in a combination: it is
-        // deliberately cut short, and holding it long enough to read would stop
-        // it being a combination at all. Everything else has to last.
+        // A chain step is a link in a combination: it is deliberately cut
+        // short, and holding it long enough to read would stop it being a
+        // combination at all. Everything else has to last.
         for (const step of drill.steps) {
-          if (step.cancelAfter !== undefined) continue;
+          if (step.chain !== undefined) continue;
           expect(stepSeconds(step, 1.2), `${drill.id}: "${step.label}"`).toBeGreaterThan(1);
         }
       });

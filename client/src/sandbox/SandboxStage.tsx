@@ -17,12 +17,26 @@
  * half-faded on the rig, and every raw play resets the skeleton to its bind
  * pose first — otherwise a masked clip leaves the un-driven bones frozen
  * wherever the previous clip abandoned them, which reads as a broken rig.
+ *
+ * Two more auditions live in LAYERED mode, both driving the same controller
+ * rather than a parallel one: PHASED fires `playPhased` directly against three
+ * picked clips (only `held` is required, matching the mechanism itself), and
+ * CHAIN builds a `ChainSpec` from an ordered pick of clips and fires it through
+ * `startChain` / `advanceChain` — the same two calls a drill combo goes
+ * through, just assembled from whatever is selected rather than written by
+ * hand in `drills.ts`.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { AnimationController, maskClipToBands, type AnimationBand } from '../anim';
+import type {
+  AbilityPlaybackOptions,
+  ChainSpec,
+  PhasedRuleNames,
+} from '../anim/AnimationController';
+import { CHAIN_AUDITION_IDLE, ChainAuditionTracker, type ChainAuditionReport } from './chainAudition';
 import {
   ALL_MOTION_KEYS,
   BODY_KEYS,
@@ -43,6 +57,42 @@ import {
   type StanceKey,
 } from '../content';
 import type { CatalogEntry } from './catalog';
+
+/**
+ * `playPhased`'s generic (non-guard) rule triplet — see `anim/config.ts`'s
+ * `holdEnter` / `holdHeld` / `holdExit`, already built for exactly this: a
+ * hold-capable caller that is not guard and has no reason to share its
+ * dedicated priority.
+ */
+const PHASE_RULES: PhasedRuleNames = { enter: 'holdEnter', held: 'holdHeld', exit: 'holdExit' };
+
+/** What the phased-audition panel asks the stage to play. */
+export type PhasedAudition = {
+  enter: CatalogEntry | null;
+  held: CatalogEntry;
+  exit: CatalogEntry | null;
+  /** Mirrors `playPhased`'s `desired`: true holds, false releases. */
+  desired: boolean;
+};
+
+/** What the chain-audition panel asks the stage to play. */
+export type ChainAudition = {
+  /** Picked in order; `steps[0]` is the opener. */
+  steps: readonly CatalogEntry[];
+  cancelWindow: { fromFraction: number; toFraction: number };
+  outsideWindow: 'queue' | 'ignore';
+  /** Bump to (re)start the chain from `steps[0]`. */
+  startToken: number;
+  /** Bump to ask the running chain to advance. */
+  advanceToken: number;
+};
+
+/**
+ * What actually happened, for the panel's "visible cancel-window feedback".
+ * An alias, not a fresh shape — `chainAudition.ts` owns the real definition
+ * (`ChainAuditionReport`) so the tracker and its consumers can never drift.
+ */
+export type ChainAuditionState = ChainAuditionReport;
 
 export type PlaybackMode = 'raw' | 'layered';
 
@@ -80,6 +130,11 @@ export type SandboxStageProps = {
   /** Bump to replay the current selection from the top. */
   playToken: number;
   onReport: (report: StageReport) => void;
+  /** Phased-motion audition, independent of `entry`. Layered mode only. */
+  phased?: PhasedAudition | null;
+  /** Chain audition, independent of `entry`. Layered mode only. */
+  chain?: ChainAudition | null;
+  onChainState?: (state: ChainAuditionState) => void;
 };
 
 const EMPTY_BANDS: Record<string, number> = {};
@@ -97,6 +152,9 @@ export function SandboxStage({
   leftHand,
   playToken,
   onReport,
+  phased = null,
+  chain = null,
+  onChainState,
 }: SandboxStageProps) {
   const groupRef = useRef<THREE.Group>(null);
   const [body, setBody] = useState<ResolvedBody | null>(null);
@@ -104,6 +162,8 @@ export function SandboxStage({
   const controllerRef = useRef<AnimationController | null>(null);
   /** Every clip the controller can resolve, by key or by catalog id. */
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
+  /** The chain audition's own bookkeeping — see `chainAudition.ts`. */
+  const chainTrackerRef = useRef(new ChainAuditionTracker());
 
   // Kept current in an effect rather than during render: a ref written while
   // rendering is a mutation React may discard or replay. Initialised from the
@@ -162,6 +222,14 @@ export function SandboxStage({
 
   // --- driver, per mode ----------------------------------------------------
   useEffect(() => {
+    // Belt-and-braces: `ChainAuditionTracker` no longer NEEDS this (every
+    // operation re-validates its own session identity against the current
+    // authored spec — see chainAudition.ts), but a mode switch tearing down
+    // the controller and building a fresh one is real enough, and immediate
+    // enough, that saying so explicitly costs nothing.
+    chainTrackerRef.current.reset();
+    onChainState?.(CHAIN_AUDITION_IDLE);
+
     if (!body) return;
 
     if (mode === 'layered') {
@@ -188,6 +256,10 @@ export function SandboxStage({
     controllerRef.current?.dispose();
     controllerRef.current = null;
     return undefined;
+    // `onChainState` deliberately excluded — it is `setChainState`, stable
+    // across renders, and re-running this effect on its identity would tear
+    // down and rebuild the controller for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body, mode]);
 
   // --- stance ---------------------------------------------------------------
@@ -258,6 +330,93 @@ export function SandboxStage({
     };
   }, [body, entry, mode, bands, loop, speed, movement, playToken]);
 
+  // --- phased audition -------------------------------------------------------
+  // Independent of `entry`: this drives the SAME controller through
+  // `playPhased`, with its own three picks, so it can run alongside — or
+  // instead of — whatever the browser has selected.
+  const phaseEnterId = phased?.enter?.id ?? null;
+  const phaseHeldId = phased?.held.id ?? null;
+  const phaseExitId = phased?.exit?.id ?? null;
+  const phaseDesired = phased?.desired ?? false;
+  useEffect(() => {
+    if (mode !== 'layered') return;
+    const controller = controllerRef.current;
+    if (!controller) return;
+
+    if (!phased) {
+      // The Held picker resolving back to NONE (or the panel deselecting a
+      // phase some other way) must actually tell the controller to release
+      // it — returning here and doing nothing would leave whatever was held
+      // looping on the rig forever, since nothing else will ever ask it to
+      // stop. `held` is required by `PhasedKeys`, but `desired: false`'s own
+      // release path (`playPhased`'s exit branch) never reads it — only
+      // `ruleNames`, to recognise the overlay as this phase's — so an empty
+      // key is safe here.
+      controller.playPhased(false, { held: '' }, PHASE_RULES);
+      return;
+    }
+
+    for (const source of [phased.enter, phased.held, phased.exit]) {
+      if (source) clipsRef.current.set(source.id, source.clip);
+    }
+    controller.playPhased(
+      phased.desired,
+      { enter: phased.enter?.id, held: phased.held.id, exit: phased.exit?.id },
+      PHASE_RULES,
+    );
+    // Dependencies are the picked ids and the toggle, not `phased` itself — a
+    // fresh object every render would otherwise re-fire this on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [body, mode, phaseEnterId, phaseHeldId, phaseExitId, phaseDesired]);
+
+  // --- chain audition ---------------------------------------------------------
+  // Two triggers rather than one continuous prop, because `startChain` and
+  // `advanceChain` are two different calls with two different meanings — a
+  // bumped `startToken` opens a fresh chain from `steps[0]`, a bumped
+  // `advanceToken` asks the one already running to continue.
+  //
+  // `chainSpec` is the CURRENT authored spec — the one argument every
+  // `ChainAuditionTracker` operation below takes, so it can tell for itself
+  // whether it's still talking about the same session (see chainAudition.ts).
+  // Memoized on the pick list and window VALUES rather than built inline in
+  // the start effect: `chain` itself (Sandbox.tsx's `chainAudition`) is a
+  // fresh object on every start/advance click (its own `useMemo` deps
+  // include both tokens), so using `chain` directly here would look like a
+  // "new spec" on every click even when the picks never changed — this stays
+  // referentially stable across exactly those clicks, changing only when the
+  // audition itself actually changes.
+  const chainOptions: AbilityPlaybackOptions = { upperBodyOnly: bands !== null, movement };
+  const chainSpec: ChainSpec | null = useMemo(() => {
+    if (!chain || chain.steps.length === 0) return null;
+    return {
+      steps: chain.steps.map(source => source.id),
+      cancelWindow: chain.cancelWindow,
+      outsideWindow: chain.outsideWindow,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chain?.steps, chain?.cancelWindow.fromFraction, chain?.cancelWindow.toFraction, chain?.outsideWindow]);
+
+  useEffect(() => {
+    if (mode !== 'layered' || !chain || !chainSpec || chain.startToken === 0) return;
+    const controller = controllerRef.current;
+    if (!controller) return;
+
+    for (const source of chain.steps) clipsRef.current.set(source.id, source.clip);
+    // The sandbox has no gameplay clock to open this window on its own timing
+    // (unlike `animBridge`'s real Recovery row); a chain audition is a
+    // deliberate "start this now" click, so it opens the window itself —
+    // a no-op unless a standard clip or a previous chain is still audible.
+    controller.enterAbilityRecovery();
+    chainTrackerRef.current.start(controller, chainSpec, chainOptions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [body, mode, chain?.startToken]);
+
+  useEffect(() => {
+    if (mode !== 'layered' || !chain || chain.advanceToken === 0) return;
+    chainTrackerRef.current.advance(controllerRef.current, chainSpec, chainOptions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, chain?.advanceToken]);
+
   // --- props ---------------------------------------------------------------
   useEffect(() => {
     if (!body) return;
@@ -287,8 +446,27 @@ export function SandboxStage({
   }, [body, rightHand, leftHand]);
 
   useFrame((_, delta) => {
-    if (mode === 'layered') controllerRef.current?.update(delta);
-    else mixerRef.current?.update(delta);
+    if (mode !== 'layered') {
+      mixerRef.current?.update(delta);
+      return;
+    }
+    const controller = controllerRef.current;
+    controller?.update(delta);
+
+    // The "visible cancel-window feedback" a chain audition promises: report
+    // whenever what is actually audible changes, not only on the click that
+    // requested it — a QUEUED advance fires later, on its own, once the
+    // window the request was waiting for actually opens. Just hands the
+    // CURRENT authored spec to the tracker every frame — no gate on "is
+    // there an active session" needed here any more, `maybeReport` decides
+    // that for itself against `chainSpec`, and correctly reports the
+    // transition to idle the instant the picks change out from under it,
+    // whether or not anything remembered to say so first.
+    if (onChainState) {
+      const state = controller?.getState();
+      const activeMotion = state?.overlayMotion ?? state?.overrideMotion ?? null;
+      chainTrackerRef.current.maybeReport(chainSpec, activeMotion, onChainState);
+    }
   });
 
   return <group ref={groupRef} />;

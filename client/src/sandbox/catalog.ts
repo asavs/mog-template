@@ -14,7 +14,11 @@
  *
  * Procedural entries are always present, even with no packs staged at all.
  * They are the floor: neither library ships a strafe, so `loco_walk_l` and its
- * siblings are procedural permanently or the character moonwalks.
+ * siblings are procedural permanently or the character moonwalks. Motion
+ * generation itself was later retired (see `content/procedural/index.ts`), so
+ * "procedural" now means two things at once — a registered generator, or,
+ * failing that, an honest zero-track stub for a key nothing backs at all.
+ * Both show up here rather than only in the sandbox's unbound banner.
  */
 
 import * as THREE from 'three';
@@ -22,7 +26,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ALL_MOTION_KEYS, bindingFor, proceduralMotion } from '../content';
 import clipBindings from '../content/clipBindings.json';
 
-export type ClipOrigin = 'library' | 'procedural';
+export type ClipOrigin = 'library' | 'procedural' | 'unbound';
 
 export type CatalogEntry = {
   /** Stable and unique across libraries — both packs ship an `A_TPose`. */
@@ -108,20 +112,42 @@ async function loadLibraryIndex(): Promise<IndexEntry[]> {
 function proceduralEntries(): CatalogEntry[] {
   const entries: CatalogEntry[] = [];
   for (const key of ALL_MOTION_KEYS) {
-    const clip = proceduralMotion(key);
-    if (!clip) continue;
     const id = key.replace(/^motion\./, '');
+    const clip = proceduralMotion(key);
+    if (clip) {
+      entries.push({
+        id: `procedural/${id}`,
+        name: id,
+        family: id.split('_')[0],
+        origin: 'procedural',
+        library: null,
+        duration: clip.duration,
+        clip,
+        motionKey: key,
+        // Procedural wins only where nothing has replaced it.
+        active: bindingFor(key).origin === 'procedural',
+      });
+      continue;
+    }
+
+    // No generator either — a key with nothing behind it at all. Motion
+    // generation was retired wholesale (see procedural/index.ts), so this is
+    // not only the six missing strafes any more: a newly-added key with no
+    // clip yet (act_smash_2h, act_slam_2h, act_roll) lands here the same way.
+    // Listed as a zero-track stub rather than only named in the banner above,
+    // so it can be selected and reported on like anything else — clicking it
+    // and seeing "0/0 tracks bind" IS the finding.
+    if (bindingFor(key).origin !== 'unbound') continue;
     entries.push({
-      id: `procedural/${id}`,
+      id: `unbound/${id}`,
       name: id,
       family: id.split('_')[0],
-      origin: 'procedural',
+      origin: 'unbound',
       library: null,
-      duration: clip.duration,
-      clip,
+      duration: 0,
+      clip: new THREE.AnimationClip(id, 0, []),
       motionKey: key,
-      // Procedural wins only where nothing has replaced it.
-      active: bindingFor(key).origin === 'procedural',
+      active: false,
     });
   }
   return entries;
