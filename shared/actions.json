@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "tickRate": 20,
+  "resources": [
+    { "kind": "potion_charge", "max": 3, "onRespawn": 3 }
+  ],
+  "actions": [
+    {
+      "id": "attack_light",
+      "phases": { "windupTicks": 5, "activeTicks": 2, "recoveryTicks": 6 },
+      "cooldownTicks": 0,
+      "hold": null,
+      "movement": { "windup": 0.4, "active": 0.0, "recovery": 0.6 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "melee_arc", "range": 2.8, "arcDegrees": 90, "damage": 10, "blockedDamage": 2 }
+      ],
+      "motion": "motion.act_swing_1h",
+      "motionLayer": "upper",
+      "interrupt": "recovery"
+    },
+    {
+      "id": "attack_heavy",
+      "phases": { "windupTicks": 4, "activeTicks": 3, "recoveryTicks": 10 },
+      "cooldownTicks": 20,
+      "hold": { "mode": "charge", "minTicks": 6, "maxTicks": 30 },
+      "movement": { "charging": 0.3, "windup": 0.0, "active": 0.0, "recovery": 0.4 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "melee_arc", "range": 3.2, "arcDegrees": 120, "damage": [15, 35], "blockedDamage": [3, 8] }
+      ],
+      "motion": "motion.act_smash_2h",
+      "motionLayer": "full",
+      "interrupt": "never"
+    },
+    {
+      "id": "block",
+      "phases": { "windupTicks": 2, "activeTicks": 0, "recoveryTicks": 4 },
+      "cooldownTicks": 0,
+      "hold": { "mode": "sustain", "maxTicks": 0 },
+      "movement": { "windup": 0.5, "held": 0.5, "recovery": 0.5 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "mitigation", "multiplier": 0.2 }
+      ],
+      "motion": "motion.act_guard_hold",
+      "motionLayer": "upper",
+      "interrupt": "always"
+    },
+    {
+      "id": "roll",
+      "phases": { "windupTicks": 1, "activeTicks": 8, "recoveryTicks": 3 },
+      "cooldownTicks": 24,
+      "hold": null,
+      "movement": { "windup": 0.0, "active": 0.0, "recovery": 0.0 },
+      "canRotate": false,
+      "resource": null,
+      "effects": [
+        { "kind": "displace_self", "distance": 4.0 },
+        { "kind": "invulnerable" }
+      ],
+      "motion": "motion.act_roll",
+      "motionLayer": "full",
+      "interrupt": "never"
+    },
+    {
+      "id": "potion",
+      "phases": { "windupTicks": 16, "activeTicks": 2, "recoveryTicks": 6 },
+      "cooldownTicks": 100,
+      "hold": null,
+      "movement": { "windup": 0.5, "active": 0.5, "recovery": 0.5 },
+      "canRotate": true,
+      "resource": { "kind": "potion_charge", "cost": 1 },
+      "effects": [
+        { "kind": "heal_self", "amount": 30 }
+      ],
+      "motion": "motion.act_drink",
+      "motionLayer": "upper",
+      "interrupt": "recovery"
+    },
+    {
+      "id": "ability_bolt",
+      "phases": { "windupTicks": 8, "activeTicks": 1, "recoveryTicks": 8 },
+      "cooldownTicks": 40,
+      "hold": null,
+      "movement": { "windup": 0.4, "active": 0.0, "recovery": 0.6 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "projectile", "speed": 18.0, "maxDistance": 30.0, "radius": 1.2, "damage": 20, "blockedDamage": 4 }
+      ],
+      "motion": "motion.act_hurl_1h",
+      "motionLayer": "upper",
+      "interrupt": "recovery"
+    },
+    {
+      "id": "ability_lance",
+      "phases": { "windupTicks": 12, "activeTicks": 1, "recoveryTicks": 10 },
+      "cooldownTicks": 80,
+      "hold": null,
+      "movement": { "windup": 0.0, "active": 0.0, "recovery": 0.4 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "projectile", "speed": 30.0, "maxDistance": 45.0, "radius": 0.8, "damage": 30, "blockedDamage": 6 }
+      ],
+      "motion": "motion.act_hurl_1h",
+      "motionLayer": "upper",
+      "interrupt": "never"
+    },
+    {
+      "id": "ability_nova",
+      "phases": { "windupTicks": 10, "activeTicks": 2, "recoveryTicks": 12 },
+      "cooldownTicks": 120,
+      "hold": null,
+      "movement": { "windup": 0.0, "active": 0.0, "recovery": 0.0 },
+      "canRotate": false,
+      "resource": null,
+      "effects": [
+        { "kind": "aoe_at_target", "radius": 5.0, "maxRange": 0.0, "damage": 25, "blockedDamage": 8 }
+      ],
+      "motion": "motion.act_slam_2h",
+      "motionLayer": "full",
+      "interrupt": "never"
+    },
+    {
+      "id": "ability_quake",
+      "phases": { "windupTicks": 14, "activeTicks": 2, "recoveryTicks": 10 },
+      "cooldownTicks": 100,
+      "hold": null,
+      "movement": { "windup": 0.0, "active": 0.0, "recovery": 0.4 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "aoe_at_target", "radius": 3.5, "maxRange": 18.0, "damage": 22, "blockedDamage": 6 }
+      ],
+      "motion": "motion.act_slam_2h",
+      "motionLayer": "full",
+      "interrupt": "recovery"
+    },
+    {
+      "id": "ability_mend",
+      "phases": { "windupTicks": 20, "activeTicks": 2, "recoveryTicks": 8 },
+      "cooldownTicks": 200,
+      "hold": null,
+      "movement": { "windup": 0.3, "active": 0.0, "recovery": 0.5 },
+      "canRotate": true,
+      "resource": null,
+      "effects": [
+        { "kind": "heal_self", "amount": 20 }
+      ],
+      "motion": "motion.act_drink",
+      "motionLayer": "upper",
+      "interrupt": "recovery"
+    }
+  ],
+  "slots": [
+    { "slot": "primary", "tapAction": "attack_light", "holdAction": "attack_heavy", "holdThresholdTicks": 5 },
+    { "slot": "block", "tapAction": null, "holdAction": "block", "holdThresholdTicks": 0 },
+    { "slot": "roll", "tapAction": "roll", "holdAction": null, "holdThresholdTicks": 0 },
+    { "slot": "potion", "tapAction": "potion", "holdAction": null, "holdThresholdTicks": 0 },
+    { "slot": "ability1", "tapAction": "ability_bolt", "holdAction": null, "holdThresholdTicks": 0 },
+    { "slot": "ability2", "tapAction": "ability_lance", "holdAction": null, "holdThresholdTicks": 0 },
+    { "slot": "ability3", "tapAction": "ability_nova", "holdAction": null, "holdThresholdTicks": 0 },
+    { "slot": "ability4", "tapAction": "ability_quake", "holdAction": null, "holdThresholdTicks": 0 },
+    { "slot": "ability5", "tapAction": "ability_mend", "holdAction": null, "holdThresholdTicks": 0 }
+  ]
+}

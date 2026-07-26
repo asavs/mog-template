@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "groundY": 0.0,
+  "bounds": { "minX": -20.0, "maxX": 20.0, "minZ": -20.0, "maxZ": 20.0 },
+  "spawns": [
+    { "position": [0.0, 0.0, -14.0], "yaw": 0.0 },
+    { "position": [0.0, 0.0, 14.0], "yaw": 3.14159 },
+    { "position": [-14.0, 0.0, 0.0], "yaw": 1.5708 },
+    { "position": [14.0, 0.0, 0.0], "yaw": -1.5708 }
+  ],
+  "colliders": [
+    { "id": "wall_n", "shape": "box", "center": [0.0, 0.0, -20.5], "size": [42.0, 4.0, 1.0], "yaw": 0.0 },
+    { "id": "wall_s", "shape": "box", "center": [0.0, 0.0, 20.5], "size": [42.0, 4.0, 1.0], "yaw": 0.0 },
+    { "id": "wall_w", "shape": "box", "center": [-20.5, 0.0, 0.0], "size": [1.0, 4.0, 42.0], "yaw": 0.0 },
+    { "id": "wall_e", "shape": "box", "center": [20.5, 0.0, 0.0], "size": [1.0, 4.0, 42.0], "yaw": 0.0 },
+    { "id": "pillar_nw", "shape": "cylinder", "center": [-10.0, 0.0, -10.0], "radius": 0.9, "height": 6.0 },
+    { "id": "pillar_ne", "shape": "cylinder", "center": [10.0, 0.0, -10.0], "radius": 0.9, "height": 6.0 },
+    { "id": "pillar_sw", "shape": "cylinder", "center": [-10.0, 0.0, 10.0], "radius": 0.9, "height": 6.0 },
+    { "id": "pillar_se", "shape": "cylinder", "center": [10.0, 0.0, 10.0], "radius": 0.9, "height": 6.0 }
+  ]
+}
