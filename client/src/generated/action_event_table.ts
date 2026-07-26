@@ -9,13 +9,20 @@ import {
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
 } from "spacetimedb";
+import {
+  Vector3,
+} from "./types";
+
 
 export default __t.row({
-  identity: __t.identity().primaryKey(),
+  id: __t.u64().primaryKey(),
+  actor: __t.identity(),
+  target: __t.option(__t.identity()),
   actionId: __t.string().name("action_id"),
-  phase: __t.u8(),
-  phaseStartedTick: __t.u64().name("phase_started_tick"),
-  phaseEndsTick: __t.u64().name("phase_ends_tick"),
-  chargeTicks: __t.u64().name("charge_ticks"),
+  kind: __t.string(),
+  amount: __t.i32(),
+  get position() {
+    return __t.option(Vector3);
+  },
   serverTick: __t.u64().name("server_tick"),
 });

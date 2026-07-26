@@ -7,7 +7,7 @@
  */
 
 import * as THREE from 'three';
-import { MOG_BONES, type MogBoneId } from '../../avatar/rig';
+import { MOG_BONES, type MogBoneId } from '../rig';
 import { registerBodyGenerator } from '../registry';
 import { BODY_KEYS } from '../keys';
 import { MOG_BONE_ORDER, MOG_REST_POSE } from '../restPose';

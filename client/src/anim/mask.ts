@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { boneNameCandidates, type MogBoneId } from '../avatar/rig';
+import { boneNameCandidates, type MogBoneId } from '../content/rig';
 
 /**
  * The rig is split into five disjoint BANDS. Every clip the controller plays is

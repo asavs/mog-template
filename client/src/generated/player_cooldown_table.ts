@@ -11,11 +11,8 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  identity: __t.identity().primaryKey(),
+  id: __t.u64().primaryKey(),
+  identity: __t.identity(),
   actionId: __t.string().name("action_id"),
-  phase: __t.u8(),
-  phaseStartedTick: __t.u64().name("phase_started_tick"),
-  phaseEndsTick: __t.u64().name("phase_ends_tick"),
-  chargeTicks: __t.u64().name("charge_ticks"),
-  serverTick: __t.u64().name("server_tick"),
+  readyTick: __t.u64().name("ready_tick"),
 });

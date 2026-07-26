@@ -32,8 +32,7 @@ export default defineConfig(({ command }) => {
       },
     },
     test: {
-      // Collision heightmap is a binary asset; unit tests load it once from disk.
-      setupFiles: ['./heightmapTestSetup.ts'],
+      include: ['src/**/*.test.{ts,tsx}'],
     },
   }
 })

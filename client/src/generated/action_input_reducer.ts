@@ -10,12 +10,17 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  identity: __t.identity().primaryKey(),
-  actionId: __t.string().name("action_id"),
-  phase: __t.u8(),
-  phaseStartedTick: __t.u64().name("phase_started_tick"),
-  phaseEndsTick: __t.u64().name("phase_ends_tick"),
-  chargeTicks: __t.u64().name("charge_ticks"),
-  serverTick: __t.u64().name("server_tick"),
-});
+import {
+  Vector3,
+  InputEdge,
+} from "./types";
+
+export default {
+  slot: __t.string(),
+  get edge() {
+    return InputEdge;
+  },
+  get aim() {
+    return __t.option(Vector3);
+  },
+};

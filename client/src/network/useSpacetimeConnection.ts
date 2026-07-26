@@ -12,18 +12,18 @@ const STDB_URL = getStdbUrl();
 const STDB_DB_NAME = getStdbDatabaseName();
 
 const GAME_SUBSCRIPTIONS = [
-  'SELECT * FROM fireball_projectile',
-  'SELECT * FROM combat_event',
+  'SELECT * FROM action_event',
+  'SELECT * FROM config',
+  'SELECT * FROM game_tick_schedule',
   'SELECT * FROM player',
   'SELECT * FROM player_action_state',
-  'SELECT * FROM player_animation',
-  'SELECT * FROM player_character',
-  'SELECT * FROM player_appearance',
-  'SELECT * FROM player_equipment',
+  'SELECT * FROM player_cooldown',
   'SELECT * FROM player_health',
   'SELECT * FROM player_input_ack',
+  'SELECT * FROM player_resource',
+  'SELECT * FROM player_slot_binding',
   'SELECT * FROM player_transform',
-  'SELECT * FROM spell_event',
+  'SELECT * FROM projectile',
 ];
 
 type UseSpacetimeConnectionOptions = {

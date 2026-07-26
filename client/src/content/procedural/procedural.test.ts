@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { MOG_BONES } from '../../avatar/rig';
+import { MOG_BONES } from '../rig';
 import { BODY_KEYS } from '../keys';
 import { getBodyGenerator } from '../registry';
 import { MOG_REST_POSE } from '../restPose';

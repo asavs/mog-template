@@ -68,25 +68,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Terrain models are Git LFS objects; checkout doesn't fetch LFS
-      # content, so without this the dist artifact ships pointer files
-      # instead of .glb models and the browser playtest can't load terrain
-      # (the page errors and never becomes joinable). checkout's `lfs: true`
-      # would re-download them every run — expensive against GitHub's LFS
-      # bandwidth quota — so cache the objects keyed on the pointer OIDs and
-      # only pay bandwidth when an asset actually changes. Ported from PR #123.
-      - name: List LFS asset ids
-        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
-
-      - name: Cache LFS objects
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: lfs-${{ hashFiles('.lfs-assets-id') }}
-
-      - name: Pull LFS assets
-        run: git lfs pull
-
+      # TODO(v2 Wave 3F): terrain models (public/models) that justified LFS
+      # caching left the tree in the excision commit. No LFS-tracked assets
+      # remain under client/public; re-add LFS steps if/when new large binary
+      # assets need them.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -110,10 +95,12 @@ jobs:
         working-directory: client
         run: npm ci
 
-      # shared/avatar-loadout.json → generated TS/Rust. Fail if JSON changed without regenerating.
-      - name: Verify generated loadout files are up to date
+      # TODO(v2 Wave 3F): avatar-loadout codegen left the tree in the excision
+      # commit; shared/actions.json is now the equivalent generated-authority
+      # input. Fail if JSON changed without regenerating.
+      - name: Verify generated action defs are up to date
         working-directory: client
-        run: npm run gen:loadout:check
+        run: npm run gen:actions:check
 
       - name: Build client
         working-directory: client
@@ -200,13 +187,17 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Run reconnect regression test
-        working-directory: client
-        run: npm run test:reconnect:local
-
-      - name: Run combat action-state regression test
-        working-directory: client
-        run: npm run test:combat-action:local
+      # TODO(v2 Wave 3F): World B's reconnect/combat-action regression
+      # scripts (test:reconnect, test:combat-action) left the tree in the
+      # excision commit. Re-add an equivalent live-SpacetimeDB regression
+      # step here once World A has one.
+      # - name: Run reconnect regression test
+      #   working-directory: client
+      #   run: npm run test:reconnect:local
+      #
+      # - name: Run combat action-state regression test
+      #   working-directory: client
+      #   run: npm run test:combat-action:local
 
       - name: Dump SpacetimeDB log on failure
         if: failure()
@@ -305,63 +296,64 @@ jobs:
         working-directory: client
         run: npx playwright install chromium
 
-      # Headed, not headless: pointer lock (camera look, spell-aim) hangs the
-      # CDP session in headless Chromium (hard requirement, see
-      # client/qa-harness/README.md). Xvfb gives headed Chromium a real
-      # (virtual) display to render into on a runner with no monitor.
-      - name: Run structural smoke playtest
-        working-directory: client
-        # 12 minutes proved too tight once video recording landed: the run
-        # completed its checks and was killed writing final artifacts.
-        timeout-minutes: 15
-        env:
-          QA_WEB_MODE: preview
-          QA_PHASES: walk_forward,jump_idle
-          # No video on the structural smoke: SwiftShader pays real render
-          # time for recording, and a structural tier has no feel to watch.
-          QA_VIDEO: '0'
-          # Structural checks only: this runner never grants pointer lock
-          # (Chromium rejects the engage gesture under Xvfb + SwiftShader)
-          # and the game gates ALL input on it, so movement invariants here
-          # would test the runner, not the game. The real-feel tier needs
-          # GPU hardware (#195).
-          QA_CHECKS: structural
-          # Point at a baselines dir that intentionally does not exist (and
-          # is never captured for this job): the harness then reports "no
-          # baseline yet" and enforces ONLY the structural checks. Without
-          # this it would default to baselines/ - GPU-captured locally and
-          # meaningless to compare against SwiftShader software rendering
-          # (observed: instant baseline-drift failures). This job must never
-          # gate on baselines; see the job comment above.
-          QA_BASELINE_DIR: qa-harness/baselines/ci
-          # One class, not two - each class is a fresh session paying the
-          # full SwiftShader startup cost, and class coverage is not what
-          # this smoke proves.
-          QA_CLASSES: wizard
-          # Quarter the pixels SwiftShader must software-render; on this
-          # GPU-less runner the default 1280x720 viewport left the rAF loop
-          # below 30 frames per 5 minutes (observed empirically).
-          QA_VIEWPORT: 640x360
-          # Prove the render loop ticks, don't measure it - the default 30
-          # frames can outlast any sane timeout at SwiftShader frame rates.
-          QA_RENDER_READY_FRAMES: '10'
-          # Structural waits (join dialog, first player frame, render loop
-          # ticking again) need far more headroom on SwiftShader: the render
-          # loop stalls for minutes right after join while terrain geometry/
-          # textures upload in software (observed empirically on this job —
-          # 90s was not enough). This does not loosen any regression
-          # tolerance; the step-level timeout above bounds the total cost.
-          QA_JOIN_TIMEOUT_MS: '300000'
-        run: xvfb-run -a npm run qa:harness
-
-      - name: Upload playtest report + traces
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-harness-traces
-          path: client/qa-harness/runs/
-          retention-days: 14
-          if-no-files-found: warn
+      # TODO(v2 Wave 3F): the qa:harness script (and the World-B game it
+      # drove — join dialog, wizard class, terrain) left the tree in the
+      # excision commit. client/qa-harness/** itself is untouched; re-wire
+      # this step once World A has an equivalent playable surface to point
+      # the harness at.
+      # - name: Run structural smoke playtest
+      #   working-directory: client
+      #   # 12 minutes proved too tight once video recording landed: the run
+      #   # completed its checks and was killed writing final artifacts.
+      #   timeout-minutes: 15
+      #   env:
+      #     QA_WEB_MODE: preview
+      #     QA_PHASES: walk_forward,jump_idle
+      #     # No video on the structural smoke: SwiftShader pays real render
+      #     # time for recording, and a structural tier has no feel to watch.
+      #     QA_VIDEO: '0'
+      #     # Structural checks only: this runner never grants pointer lock
+      #     # (Chromium rejects the engage gesture under Xvfb + SwiftShader)
+      #     # and the game gates ALL input on it, so movement invariants here
+      #     # would test the runner, not the game. The real-feel tier needs
+      #     # GPU hardware (#195).
+      #     QA_CHECKS: structural
+      #     # Point at a baselines dir that intentionally does not exist (and
+      #     # is never captured for this job): the harness then reports "no
+      #     # baseline yet" and enforces ONLY the structural checks. Without
+      #     # this it would default to baselines/ - GPU-captured locally and
+      #     # meaningless to compare against SwiftShader software rendering
+      #     # (observed: instant baseline-drift failures). This job must never
+      #     # gate on baselines; see the job comment above.
+      #     QA_BASELINE_DIR: qa-harness/baselines/ci
+      #     # One class, not two - each class is a fresh session paying the
+      #     # full SwiftShader startup cost, and class coverage is not what
+      #     # this smoke proves.
+      #     QA_CLASSES: wizard
+      #     # Quarter the pixels SwiftShader must software-render; on this
+      #     # GPU-less runner the default 1280x720 viewport left the rAF loop
+      #     # below 30 frames per 5 minutes (observed empirically).
+      #     QA_VIEWPORT: 640x360
+      #     # Prove the render loop ticks, don't measure it - the default 30
+      #     # frames can outlast any sane timeout at SwiftShader frame rates.
+      #     QA_RENDER_READY_FRAMES: '10'
+      #     # Structural waits (join dialog, first player frame, render loop
+      #     # ticking again) need far more headroom on SwiftShader: the render
+      #     # loop stalls for minutes right after join while terrain geometry/
+      #     # textures upload in software (observed empirically on this job —
+      #     # 90s was not enough). This does not loosen any regression
+      #     # tolerance; the step-level timeout above bounds the total cost.
+      #     QA_JOIN_TIMEOUT_MS: '300000'
+      #   run: xvfb-run -a npm run qa:harness
+      #
+      # - name: Upload playtest report + traces
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: qa-harness-traces
+      #     path: client/qa-harness/runs/
+      #     retention-days: 14
+      #     if-no-files-found: warn
 
       - name: Dump SpacetimeDB log on failure
         if: failure()

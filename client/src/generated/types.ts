@@ -10,6 +10,20 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const ActionEvent = __t.object("ActionEvent", {
+  id: __t.u64(),
+  actor: __t.identity(),
+  target: __t.option(__t.identity()),
+  actionId: __t.string(),
+  kind: __t.string(),
+  amount: __t.i32(),
+  get position() {
+    return __t.option(Vector3);
+  },
+  serverTick: __t.u64(),
+});
+export type ActionEvent = __Infer<typeof ActionEvent>;
+
 export const ClientSession = __t.object("ClientSession", {
   connectionId: __t.connectionId(),
   identity: __t.identity(),
@@ -17,47 +31,24 @@ export const ClientSession = __t.object("ClientSession", {
 });
 export type ClientSession = __Infer<typeof ClientSession>;
 
-export const CombatEvent = __t.object("CombatEvent", {
-  id: __t.u64(),
-  attacker: __t.identity(),
-  target: __t.identity(),
-  eventType: __t.string(),
-  amount: __t.u32(),
-  serverTick: __t.u64(),
-  createdAt: __t.timestamp(),
-});
-export type CombatEvent = __Infer<typeof CombatEvent>;
-
 export const Config = __t.object("Config", {
   version: __t.u32(),
   tickRate: __t.u32(),
 });
 export type Config = __Infer<typeof Config>;
 
-export const FireballProjectile = __t.object("FireballProjectile", {
-  id: __t.u64(),
-  caster: __t.identity(),
-  get position() {
-    return Vector3;
-  },
-  get previousPosition() {
-    return Vector3;
-  },
-  get direction() {
-    return Vector3;
-  },
-  spawnedAtTick: __t.u64(),
-  maxDistance: __t.f32(),
-  distanceTraveled: __t.f32(),
-  createdAt: __t.timestamp(),
-});
-export type FireballProjectile = __Infer<typeof FireballProjectile>;
-
 export const GameTickSchedule = __t.object("GameTickSchedule", {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),
 });
 export type GameTickSchedule = __Infer<typeof GameTickSchedule>;
+
+// The tagged union or sum type for the algebraic type `InputEdge`.
+export const InputEdge = __t.enum("InputEdge", {
+  Press: __t.unit(),
+  Release: __t.unit(),
+});
+export type InputEdge = __Infer<typeof InputEdge>;
 
 export const InputState = __t.object("InputState", {
   forward: __t.bool(),
@@ -101,85 +92,24 @@ export const MovementState = __t.object("MovementState", {
 });
 export type MovementState = __Infer<typeof MovementState>;
 
-export const PendingFireballCast = __t.object("PendingFireballCast", {
-  id: __t.u64(),
-  caster: __t.identity(),
-  get targetPosition() {
-    return Vector3;
-  },
-  resolveTick: __t.u64(),
-});
-export type PendingFireballCast = __Infer<typeof PendingFireballCast>;
-
-export const PendingLightningStrike = __t.object("PendingLightningStrike", {
-  id: __t.u64(),
-  caster: __t.identity(),
-  get position() {
-    return Vector3;
-  },
-  resolveTick: __t.u64(),
-});
-export type PendingLightningStrike = __Infer<typeof PendingLightningStrike>;
-
-export const PendingSlashAttack = __t.object("PendingSlashAttack", {
-  id: __t.u64(),
-  attacker: __t.identity(),
-  resolveTick: __t.u64(),
-});
-export type PendingSlashAttack = __Infer<typeof PendingSlashAttack>;
-
 export const PlayerActionState = __t.object("PlayerActionState", {
   identity: __t.identity(),
-  currentAction: __t.string(),
-  actionStartedTick: __t.u64(),
-  actionActiveTick: __t.u64(),
-  actionRecoveryUntilTick: __t.u64(),
-  actionEndsTick: __t.u64(),
-  cooldownEndsTick: __t.u64(),
-  canMove: __t.bool(),
-  canRotate: __t.bool(),
-  canAttack: __t.bool(),
-  canBlock: __t.bool(),
-  feedbackPolicy: __t.string(),
+  actionId: __t.string(),
+  phase: __t.u8(),
+  phaseStartedTick: __t.u64(),
+  phaseEndsTick: __t.u64(),
+  chargeTicks: __t.u64(),
   serverTick: __t.u64(),
-  updatedAt: __t.timestamp(),
 });
 export type PlayerActionState = __Infer<typeof PlayerActionState>;
 
-export const PlayerAnimation = __t.object("PlayerAnimation", {
+export const PlayerCooldown = __t.object("PlayerCooldown", {
+  id: __t.u64(),
   identity: __t.identity(),
-  activeAnimation: __t.string(),
-  attackSeq: __t.u32(),
-  triggeredAt: __t.timestamp(),
+  actionId: __t.string(),
+  readyTick: __t.u64(),
 });
-export type PlayerAnimation = __Infer<typeof PlayerAnimation>;
-
-export const PlayerAppearance = __t.object("PlayerAppearance", {
-  identity: __t.identity(),
-  bodyId: __t.string(),
-  scale: __t.f32(),
-  loadoutPreset: __t.string(),
-});
-export type PlayerAppearance = __Infer<typeof PlayerAppearance>;
-
-export const PlayerBlockState = __t.object("PlayerBlockState", {
-  identity: __t.identity(),
-  blockUntilTick: __t.u64(),
-  isBlocking: __t.bool(),
-});
-export type PlayerBlockState = __Infer<typeof PlayerBlockState>;
-
-export const PlayerCharacter = __t.object("PlayerCharacter", {
-  identity: __t.identity(),
-  characterClass: __t.string(),
-});
-export type PlayerCharacter = __Infer<typeof PlayerCharacter>;
-
-export const PlayerCombatState = __t.object("PlayerCombatState", {
-  identity: __t.identity(),
-  lastSlashTick: __t.u64(),
-});
-export type PlayerCombatState = __Infer<typeof PlayerCombatState>;
+export type PlayerCooldown = __Infer<typeof PlayerCooldown>;
 
 export const PlayerData = __t.object("PlayerData", {
   identity: __t.identity(),
@@ -188,14 +118,6 @@ export const PlayerData = __t.object("PlayerData", {
   joinedAt: __t.timestamp(),
 });
 export type PlayerData = __Infer<typeof PlayerData>;
-
-export const PlayerEquipment = __t.object("PlayerEquipment", {
-  id: __t.u64(),
-  owner: __t.identity(),
-  slot: __t.string(),
-  itemId: __t.string(),
-});
-export type PlayerEquipment = __Infer<typeof PlayerEquipment>;
 
 export const PlayerHealth = __t.object("PlayerHealth", {
   identity: __t.identity(),
@@ -234,12 +156,23 @@ export const PlayerJumpState = __t.object("PlayerJumpState", {
 });
 export type PlayerJumpState = __Infer<typeof PlayerJumpState>;
 
-export const PlayerSpellState = __t.object("PlayerSpellState", {
+export const PlayerResource = __t.object("PlayerResource", {
+  id: __t.u64(),
   identity: __t.identity(),
-  lastLightningTick: __t.u64(),
-  lastFireballTick: __t.u64(),
+  kind: __t.string(),
+  amount: __t.u32(),
 });
-export type PlayerSpellState = __Infer<typeof PlayerSpellState>;
+export type PlayerResource = __Infer<typeof PlayerResource>;
+
+export const PlayerSlotBinding = __t.object("PlayerSlotBinding", {
+  id: __t.u64(),
+  identity: __t.identity(),
+  slot: __t.string(),
+  tapAction: __t.option(__t.string()),
+  holdAction: __t.option(__t.string()),
+  holdThresholdTicks: __t.u32(),
+});
+export type PlayerSlotBinding = __Infer<typeof PlayerSlotBinding>;
 
 export const PlayerTransform = __t.object("PlayerTransform", {
   identity: __t.identity(),
@@ -256,17 +189,24 @@ export const PlayerTransform = __t.object("PlayerTransform", {
 });
 export type PlayerTransform = __Infer<typeof PlayerTransform>;
 
-export const SpellEvent = __t.object("SpellEvent", {
+export const Projectile = __t.object("Projectile", {
   id: __t.u64(),
-  caster: __t.identity(),
-  spellType: __t.string(),
+  owner: __t.identity(),
+  actionId: __t.string(),
   get position() {
     return Vector3;
   },
-  serverTick: __t.u64(),
-  createdAt: __t.timestamp(),
+  get previousPosition() {
+    return Vector3;
+  },
+  get direction() {
+    return Vector3;
+  },
+  spawnedAtTick: __t.u64(),
+  distanceTraveled: __t.f32(),
+  maxDistance: __t.f32(),
 });
-export type SpellEvent = __Infer<typeof SpellEvent>;
+export type Projectile = __Infer<typeof Projectile>;
 
 export const TickState = __t.object("TickState", {
   version: __t.u32(),

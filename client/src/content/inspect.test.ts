@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { MOG_BONES } from '../avatar/rig';
+import { MOG_BONES } from './rig';
 import { inspectClipBinding, inspectRigBinding } from './inspect';
 
 function skeletonNamed(names: readonly string[]): THREE.Object3D {

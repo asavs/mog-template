@@ -34,56 +34,45 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
-import EquipItemReducer from "./equip_item_reducer";
+import ActionInputReducer from "./action_input_reducer";
 import JoinGameReducer from "./join_game_reducer";
-import JoinGameAsReducer from "./join_game_as_reducer";
 import LeaveGameReducer from "./leave_game_reducer";
-import StartBlockReducer from "./start_block_reducer";
-import StopBlockReducer from "./stop_block_reducer";
-import TriggerBlockAnimationReducer from "./trigger_block_animation_reducer";
-import TriggerDrinkingPotionReducer from "./trigger_drinking_potion_reducer";
-import TriggerFireballReducer from "./trigger_fireball_reducer";
-import TriggerLightningStrikeReducer from "./trigger_lightning_strike_reducer";
-import TriggerSlashAttackReducer from "./trigger_slash_attack_reducer";
-import UnequipSlotReducer from "./unequip_slot_reducer";
 import UpdatePlayerInputReducer from "./update_player_input_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
-import CombatEventRow from "./combat_event_table";
+import ActionEventRow from "./action_event_table";
 import ConfigRow from "./config_table";
-import FireballProjectileRow from "./fireball_projectile_table";
 import GameTickScheduleRow from "./game_tick_schedule_table";
 import PlayerRow from "./player_table";
 import PlayerActionStateRow from "./player_action_state_table";
-import PlayerAnimationRow from "./player_animation_table";
-import PlayerAppearanceRow from "./player_appearance_table";
-import PlayerCharacterRow from "./player_character_table";
-import PlayerEquipmentRow from "./player_equipment_table";
+import PlayerCooldownRow from "./player_cooldown_table";
 import PlayerHealthRow from "./player_health_table";
 import PlayerInputAckRow from "./player_input_ack_table";
+import PlayerResourceRow from "./player_resource_table";
+import PlayerSlotBindingRow from "./player_slot_binding_table";
 import PlayerTransformRow from "./player_transform_table";
-import SpellEventRow from "./spell_event_table";
+import ProjectileRow from "./projectile_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
-  combat_event: __table({
-    name: 'combat_event',
+  action_event: __table({
+    name: 'action_event',
     indexes: [
-      { accessor: 'id', name: 'combat_event_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'id', name: 'action_event_id_idx_btree', algorithm: 'btree', columns: [
         'id',
       ] },
-      { accessor: 'server_tick', name: 'combat_event_server_tick_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'server_tick', name: 'action_event_server_tick_idx_btree', algorithm: 'btree', columns: [
         'serverTick',
       ] },
     ],
     constraints: [
-      { name: 'combat_event_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'action_event_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, CombatEventRow),
+  }, ActionEventRow),
   config: __table({
     name: 'config',
     indexes: [
@@ -95,17 +84,6 @@ const tablesSchema = __schema({
       { name: 'config_version_key', constraint: 'unique', columns: ['version'] },
     ],
   }, ConfigRow),
-  fireball_projectile: __table({
-    name: 'fireball_projectile',
-    indexes: [
-      { accessor: 'id', name: 'fireball_projectile_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'fireball_projectile_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, FireballProjectileRow),
   game_tick_schedule: __table({
     name: 'game_tick_schedule',
     indexes: [
@@ -131,64 +109,31 @@ const tablesSchema = __schema({
   player_action_state: __table({
     name: 'player_action_state',
     indexes: [
-      { accessor: 'action_ends_tick', name: 'player_action_state_action_ends_tick_idx_btree', algorithm: 'btree', columns: [
-        'actionEndsTick',
-      ] },
       { accessor: 'identity', name: 'player_action_state_identity_idx_btree', algorithm: 'btree', columns: [
         'identity',
+      ] },
+      { accessor: 'phase_ends_tick', name: 'player_action_state_phase_ends_tick_idx_btree', algorithm: 'btree', columns: [
+        'phaseEndsTick',
       ] },
     ],
     constraints: [
       { name: 'player_action_state_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerActionStateRow),
-  player_animation: __table({
-    name: 'player_animation',
+  player_cooldown: __table({
+    name: 'player_cooldown',
     indexes: [
-      { accessor: 'identity', name: 'player_animation_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-    ],
-    constraints: [
-      { name: 'player_animation_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, PlayerAnimationRow),
-  player_appearance: __table({
-    name: 'player_appearance',
-    indexes: [
-      { accessor: 'identity', name: 'player_appearance_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-    ],
-    constraints: [
-      { name: 'player_appearance_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, PlayerAppearanceRow),
-  player_character: __table({
-    name: 'player_character',
-    indexes: [
-      { accessor: 'identity', name: 'player_character_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-    ],
-    constraints: [
-      { name: 'player_character_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, PlayerCharacterRow),
-  player_equipment: __table({
-    name: 'player_equipment',
-    indexes: [
-      { accessor: 'id', name: 'player_equipment_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'id', name: 'player_cooldown_id_idx_btree', algorithm: 'btree', columns: [
         'id',
       ] },
-      { accessor: 'owner', name: 'player_equipment_owner_idx_btree', algorithm: 'btree', columns: [
-        'owner',
+      { accessor: 'identity', name: 'player_cooldown_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
       ] },
     ],
     constraints: [
-      { name: 'player_equipment_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'player_cooldown_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, PlayerEquipmentRow),
+  }, PlayerCooldownRow),
   player_health: __table({
     name: 'player_health',
     indexes: [
@@ -211,6 +156,34 @@ const tablesSchema = __schema({
       { name: 'player_input_ack_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerInputAckRow),
+  player_resource: __table({
+    name: 'player_resource',
+    indexes: [
+      { accessor: 'id', name: 'player_resource_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'identity', name: 'player_resource_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'player_resource_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PlayerResourceRow),
+  player_slot_binding: __table({
+    name: 'player_slot_binding',
+    indexes: [
+      { accessor: 'id', name: 'player_slot_binding_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'identity', name: 'player_slot_binding_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'player_slot_binding_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PlayerSlotBindingRow),
   player_transform: __table({
     name: 'player_transform',
     indexes: [
@@ -222,36 +195,24 @@ const tablesSchema = __schema({
       { name: 'player_transform_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerTransformRow),
-  spell_event: __table({
-    name: 'spell_event',
+  projectile: __table({
+    name: 'projectile',
     indexes: [
-      { accessor: 'id', name: 'spell_event_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'id', name: 'projectile_id_idx_btree', algorithm: 'btree', columns: [
         'id',
-      ] },
-      { accessor: 'server_tick', name: 'spell_event_server_tick_idx_btree', algorithm: 'btree', columns: [
-        'serverTick',
       ] },
     ],
     constraints: [
-      { name: 'spell_event_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'projectile_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, SpellEventRow),
+  }, ProjectileRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
-  __reducerSchema("equip_item", EquipItemReducer),
+  __reducerSchema("action_input", ActionInputReducer),
   __reducerSchema("join_game", JoinGameReducer),
-  __reducerSchema("join_game_as", JoinGameAsReducer),
   __reducerSchema("leave_game", LeaveGameReducer),
-  __reducerSchema("start_block", StartBlockReducer),
-  __reducerSchema("stop_block", StopBlockReducer),
-  __reducerSchema("trigger_block_animation", TriggerBlockAnimationReducer),
-  __reducerSchema("trigger_drinking_potion", TriggerDrinkingPotionReducer),
-  __reducerSchema("trigger_fireball", TriggerFireballReducer),
-  __reducerSchema("trigger_lightning_strike", TriggerLightningStrikeReducer),
-  __reducerSchema("trigger_slash_attack", TriggerSlashAttackReducer),
-  __reducerSchema("unequip_slot", UnequipSlotReducer),
   __reducerSchema("update_player_input", UpdatePlayerInputReducer),
 );
 

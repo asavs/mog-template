@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { MOG_BONES, boneNameCandidates, type MogBoneId } from '../avatar/rig';
+import { MOG_BONES, boneNameCandidates, type MogBoneId } from './rig';
 import { motionIdFromKey } from './keys';
 import { bindingFor } from './manifest';
 import { getBodyGenerator, getMotionGenerator, getPropGenerator } from './registry';

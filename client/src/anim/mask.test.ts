@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { MOG_BONES } from '../avatar/rig';
+import { MOG_BONES } from '../content/rig';
 import {
   ALL_BANDS,
   OVERLAY_BANDS,

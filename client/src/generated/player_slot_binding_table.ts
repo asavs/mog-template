@@ -11,11 +11,10 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  identity: __t.identity().primaryKey(),
-  actionId: __t.string().name("action_id"),
-  phase: __t.u8(),
-  phaseStartedTick: __t.u64().name("phase_started_tick"),
-  phaseEndsTick: __t.u64().name("phase_ends_tick"),
-  chargeTicks: __t.u64().name("charge_ticks"),
-  serverTick: __t.u64().name("server_tick"),
+  id: __t.u64().primaryKey(),
+  identity: __t.identity(),
+  slot: __t.string(),
+  tapAction: __t.option(__t.string()).name("tap_action"),
+  holdAction: __t.option(__t.string()).name("hold_action"),
+  holdThresholdTicks: __t.u32().name("hold_threshold_ticks"),
 });

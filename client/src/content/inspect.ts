@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { ALL_BANDS, bandOfBoneName } from '../anim/mask';
-import { MOG_BONES, boneNameCandidates, type MogBoneId } from '../avatar/rig';
+import { MOG_BONES, boneNameCandidates, type MogBoneId } from './rig';
 
 const ALL_BONE_IDS = Object.keys(MOG_BONES) as MogBoneId[];
 

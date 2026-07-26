@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { MOG_BONES } from '../avatar/rig';
+import { MOG_BONES } from '../content/rig';
 import { AnimationController } from './AnimationController';
 import { MOTION_RULES } from './config';
 import { ALL_BANDS, maskClipToBands, maskClipToOverlay } from './mask';
