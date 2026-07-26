@@ -99,6 +99,45 @@ export const MOTION_RULES = {
     overlayWidth: 'arms',
     expectedDurationSeconds: 0.25,
   },
+  /**
+   * A generic phased hold, for `playPhased` callers that are not guard — the
+   * action pipeline's hold-capable defs (e.g. `block`), which describe their
+   * own gesture as data and have no reason to share guard's dedicated 110
+   * priority. See `presentation/animBridge.ts`.
+   */
+  holdEnter: {
+    layer: 'upper',
+    loop: 'once',
+    priority: 105,
+    interruption: 'recovery',
+    enterBlendSeconds: 0.08,
+    exitBlendSeconds: 0.08,
+    clampWhenFinished: true,
+    retrigger: false,
+    overlayWidth: 'arms',
+  },
+  holdHeld: {
+    layer: 'upper',
+    loop: 'repeat',
+    priority: 105,
+    interruption: 'recovery',
+    enterBlendSeconds: 0.08,
+    exitBlendSeconds: 0.08,
+    clampWhenFinished: false,
+    retrigger: false,
+    overlayWidth: 'arms',
+  },
+  holdExit: {
+    layer: 'upper',
+    loop: 'once',
+    priority: 105,
+    interruption: 'recovery',
+    enterBlendSeconds: 0.08,
+    exitBlendSeconds: 0.08,
+    clampWhenFinished: true,
+    retrigger: false,
+    overlayWidth: 'arms',
+  },
   reactHit: {
     layer: 'upper',
     loop: 'once',
