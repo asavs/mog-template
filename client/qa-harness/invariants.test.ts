@@ -20,10 +20,6 @@ function phaseSummary(overrides: Partial<PhaseSummary>): PhaseSummary {
     pathLength: 0,
     netDisplacement: 0,
     maxFrameDelta: 0,
-    meanCorrErr: 0,
-    stddevCorrErr: 0,
-    meanOffset: 0,
-    stddevOffset: 0,
     ...overrides,
   };
 }
@@ -33,12 +29,8 @@ function traceRecord(channels: Record<string, number> | null): TraceRecord {
     t: 0,
     phase: 'walk_forward',
     simPosition: null,
-    renderPosition: null,
-    visualOffset: null,
-    offsetLength: null,
-    cameraPosition: null,
-    localServerTick: null,
-    localCorrectionError: null,
+    joined: true,
+    remoteCount: 0,
     channels,
   };
 }
@@ -123,8 +115,8 @@ describe('checkInvariants', () => {
 
   it('passes a stationary phase with near-zero displacement', () => {
     const failures = check(
-      { cast_fireball: phaseSummary({ phase: 'cast_fireball', pathLength: 0.05, netDisplacement: 0.05 }) },
-      [{ name: 'cast_fireball', expect: { kind: 'stationary' } }],
+      { prim_potion: phaseSummary({ phase: 'prim_potion', pathLength: 0.05, netDisplacement: 0.05 }) },
+      [{ name: 'prim_potion', expect: { kind: 'stationary' } }],
     );
 
     expect(failures).toEqual([]);
@@ -132,12 +124,12 @@ describe('checkInvariants', () => {
 
   it('fails a stationary phase that drifted', () => {
     const failures = check(
-      { cast_fireball: phaseSummary({ phase: 'cast_fireball', pathLength: 0.6, netDisplacement: 0.6 }) },
-      [{ name: 'cast_fireball', expect: { kind: 'stationary' } }],
+      { prim_potion: phaseSummary({ phase: 'prim_potion', pathLength: 0.6, netDisplacement: 0.6 }) },
+      [{ name: 'prim_potion', expect: { kind: 'stationary' } }],
     );
 
     expect(failures).toEqual([
-      expect.objectContaining({ phase: 'cast_fireball', metric: 'netDisplacement' }),
+      expect.objectContaining({ phase: 'prim_potion', metric: 'netDisplacement' }),
     ]);
   });
 });

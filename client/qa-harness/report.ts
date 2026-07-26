@@ -336,14 +336,12 @@ function summaryTable(
         <td class="num">${cell(c.pathLength, r?.pathLength, 2)}</td>
         <td class="num">${cell(c.netDisplacement, r?.netDisplacement, 2)}</td>
         <td class="num">${cell(c.maxFrameDelta, r?.maxFrameDelta, 3)}</td>
-        <td class="num">${cell(c.meanCorrErr, r?.meanCorrErr, 4)}</td>
-        <td class="num">${cell(c.meanOffset, r?.meanOffset, 4)}</td>
       </tr>`;
     })
     .join('');
 
   return `<table>
-    <thead><tr><th>phase</th><th>status</th>${showVideo ? '<th>video window</th>' : ''}<th class="num">frames</th><th class="num">path len</th><th class="num">net disp</th><th class="num">max Δ/frame</th><th class="num">mean corr err</th><th class="num">mean offset</th></tr></thead>
+    <thead><tr><th>phase</th><th>status</th>${showVideo ? '<th>video window</th>' : ''}<th class="num">frames</th><th class="num">path len</th><th class="num">net disp</th><th class="num">max Δ/frame</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -395,10 +393,11 @@ export function generateReport(candidate: RunData, opts: ReportOptions = {}): st
         .map((f) => `<tr class="row-fail"><td>${esc(f.phase)}</td><td>${esc(f.metric)}</td><td>${esc(f.detail)}</td><td class="num">${fmt(f.expected, 4)}</td><td class="num">${fmt(f.actual, 4)}</td><td class="num">${fmt(f.allowed, 4)}</td></tr>`)
         .join('')}</tbody></table></section>`
     : '';
-  const charts = [
-    timeSeriesChart({ title: 'Local correction error (server disagreement with prediction)', value: (f) => f.localCorrectionError, digits: 4 }, candidate, reference),
-    timeSeriesChart({ title: 'Visual offset length (render smoothing distance)', value: (f) => f.offsetLength, digits: 4 }, candidate, reference),
-  ].join('');
+  // No correction-error/offset charts: v2 exposes no client-side reconciliation telemetry to
+  // chart (see trace-types.ts's TraceRecord doc) — the per-phase table above (path length, net
+  // displacement, max frame delta) and the game-state channel charts below (channelsSection)
+  // are what's left of this report's per-frame view.
+  const charts = '';
 
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

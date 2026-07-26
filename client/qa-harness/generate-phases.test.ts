@@ -1,17 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  classesWithSpell,
-  generateCapabilityPhases,
-  generateEquipPhases,
-  generateMovementMatrix,
-} from './generate-phases';
-import {
-  GENERATED_CAPABILITY_PHASES,
-  GENERATED_EQUIP_PHASES,
-  HANDWRITTEN_PHASES,
-  PHASES,
-  selectPhases,
-} from './scenarios';
+import { generateActionMatrixPhases, generateMovementMatrix } from './generate-phases';
+import { GENERATED_ACTION_MATRIX_PHASES, HANDWRITTEN_PHASES, PHASES, selectPhases } from './scenarios';
 
 function phase(name: string) {
   const found = generateMovementMatrix().find((candidate) => candidate.name === name);
@@ -20,125 +9,83 @@ function phase(name: string) {
 }
 
 describe('generateMovementMatrix', () => {
-  it('generates all 48 axis combinations with unique registry names', () => {
+  it('generates all 24 direction/modifier combinations with unique registry names (no sprint — see MODIFIERS comment)', () => {
     const matrix = generateMovementMatrix();
-    expect(matrix).toHaveLength(48);
+    expect(matrix).toHaveLength(24);
     expect(new Set(PHASES.map((candidate) => candidate.name)).size).toBe(PHASES.length);
     expect(PHASES.slice(0, HANDWRITTEN_PHASES.length)).toEqual(HANDWRITTEN_PHASES);
   });
 
-  it('computes movement expectations from sprint and modifier axes', () => {
+  it('computes movement expectations from the jump/camera_turn modifiers', () => {
     expect(phase('mv_n').expect).toEqual({
       kind: 'linear-move',
       speed: 'walk',
-      durationMs: 1500,
+      durationMs: 750,
     });
-    expect(phase('mv_nw_sprint_jump').expect).toEqual({
+    expect(phase('mv_nw_jump').expect).toEqual({
       kind: 'linear-move',
-      speed: 'sprint',
-      durationMs: 1500,
+      speed: 'walk',
+      durationMs: 750,
       // Jump arc inflates 3D pathLength, so straightness is skipped.
       straight: false,
     });
-    expect(phase('mv_se_sprint_turn').expect).toEqual({
+    expect(phase('mv_se_turn').expect).toEqual({
       kind: 'max-speed',
-      speed: 'sprint',
-      durationMs: 1500,
+      speed: 'walk',
+      durationMs: 750,
     });
   });
 });
 
-describe('generateCapabilityPhases', () => {
-  it('derives shared actions and omissions from injected capabilities', () => {
-    const phases = generateCapabilityPhases({
-      paladin: {
-        capabilities: {
-          melee: true,
-          block: false,
-          spells: [],
-          drinkPotion: false,
-        },
-      },
-      wizard: {
-        capabilities: {
-          melee: true,
-          block: false,
-          spells: [],
-          drinkPotion: false,
-        },
-      },
-    });
-
-    expect(phases.map((candidate) => candidate.name)).toEqual(['gen_melee_slash']);
-    expect(phases[0]?.classes).toEqual(['paladin', 'wizard']);
-  });
-
-  it('marks every real capability phase stationary', () => {
-    expect(GENERATED_CAPABILITY_PHASES.length).toBeGreaterThan(0);
-    for (const capabilityPhase of GENERATED_CAPABILITY_PHASES) {
-      expect(capabilityPhase.expect).toEqual({ kind: 'stationary' });
-    }
-  });
-
-  it('includes acolyte (and wizard) on fireball capability phases when catalog has them', () => {
-    const fireball = GENERATED_CAPABILITY_PHASES.find((p) => p.name === 'gen_spell_fireball');
-    expect(fireball).toBeDefined();
-    const classes = fireball?.classes ?? [];
-    expect(classes).toContain('wizard');
-    if (classesWithSpell('fireball').includes('acolyte')) {
-      expect(classes).toContain('acolyte');
-    }
-  });
-});
-
-describe('generateEquipPhases', () => {
-  it('registers equip grant-flip phases in order', () => {
-    const names = generateEquipPhases().map((p) => p.name);
-    expect(names).toEqual([
-      'equip_wand',
-      'cast_after_equip_wand',
-      'equip_sword',
-      'slash_after_equip_sword',
-      'unequip_main_hand',
+describe('generateActionMatrixPhases', () => {
+  it('generates exactly the eight named primitives, generically derived from ACTION_DEFS', () => {
+    const phases = generateActionMatrixPhases();
+    expect(phases.map((p) => p.name)).toEqual([
+      'prim_light_tap',
+      'prim_heavy_full_charge',
+      'prim_heavy_early_release',
+      'prim_block_absorb',
+      'prim_roll_through_attack',
+      'prim_potion',
+      'prim_projectile_ability',
+      'prim_aoe_ability',
     ]);
-    expect(GENERATED_EQUIP_PHASES.map((p) => p.name)).toEqual(names);
+    expect(GENERATED_ACTION_MATRIX_PHASES.map((p) => p.name)).toEqual(phases.map((p) => p.name));
   });
 
-  it('applies to every class (no classes filter) so paladin can equip into cast', () => {
-    for (const phase of GENERATED_EQUIP_PHASES) {
-      expect(phase.classes).toBeUndefined();
-      expect(phase.expect).toEqual({ kind: 'stationary' });
+  it('every generated primitive is in the matrix group, applies universally (v2 has no classes)', () => {
+    for (const p of GENERATED_ACTION_MATRIX_PHASES) {
+      expect(p.group).toBe('matrix');
     }
   });
 
-  it('is selected under matrix group and for acolyte/wizard/paladin', () => {
-    for (const cls of ['wizard', 'paladin', 'acolyte'] as const) {
-      const selected = selectPhases('matrix', cls, 'smoke');
-      const names = new Set(selected.map((p) => p.name));
-      expect(names.has('equip_wand')).toBe(true);
-      expect(names.has('cast_after_equip_wand')).toBe(true);
-      expect(names.has('equip_sword')).toBe(true);
-      expect(names.has('slash_after_equip_sword')).toBe(true);
-      expect(names.has('unequip_main_hand')).toBe(true);
+  it('every primitive except roll expects stationary (roll displaces on purpose)', () => {
+    for (const p of GENERATED_ACTION_MATRIX_PHASES) {
+      if (p.name === 'prim_roll_through_attack') {
+        expect(p.expect).toBeUndefined();
+      } else {
+        expect(p.expect).toEqual({ kind: 'stationary' });
+      }
     }
   });
 });
 
 describe('selectPhases tiers', () => {
-  it('uses a strict representative subset of movement phases in smoke', () => {
-    const smoke = selectPhases(undefined, 'wizard', 'smoke');
-    const full = selectPhases(undefined, 'wizard', 'full');
+  it('uses a strict representative subset of movement phases in smoke, but always includes the action matrix', () => {
+    const smoke = selectPhases(undefined, 'smoke');
+    const full = selectPhases(undefined, 'full');
     const smokeNames = new Set(smoke.map((candidate) => candidate.name));
 
     expect(smoke.length).toBeLessThan(full.length);
     expect(smoke.every((candidate) =>
       full.some((fullPhase) => fullPhase.name === candidate.name),
     )).toBe(true);
-    expect(smokeNames.has('gen_spell_fireball')).toBe(true);
+    expect(smokeNames.has('prim_light_tap')).toBe(true);
+    expect(smokeNames.has('prim_block_absorb')).toBe(true);
   });
 
   it('lets an explicit generated name bypass the smoke subset', () => {
-    const selected = selectPhases('mv_s_sprint_turn', 'wizard', 'smoke');
-    expect(selected.map((candidate) => candidate.name)).toEqual(['mv_s_sprint_turn']);
+    const selected = selectPhases('mv_s_turn', 'smoke');
+    expect(selected.map((candidate) => candidate.name)).toEqual(['mv_s_turn']);
   });
 });

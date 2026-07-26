@@ -269,7 +269,7 @@ function landmarksBlock(run: RunData): string {
     <table>
       <tbody>
         <tr><td>goto → join screen</td><td class="num">${n(l.timeToJoinScreenMs, 0)} ms</td></tr>
-        <tr><td>join click → playable (__playerDebug)</td><td class="num">${n(l.timeToPlayableMs, 0)} ms</td></tr>
+        <tr><td>join click → playable (__mogGame.joined)</td><td class="num">${n(l.timeToPlayableMs, 0)} ms</td></tr>
         <tr><td>join click → first frames rendering</td><td class="num">${n(l.timeToFirstFramesMs, 0)} ms</td></tr>
         <tr><td>goto → first frames (end-to-end)</td><td class="num">${n(l.totalMs, 0)} ms</td></tr>
       </tbody>

@@ -26,21 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Terrain models are Git LFS objects; actions/checkout doesn't fetch
-      # LFS content by default, so pull it explicitly. Cached on the pointer
-      # OIDs to spare LFS bandwidth quota (same pattern as build-client in
-      # ci.yml would use, if/when it grows this step).
-      - name: List LFS asset ids
-        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
-
-      - name: Cache LFS objects
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: lfs-${{ hashFiles('.lfs-assets-id') }}
-
-      - name: Pull LFS assets
-        run: git lfs pull
+      # Wave 3F (v2): no LFS-tracked assets remain under client/public (the terrain models that
+      # justified LFS caching left the tree in the excision commit — same fact ci.yml's
+      # build-client job notes), so the LFS pull/cache steps that used to precede this are gone.
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -110,13 +98,27 @@ jobs:
         working-directory: client
         run: npx playwright install chromium
 
+      # Wave 3F (v2) TODO: this captures only the structural/no-pointer-lock tier, matching
+      # ci.yml's browser-playtest job's own scope — Xvfb + SwiftShader runners never grant
+      # pointer lock, and the game gates ALL input (movement included) on it
+      # (client/src/input/intents.ts), so movement-invariant phases (linear-move/max-speed
+      # expectations) cannot produce real displacement here and would fail on every capture if
+      # run without QA_CHECKS=structural. A baseline with real movement/combat numbers needs a
+      # local GPU capture (`npm run qa:baseline:update` with no env overrides, see
+      # qa-harness/README.md's "Baseline regression checks") — this workflow's own baselines/ci/
+      # output is therefore currently a smoke-tier artifact (join, telemetry flow, structural
+      # integrity across a run), not a source of movement-invariant tolerances.
       - name: Capture baseline
         working-directory: client
         env:
           QA_WEB_MODE: preview
+          QA_PHASES: walk_forward,jump_idle
+          QA_CHECKS: structural
           QA_BASELINE_DIR: qa-harness/baselines/ci
           QA_RUN_LABEL: ci-baseline
           QA_JOIN_TIMEOUT_MS: '90000'
+          QA_VIEWPORT: 640x360
+          QA_RENDER_READY_FRAMES: '10'
         run: xvfb-run -a npm run qa:baseline:update
 
       - name: Upload captured baseline

@@ -1,24 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CharacterClass, RunData } from './trace-types';
+import type { BotLabel, RunData } from './trace-types';
 import { summarizeByPhase, type PhaseSummary, type TraceSummary } from './trace-stats';
 
 export const DEFAULT_GRID_LATENCIES_MS = [0, 60, 150, 300];
 
 export type GridRunSummary = {
   latencyMs: number;
-  characterClass: CharacterClass;
+  characterClass: BotLabel;
   summary: TraceSummary;
 };
 
 export type GridMetricRow = {
   latencyMs: number;
-  characterClass: CharacterClass;
+  characterClass: BotLabel;
   phase: string;
   netDisplacement: number;
   maxFrameDelta: number;
-  meanCorrErr: number;
-  meanOffset: number;
 };
 
 const esc = (s: string) =>
@@ -98,7 +96,7 @@ export function summarizeGridRun(
 
   return {
     latencyMs,
-    characterClass: run.meta.characterClass as CharacterClass,
+    characterClass: run.meta.characterClass,
     summary,
   };
 }
@@ -115,8 +113,6 @@ export function aggregateGridSummaries(cells: readonly GridRunSummary[]): GridMe
         phase,
         netDisplacement: summary.netDisplacement,
         maxFrameDelta: summary.maxFrameDelta,
-        meanCorrErr: summary.meanCorrErr,
-        meanOffset: summary.meanOffset,
       });
     }
   }
@@ -135,8 +131,6 @@ export function logGridSummary(rows: readonly GridMetricRow[]) {
     latencyMs: row.latencyMs,
     netDisplacement: Number(row.netDisplacement.toFixed(3)),
     maxFrameDelta: Number(row.maxFrameDelta.toFixed(4)),
-    meanCorrErr: Number(row.meanCorrErr.toFixed(4)),
-    meanOffset: Number(row.meanOffset.toFixed(4)),
   })));
 }
 
@@ -149,8 +143,6 @@ export function generateGridReport(rows: readonly GridMetricRow[], opts: { label
       <td class="num">${row.latencyMs}</td>
       <td class="num">${fmt(row.netDisplacement, 3)}</td>
       <td class="num">${fmt(row.maxFrameDelta, 4)}</td>
-      <td class="num">${fmt(row.meanCorrErr, 4)}</td>
-      <td class="num">${fmt(row.meanOffset, 4)}</td>
     </tr>`)
     .join('');
 
@@ -175,7 +167,7 @@ export function generateGridReport(rows: readonly GridMetricRow[], opts: { label
   </header>
   <section>
     <table>
-      <thead><tr><th>class</th><th>phase</th><th class="num">latency ms</th><th class="num">net disp</th><th class="num">max delta/frame</th><th class="num">mean corr err</th><th class="num">mean offset</th></tr></thead>
+      <thead><tr><th>class</th><th>phase</th><th class="num">latency ms</th><th class="num">net disp</th><th class="num">max delta/frame</th></tr></thead>
       <tbody>${tableRows}</tbody>
     </table>
   </section>

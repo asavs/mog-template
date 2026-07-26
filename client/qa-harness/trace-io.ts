@@ -67,19 +67,13 @@ export function writeFramesCsv(filePath: string, frames: TraceRecord[]): void {
   const header = [
     't', 'phase',
     'simX', 'simY', 'simZ',
-    'renderX', 'renderY', 'renderZ',
-    'offsetX', 'offsetY', 'offsetZ', 'offsetLength',
-    'camX', 'camY', 'camZ',
-    'localServerTick', 'localCorrectionError',
+    'joined', 'remoteCount',
     ...channelKeys.map((k) => `ch_${k}`),
   ];
   const rows = frames.map((r) => [
     r.t.toFixed(3), r.phase,
     r.simPosition?.x ?? '', r.simPosition?.y ?? '', r.simPosition?.z ?? '',
-    r.renderPosition?.x ?? '', r.renderPosition?.y ?? '', r.renderPosition?.z ?? '',
-    r.visualOffset?.x ?? '', r.visualOffset?.y ?? '', r.visualOffset?.z ?? '', r.offsetLength ?? '',
-    r.cameraPosition?.x ?? '', r.cameraPosition?.y ?? '', r.cameraPosition?.z ?? '',
-    r.localServerTick ?? '', r.localCorrectionError ?? '',
+    r.joined ? 1 : 0, r.remoteCount,
     ...channelKeys.map((k) => r.channels?.[k] ?? ''),
   ].join(','));
   fs.writeFileSync(filePath, [header.join(','), ...rows].join('\n'));

@@ -76,7 +76,7 @@ export function checkConfigChannels(
       failures.push({
         phase: 'trace',
         metric: key,
-        detail: key + ' channel was not observed in window.__gameDebug',
+        detail: key + ' channel was not observed in window.__mogGame.store (generically, no longer a live channel)',
         expected,
         actual: Number.NaN,
         allowed: 0,

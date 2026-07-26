@@ -19,10 +19,6 @@ export type PhaseSummary = {
   pathLength: number;
   netDisplacement: number;
   maxFrameDelta: number;
-  meanCorrErr: number;
-  stddevCorrErr: number;
-  meanOffset: number;
-  stddevOffset: number;
   /**
    * Per-channel stats for whatever game-state channels the client published
    * during this phase (keys are client-defined; see useQaGameDebug.ts).
@@ -61,11 +57,6 @@ function summarizePhase(phase: string, records: TraceRecord[]): PhaseSummary {
     ? dist(positioned[0].simPosition, positioned[positioned.length - 1].simPosition) ?? 0
     : 0;
 
-  const corrErrs = records.map((r) => r.localCorrectionError).filter((v): v is number => typeof v === 'number');
-  const offsets = records.map((r) => r.offsetLength).filter((v): v is number => typeof v === 'number');
-  const corr = meanAndStddev(corrErrs);
-  const off = meanAndStddev(offsets);
-
   const byChannel = new Map<string, number[]>();
   for (const r of records) {
     if (!r.channels) continue;
@@ -95,10 +86,6 @@ function summarizePhase(phase: string, records: TraceRecord[]): PhaseSummary {
     pathLength,
     netDisplacement,
     maxFrameDelta,
-    meanCorrErr: corr.mean,
-    stddevCorrErr: corr.stddev,
-    meanOffset: off.mean,
-    stddevOffset: off.stddev,
   };
 }
 
@@ -128,12 +115,11 @@ export function checkStructuralIntegrity(records: TraceRecord[]): string[] {
 
     if (r.phase !== 'startup') {
       if (!r.simPosition) issues.push(`${r.phase}@${r.t.toFixed(0)}ms: simPosition is null after startup`);
-      if (!r.renderPosition) issues.push(`${r.phase}@${r.t.toFixed(0)}ms: renderPosition is null after startup`);
+      if (!r.joined) issues.push(`${r.phase}@${r.t.toFixed(0)}ms: __mogGame.joined is false after startup`);
     }
 
     const numericFields: Array<[string, number | null | undefined]> = [
       ['simPosition.x', r.simPosition?.x], ['simPosition.y', r.simPosition?.y], ['simPosition.z', r.simPosition?.z],
-      ['localCorrectionError', r.localCorrectionError], ['offsetLength', r.offsetLength],
     ];
     for (const [field, value] of numericFields) {
       if (typeof value === 'number' && Number.isNaN(value)) {

@@ -5,20 +5,23 @@
  * modified; everything is observed from standard browser APIs.
  *
  * Scenarios (see README perf section):
- *  - cold-load: fresh context → goto → join, landmarked; both classes.
- *  - first-cast: idle baseline, then fireball×2 and lightning×2 with a
- *    per-cast phase window — first-vs-second delta is the headline.
+ *  - cold-load: fresh context -> goto -> join, landmarked.
+ *  - first-cast: idle baseline, then two casts of the tap action bound to
+ *    `primary` (v2 has no wizard/spell-specific keys — see generate-phases.ts's
+ *    action-primitive matrix doc), each in its own phase window so
+ *    first-vs-second is a phase comparison.
  *  - player-join: bot A steady-state, then bot B joins the same world;
  *    measure A's stall in the window after B appears vs its baseline.
  *  - remote-motion: bot B walks ~10s while bot A observes. A's page exposes
- *    only its OWN __playerDebug (no remote render positions), so B's rendered
- *    position on A's page is not reachable — documented as a gap.
+ *    only its OWN identity's row in window.__mogGame.store (no remote-player
+ *    per-frame render position), so B's rendered position on A's page is not
+ *    reachable — documented as a gap, same as before the v2 rewrite.
  *
  * Perf numbers are reported against budgets; failures only gate with QA_PERF_ENFORCE=1.
  */
 import type { Browser, Page } from 'playwright';
-import { joinPresetButtonLabel } from '../src/components/characterConfig';
-import type { CharacterClass, LoadLandmarks, RunData } from './trace-types';
+import type { LoadLandmarks, RunData } from './trace-types';
+import { SLOT_BINDINGS } from '../src/actions/defs.generated';
 import { summarizeWsByPhase } from './perf-stats';
 import {
   acquirePointerLock,
@@ -27,13 +30,14 @@ import {
   collectRun,
   joinAs,
   openBotSession,
-  readGameChannel,
+  readStoreField,
   saveFailureDiagnostics,
   setPhase,
   waitForRenderLoop,
   type BotSession,
   type SessionConfig,
 } from './page-driver';
+import { pressSlot, releaseSlot } from './generate-phases';
 
 export type PerfResult = {
   runs: RunData[];
@@ -48,21 +52,10 @@ const CAST_WINDOW_MS = 3000;
 const REMOTE_WALK_MS = 10000;
 const POST_JOIN_MS = 5000;
 
-async function tapKey(page: Page, code: string, ms = 120) {
-  await page.keyboard.down(code);
-  await page.waitForTimeout(ms);
-  await page.keyboard.up(code);
-}
-
 async function holdKey(page: Page, code: string, ms: number) {
   await page.keyboard.down(code);
   await page.waitForTimeout(ms);
   await page.keyboard.up(code);
-}
-
-async function click(page: Page) {
-  await page.mouse.down();
-  await page.mouse.up();
 }
 
 function scenarioCfg(cfg: SessionConfig, label: string): SessionConfig {
@@ -78,7 +71,7 @@ async function tracedPhase<T>(session: BotSession, cfg: SessionConfig, phase: st
 // cold-load
 
 async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<LoadLandmarks> {
-  const { page, characterClass } = session;
+  const { page, botLabel } = session;
   const url = new URL(cfg.clientUrl);
   if (!url.searchParams.has('qa')) url.searchParams.set('qa', '');
 
@@ -88,18 +81,15 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
     waitUntil: 'domcontentloaded',
     timeout: Math.max(cfg.joinTimeoutMs, 60_000),
   });
-  await page.waitForSelector('#username', { timeout: cfg.joinTimeoutMs });
+  const nameInput = page.getByPlaceholder('name');
+  await nameInput.waitFor({ state: 'visible', timeout: cfg.joinTimeoutMs });
   const tJoinScreen = Date.now();
 
-  await page.locator('#username').fill(`QaBot-${characterClass}-${Date.now()}`);
-  await page
-    .getByRole('button', { name: joinPresetButtonLabel(characterClass), exact: true })
-    .click();
-
+  await nameInput.fill(`QaBot-${botLabel}-${Date.now()}`);
   const tClick = Date.now();
-  await page.getByRole('button', { name: 'Join Game' }).click();
+  await page.getByRole('button', { name: 'join', exact: true }).click();
   await page.waitForFunction(
-    () => !!(window as unknown as { __playerDebug?: unknown }).__playerDebug,
+    () => !!(window as unknown as { __mogGame?: { joined?: boolean } }).__mogGame?.joined,
     undefined,
     { timeout: cfg.joinTimeoutMs },
   );
@@ -116,13 +106,9 @@ async function coldLoadJoin(session: BotSession, cfg: SessionConfig): Promise<Lo
   };
 }
 
-async function runColdLoad(
-  browser: Browser,
-  cfg: SessionConfig,
-  characterClass: CharacterClass,
-): Promise<RunData> {
+async function runColdLoad(browser: Browser, cfg: SessionConfig, botLabel: string): Promise<RunData> {
   const scfg = scenarioCfg(cfg, 'perf-coldload');
-  const session = await openBotSession(browser, characterClass, scfg);
+  const session = await openBotSession(browser, botLabel, scfg);
   let run: RunData | undefined;
   try {
     const landmarks = await captureChromeTrace(session, scfg, 'startup', true, () => coldLoadJoin(session, scfg));
@@ -144,11 +130,15 @@ async function runColdLoad(
 }
 
 // ---------------------------------------------------------------------------
-// first-cast
+// first-cast — v2 has no wizard/spell-specific keys, so this drives whatever
+// tap action `primary` resolves to twice (see generate-phases.ts's action
+// matrix for how "primary" is picked generically).
+
+const PRIMARY_SLOT = SLOT_BINDINGS.find((b) => b.tapAction !== null)?.slot ?? 'primary';
 
 async function runFirstCast(browser: Browser, cfg: SessionConfig): Promise<RunData> {
   const scfg = scenarioCfg(cfg, 'perf-firstcast');
-  const session = await openBotSession(browser, 'wizard', scfg);
+  const session = await openBotSession(browser, 'a', scfg);
   let run: RunData | undefined;
   try {
     await joinAs(session, scfg);
@@ -156,29 +146,17 @@ async function runFirstCast(browser: Browser, cfg: SessionConfig): Promise<RunDa
     await acquirePointerLock(session.page);
     const { page } = session;
 
-    // Steady-state baseline before any cast.
+    // Steady-state baseline before any action.
     await tracedPhase(session, scfg, 'steady_baseline', () => page.waitForTimeout(BASELINE_MS));
 
-    // Fireball (spell 1): select, then two casts CAST_WINDOW_MS apart. Each
-    // cast owns its own phase window so first-vs-second is a phase comparison.
-    await tapKey(page, 'Digit1');
-    await tracedPhase(session, scfg, 'fireball_1', async () => {
-      await click(page);
+    await tracedPhase(session, scfg, 'primary_1', async () => {
+      await pressSlot(page, PRIMARY_SLOT);
+      await releaseSlot(page, PRIMARY_SLOT);
       await page.waitForTimeout(CAST_WINDOW_MS);
     });
-    await tracedPhase(session, scfg, 'fireball_2', async () => {
-      await click(page);
-      await page.waitForTimeout(CAST_WINDOW_MS);
-    });
-
-    // Lightning (spell 2): same structure.
-    await tapKey(page, 'Digit2');
-    await tracedPhase(session, scfg, 'lightning_1', async () => {
-      await click(page);
-      await page.waitForTimeout(CAST_WINDOW_MS);
-    });
-    await tracedPhase(session, scfg, 'lightning_2', async () => {
-      await click(page);
+    await tracedPhase(session, scfg, 'primary_2', async () => {
+      await pressSlot(page, PRIMARY_SLOT);
+      await releaseSlot(page, PRIMARY_SLOT);
       await page.waitForTimeout(CAST_WINDOW_MS);
     });
 
@@ -197,11 +175,7 @@ async function runFirstCast(browser: Browser, cfg: SessionConfig): Promise<RunDa
 // ---------------------------------------------------------------------------
 // player-join
 
-async function runPlayerJoin(
-  browser: Browser,
-  cfg: SessionConfig,
-  notes: string[],
-): Promise<RunData[]> {
+async function runPlayerJoin(browser: Browser, cfg: SessionConfig, notes: string[]): Promise<RunData[]> {
   const scfg = scenarioCfg(cfg, 'perf-playerjoin');
   // Sessions are pushed the moment they open (including B, opened mid-phase),
   // so the finally closes exactly the sessions that actually exist even when
@@ -209,18 +183,18 @@ async function runPlayerJoin(
   const sessions: BotSession[] = [];
   const runsBySession = new Map<BotSession, RunData>();
   try {
-    const botA = await openBotSession(browser, 'wizard', scfg);
+    const botA = await openBotSession(browser, 'a', scfg);
     sessions.push(botA);
     await joinAs(botA, scfg);
     await waitForRenderLoop(botA.page, scfg.joinTimeoutMs);
 
     await tracedPhase(botA, scfg, 'pre_join_baseline', () => botA.page.waitForTimeout(BASELINE_MS));
-    const onlineBefore = await readGameChannel(botA.page, 'playersOnline');
+    const remoteCountBefore = await readStoreField(botA.page, 'player', 'connected', 'local'); // presence-only probe, see below
 
     // B connects; A stays in a distinct window while the connection/subscription
     // and the new remote player's assets come in.
     const botB = await tracedPhase(botA, scfg, 'b_joining', async () => {
-      const b = await openBotSession(browser, 'paladin', scfg);
+      const b = await openBotSession(browser, 'b', scfg);
       sessions.push(b);
       await joinAs(b, scfg);
       await waitForRenderLoop(b.page, scfg.joinTimeoutMs);
@@ -228,9 +202,8 @@ async function runPlayerJoin(
     });
 
     await tracedPhase(botA, scfg, 'after_b_join', () => botA.page.waitForTimeout(POST_JOIN_MS));
-    const onlineAfter = await readGameChannel(botA.page, 'playersOnline');
     notes.push(
-      `player-join: bot A playersOnline ${onlineBefore ?? '—'} → ${onlineAfter ?? '—'} across B's join`,
+      `player-join: bot A's own presence probe before/after B's join: ${remoteCountBefore ?? '—'} (see __mogGame.store.player size in the trace for the actual count)`,
     );
 
     await setPhase(botA.page, 'done');
@@ -255,45 +228,32 @@ async function runPlayerJoin(
 // ---------------------------------------------------------------------------
 // remote-motion
 
-/**
- * Scans bot A's page for any global that could expose a *remote* player's
- * rendered position. The master client publishes only the local player's
- * __playerDebug and local game-state channels via __gameDebug, so this is
- * expected to find nothing — the return value documents the gap.
- */
-async function probeRemotePositionChannel(pageA: Page): Promise<string[]> {
+/** Documents what bot A's page can see of a remote player. v2 publishes every player's row in
+ * window.__mogGame.store (subscriptions cover every player), so a remote *position* IS
+ * reachable now (unlike the pre-rewrite __playerDebug/__gameDebug split, which was local-only)
+ * — this now reports remoteCount and the store's playerTransform size directly instead of the
+ * old GAP note. */
+async function probeRemoteVisibility(pageA: Page): Promise<string> {
   return (await pageA.evaluate(() => {
-    const w = window as unknown as {
-      __gameDebug?: Record<string, unknown>;
-      __playerDebug?: Record<string, unknown>;
-    };
-    const found: string[] = [];
-    const gd = w.__gameDebug ?? {};
-    for (const k of Object.keys(gd)) {
-      if (/remote|other|pos|position|x$|z$/i.test(k)) found.push(`__gameDebug.${k}`);
-    }
-    // __playerDebug is local-only by contract; list its keys so the report can
-    // show exactly what *was* available on A's page.
-    const pd = w.__playerDebug ?? {};
-    for (const k of Object.keys(pd)) found.push(`__playerDebug.${k}(local)`);
-    return found;
-  })) as string[];
+    const game = (window as unknown as {
+      __mogGame?: { remoteCount: number; store: Record<string, Map<string, unknown>> };
+    }).__mogGame;
+    if (!game) return 'no __mogGame on A';
+    const transformRows = game.store.playerTransform?.size ?? 0;
+    return `remoteCount=${game.remoteCount}, store.playerTransform rows=${transformRows} (includes remote players' authoritative position — readable via readStoreField(page, 'playerTransform', <field>, <remoteIdentityHex>))`;
+  })) as string;
 }
 
-async function runRemoteMotion(
-  browser: Browser,
-  cfg: SessionConfig,
-  notes: string[],
-): Promise<RunData[]> {
+async function runRemoteMotion(browser: Browser, cfg: SessionConfig, notes: string[]): Promise<RunData[]> {
   const scfg = scenarioCfg(cfg, 'perf-remotemotion');
   // Sessions open inside the try so a failure opening the second doesn't
   // leak the first (the finally closes whatever was actually opened).
   const sessions: BotSession[] = [];
   const runsBySession = new Map<BotSession, RunData>();
   try {
-    const botA = await openBotSession(browser, 'wizard', scfg);
+    const botA = await openBotSession(browser, 'a', scfg);
     sessions.push(botA);
-    const botB = await openBotSession(browser, 'paladin', scfg);
+    const botB = await openBotSession(browser, 'b', scfg);
     sessions.push(botB);
     await joinAs(botA, scfg);
     await waitForRenderLoop(botA.page, scfg.joinTimeoutMs);
@@ -301,25 +261,15 @@ async function runRemoteMotion(
     await waitForRenderLoop(botB.page, scfg.joinTimeoutMs);
 
     // The mover must hold pointer lock or its movement never happens: keydowns are
-    // ignored unless document.pointerLockElement === document.body (useInputManager,
-    // useLocalPlayerControls). Without this the "walk" phase moves nobody — the
-    // remote stays put (maxRemoteJumpUnits 0) and no transform traffic is published,
-    // which silently made #21's measurement meaningless. The observer (A) stays AFK
-    // and unlocked by design.
+    // ignored unless document.pointerLockElement === document.body (intents.ts). Without
+    // this the "walk" phase moves nobody. The observer (A) stays AFK and unlocked by design.
     await acquirePointerLock(botB.page);
 
     // Baseline while both stand still.
     await setPhase(botB.page, 'remote_baseline');
     await tracedPhase(botA, scfg, 'remote_baseline', () => botA.page.waitForTimeout(BASELINE_MS));
 
-    // Document what A can actually see of B before we rely on it.
-    const available = await probeRemotePositionChannel(botA.page);
-    const hasRemotePos = available.some((s) => !s.includes('(local)') && s.startsWith('__gameDebug'));
-    notes.push(
-      hasRemotePos
-        ? `remote-motion: candidate remote-position channels on A: ${available.filter((s) => !s.includes('(local)')).join(', ')}`
-        : `remote-motion GAP: bot A's page exposes no remote-player render position; only local surfaces available: ${available.join(', ') || '(none)'} — B's rendered position per frame on A is not measurable without a game change.`,
-    );
+    notes.push(`remote-motion: ${await probeRemoteVisibility(botA.page)}`);
 
     // B walks continuously while A observes.
     await setPhase(botB.page, 'remote_walk');
@@ -399,10 +349,7 @@ export async function runPerf(browser: Browser, cfg: SessionConfig): Promise<Per
     }
   }
 
-  await runScenario('cold-load', async () => [
-    await runColdLoad(browser, cfg, 'wizard'),
-    await runColdLoad(browser, cfg, 'paladin'),
-  ]);
+  await runScenario('cold-load', async () => [await runColdLoad(browser, cfg, 'a')]);
   await runScenario('first-cast', async () => [await runFirstCast(browser, cfg)]);
   await runScenario('player-join', async () => runPlayerJoin(browser, cfg, notes));
   await runScenario('remote-motion', async () => runRemoteMotion(browser, cfg, notes));

@@ -10,12 +10,27 @@
  * `QA_PHASES=movement,combat`) while preserving registry order, which makes
  * a single action re-runnable in seconds while debugging.
  *
- * Content note: capability phases derive from catalog loadout presets
- * (`CHARACTER_CONFIGS`); join uses catalog button labels. The registry shape
- * — not the fixed class list — is the durable part.
+ * v2 has no character classes and no equip system — every joined player has
+ * every capability (shared/actions.json's SLOT_BINDINGS seed identically for
+ * everyone, docs/action-pipeline.md: "Row membership IS the capability
+ * gate"). Combat coverage is the generic action-primitive matrix
+ * (generate-phases.ts's `generateActionMatrixPhases`), derived from
+ * ACTION_DEFS/SLOT_BINDINGS data rather than a per-class capability list.
+ *
+ * Movement hold durations are 750ms (not the pre-rewrite 1500ms): v2's arena
+ * (shared/arena.json) is a small 40x40 room, and every authored spawn's
+ * default facing (yaw) points at its NEAREST wall — server-verified
+ * clearance is exactly 5.55 units (spawn-to-wall minus PLAYER_COLLISION_RADIUS,
+ * see server/spacetimedb/src/collision.rs) — so a full 1500ms hold at
+ * PLAYER_SPEED (9 units) drove every straight movement phase into the wall
+ * and clamped there (observed live), corrupting the very displacement these
+ * phases exist to measure. 750ms (4.5 units) clears that with margin from
+ * any spawn/direction. See also page-driver.ts's acquirePointerLock, which
+ * settles out the lock-engaging click's own accidental attack_light before
+ * the first phase starts (v2: every player can attack immediately, no
+ * equip gate, so that click always lands as a real attack now).
  */
 import {
-  click,
   holdKey,
   holdKeys,
   lookAround,
@@ -23,63 +38,45 @@ import {
   type PhaseDef,
   type PhaseGroup,
 } from './phase-helpers';
-import {
-  classesWithBlock,
-  classesWithMelee,
-  classesWithSpell,
-  generateCapabilityPhases,
-  generateEquipPhases,
-  generateMovementMatrix,
-} from './generate-phases';
-import type { CharacterClass } from './trace-types';
+import { generateActionMatrixPhases, generateMovementMatrix } from './generate-phases';
 
 export type { PhaseContext, PhaseDef, PhaseGroup } from './phase-helpers';
 export const HANDWRITTEN_PHASES: PhaseDef[] = [
   {
     name: 'walk_forward',
     group: 'movement',
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1500 },
-    run: ({ page }) => holdKey(page, 'KeyW', 1500),
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 750 },
+    run: ({ page }) => holdKey(page, 'KeyW', 750),
   },
   {
     name: 'walk_backward',
     group: 'movement',
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1500 },
-    run: ({ page }) => holdKey(page, 'KeyS', 1500),
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 750 },
+    run: ({ page }) => holdKey(page, 'KeyS', 750),
   },
   {
     name: 'strafe_left',
     group: 'movement',
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1500 },
-    run: ({ page }) => holdKey(page, 'KeyA', 1500),
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 750 },
+    run: ({ page }) => holdKey(page, 'KeyA', 750),
   },
   {
     name: 'strafe_right',
     group: 'movement',
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1500 },
-    run: ({ page }) => holdKey(page, 'KeyD', 1500),
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 750 },
+    run: ({ page }) => holdKey(page, 'KeyD', 750),
   },
   {
     name: 'walk_forward_left',
     group: 'movement',
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1500 },
-    run: ({ page }) => holdKeys(page, ['KeyW', 'KeyA'], 1500),
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 750 },
+    run: ({ page }) => holdKeys(page, ['KeyW', 'KeyA'], 750),
   },
   {
     name: 'walk_forward_right',
     group: 'movement',
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1500 },
-    run: ({ page }) => holdKeys(page, ['KeyW', 'KeyD'], 1500),
-  },
-  {
-    name: 'sprint_forward',
-    group: 'movement',
-    expect: { kind: 'linear-move', speed: 'sprint', durationMs: 1500 },
-    run: async ({ page }) => {
-      await page.keyboard.down('ShiftLeft');
-      await holdKey(page, 'KeyW', 1500);
-      await page.keyboard.up('ShiftLeft');
-    },
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 750 },
+    run: ({ page }) => holdKeys(page, ['KeyW', 'KeyD'], 750),
   },
   {
     name: 'staccato_forward',
@@ -109,31 +106,6 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
     },
   },
   {
-    name: 'sprint_toggle',
-    group: 'movement',
-    run: async ({ page }) => {
-      let shiftDown = false;
-      await page.keyboard.down('KeyW');
-      for (let elapsed = 0; elapsed < 2400; elapsed += 400) {
-        if (shiftDown) await page.keyboard.up('ShiftLeft');
-        else await page.keyboard.down('ShiftLeft');
-        shiftDown = !shiftDown;
-        await page.waitForTimeout(400);
-      }
-      if (shiftDown) await page.keyboard.up('ShiftLeft');
-      await page.waitForTimeout(100);
-      await page.keyboard.up('KeyW');
-    },
-  },
-  {
-    name: 'sprint_strafe',
-    group: 'movement',
-    run: async ({ page }) => {
-      await holdKeys(page, ['ShiftLeft', 'KeyA'], 1000);
-      await holdKeys(page, ['ShiftLeft', 'KeyD'], 1000);
-    },
-  },
-  {
     name: 'circle_run',
     group: 'movement',
     run: async ({ page }) => {
@@ -158,12 +130,12 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
     name: 'jump_while_moving',
     group: 'movement',
     // straight: false — the jump arc inflates 3D pathLength (see invariants.ts).
-    expect: { kind: 'linear-move', speed: 'walk', durationMs: 1020, straight: false },
+    expect: { kind: 'linear-move', speed: 'walk', durationMs: 510, straight: false },
     run: async ({ page }) => {
       await page.keyboard.down('KeyW');
-      await page.waitForTimeout(200);
-      await tapKey(page, 'Space');
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(100);
+      await tapKey(page, 'Space', 60);
+      await page.waitForTimeout(350);
       await page.keyboard.up('KeyW');
     },
   },
@@ -190,7 +162,7 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
         downloadThroughput: -1,
         uploadThroughput: -1,
       });
-      await holdKey(page, 'KeyW', 1500);
+      await holdKey(page, 'KeyW', 750);
       await cdp.send('Network.emulateNetworkConditions', {
         offline: false,
         latency: 0,
@@ -200,99 +172,21 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
       await page.waitForTimeout(300);
     },
   },
-  {
-    name: 'cast_fireball',
-    group: 'combat',
-    // wizard + acolyte (and any future cast preset) via catalog capabilities
-    classes: classesWithSpell('fireball'),
-    expect: { kind: 'stationary' },
-    run: async ({ page }) => {
-      await tapKey(page, 'Digit1');
-      await lookAround(page, 5, 15);
-      await click(page);
-      await page.waitForTimeout(400);
-      await click(page);
-      await page.waitForTimeout(600);
-    },
-  },
-  {
-    name: 'cast_lightning',
-    group: 'combat',
-    classes: classesWithSpell('lightning'),
-    expect: { kind: 'stationary' },
-    run: async ({ page }) => {
-      await tapKey(page, 'Digit2');
-      await lookAround(page, 5, -15);
-      await click(page);
-      await page.waitForTimeout(400);
-      await click(page);
-      await page.waitForTimeout(600);
-    },
-  },
-  {
-    name: 'stop_cast',
-    group: 'combat',
-    classes: classesWithSpell('fireball'),
-    run: async ({ page }) => {
-      await page.keyboard.down('ShiftLeft');
-      await page.keyboard.down('KeyW');
-      await page.waitForTimeout(800);
-      await page.keyboard.up('KeyW');
-      await page.keyboard.up('ShiftLeft');
-      await tapKey(page, 'Digit1');
-      await click(page);
-      await page.waitForTimeout(600);
-    },
-  },
-  {
-    name: 'attack_slash',
-    group: 'combat',
-    classes: classesWithMelee(),
-    expect: { kind: 'stationary' },
-    run: async ({ page }) => {
-      await click(page);
-      await page.waitForTimeout(1300);
-      await click(page);
-      await page.waitForTimeout(600);
-    },
-  },
-  {
-    name: 'block_hold',
-    group: 'combat',
-    classes: classesWithBlock(),
-    expect: { kind: 'stationary' },
-    run: async ({ page }) => {
-      await page.mouse.down({ button: 'right' });
-      await page.waitForTimeout(800);
-      await page.mouse.up({ button: 'right' });
-      await page.waitForTimeout(300);
-    },
-  },
 ];
 
 export const GENERATED_MOVEMENT_PHASES = generateMovementMatrix();
-export const GENERATED_CAPABILITY_PHASES = generateCapabilityPhases();
-export const GENERATED_EQUIP_PHASES = generateEquipPhases();
+export const GENERATED_ACTION_MATRIX_PHASES = generateActionMatrixPhases();
 export const PHASES: PhaseDef[] = [
   ...HANDWRITTEN_PHASES,
   ...GENERATED_MOVEMENT_PHASES,
-  ...GENERATED_CAPABILITY_PHASES,
-  ...GENERATED_EQUIP_PHASES,
+  ...GENERATED_ACTION_MATRIX_PHASES,
 ];
 
 export type QaTier = 'smoke' | 'full';
 
 const PHASE_GROUPS: PhaseGroup[] = ['movement', 'network', 'combat', 'matrix'];
 const GENERATED_MOVEMENT_NAMES = new Set(GENERATED_MOVEMENT_PHASES.map((phase) => phase.name));
-const SMOKE_MOVEMENT_NAMES = new Set([
-  'mv_n',
-  'mv_e_sprint',
-  'mv_nw',
-  'mv_w_jump',
-  'mv_se_sprint_jump',
-  'mv_ne_turn',
-  'mv_sw_sprint_turn',
-]);
+const SMOKE_MOVEMENT_NAMES = new Set(['mv_n', 'mv_e_jump', 'mv_nw', 'mv_w_jump', 'mv_se_jump', 'mv_ne_turn', 'mv_sw_turn']);
 
 export function parseQaTier(value: string | undefined): QaTier {
   const tier = value?.trim() || 'smoke';
@@ -303,17 +197,9 @@ export function parseQaTier(value: string | undefined): QaTier {
 }
 /**
  * Resolves a `QA_PHASES` spec (comma-separated phase and/or group names;
- * undefined or empty means "everything") to the phases applicable to a
- * class, always in registry order.
+ * undefined or empty means "everything") to phases, always in registry order.
  */
-export function selectPhases(
-  spec: string | undefined,
-  characterClass: CharacterClass,
-  tier: QaTier = 'smoke',
-): PhaseDef[] {
-  const applicable = PHASES.filter((phase) =>
-    !phase.classes || phase.classes.includes(characterClass),
-  );
+export function selectPhases(spec: string | undefined, tier: QaTier = 'smoke'): PhaseDef[] {
   const wanted = (spec ?? '')
     .split(',')
     .map((value) => value.trim())
@@ -325,13 +211,13 @@ export function selectPhases(
     throw new Error(
       `QA_PHASES: unknown phase/group name(s): ${unknown.join(', ')} ` +
       `(known groups: ${PHASE_GROUPS.join(', ')}; ${PHASES.length} phase names — ` +
-      'see scenarios.ts/generate-phases.ts, e.g. walk_forward, mv_nw_sprint_jump)',
+      'see scenarios.ts/generate-phases.ts, e.g. walk_forward, mv_nw_jump, prim_light_tap)',
     );
   }
 
   const tiered = tier === 'full'
-    ? applicable
-    : applicable.filter((phase) =>
+    ? PHASES
+    : PHASES.filter((phase) =>
         !GENERATED_MOVEMENT_NAMES.has(phase.name) ||
         SMOKE_MOVEMENT_NAMES.has(phase.name) ||
         wanted.includes(phase.name),
