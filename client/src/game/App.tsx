@@ -91,6 +91,7 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: Scen
       rotationY: rotationYRef.current,
       pitch: pitchRef.current,
       movementFraction: gates.movementFraction,
+      canRotate: gates.canRotate,
     });
 
     if (localGroupRef.current) {

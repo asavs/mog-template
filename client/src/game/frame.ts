@@ -191,6 +191,14 @@ export interface StepFrameContext {
   pitch: number;
   /** From `actions/gates.ts`'s `deriveGates(localActionId, localPhase).movementFraction`. */
   movementFraction: number;
+  /**
+   * From `actions/gates.ts`'s `deriveGates(localActionId, localPhase).canRotate`. `false`
+   * freezes the predicted CHARACTER yaw (movement direction + rendered facing) at whatever it
+   * last was — mirroring the server's `can_rotate` gate in `tick.rs::game_tick` — while `rotationY`
+   * above (mouse-look / camera orbit) keeps moving freely; see `predictPendingTicks` and
+   * `stepFrame`'s `localRotationY`.
+   */
+  canRotate: boolean;
 }
 
 export interface RemoteRenderState {
@@ -222,7 +230,10 @@ export function stepFrame(runtime: FrameRuntimeState, ctx: StepFrameContext): Fr
 
   return {
     localPosition,
-    localRotationY: ctx.rotationY,
+    // Camera stays free (`camera` above, computed straight off `ctx.rotationY`) even when the
+    // character can't rotate — only the character's own rendered facing freezes, matching
+    // `runtime.local.rotationY`, the same frozen value `predictPendingTicks` fed the sim.
+    localRotationY: ctx.canRotate ? ctx.rotationY : runtime.local.rotationY,
     localLocomotionPhase: runtime.localLocomotionPhase,
     remotes,
     camera,
@@ -280,13 +291,18 @@ function predictPendingTicks(runtime: FrameRuntimeState, ctx: StepFrameContext):
     ticksThisFrame += 1;
     runtime.clientTickCounter += 1;
 
-    const result = predictTick(runtime.local, ctx.movement, ctx.rotationY, ctx.movementFraction);
+    // Frozen character yaw: when `canRotate` is false, feed the sim its own last predicted
+    // yaw instead of the live camera yaw — the same value the server's `can_rotate` gate keeps
+    // `player_transform.rotation_y` pinned to (`tick.rs::game_tick`), so movement direction AND
+    // rendered facing both stay put on this side too, never predicting ahead of the correction.
+    const rotationY = ctx.canRotate ? ctx.rotationY : runtime.local.rotationY;
+    const result = predictTick(runtime.local, ctx.movement, rotationY, ctx.movementFraction);
     runtime.local = result;
     runtime.localLocomotionPhase = locomotionPhaseFor(result, ctx.movement);
     runtime.predicted.push({
       clientTick: runtime.clientTickCounter,
       input: ctx.movement,
-      rotationY: ctx.rotationY,
+      rotationY,
       movementFraction: ctx.movementFraction,
       result,
     });

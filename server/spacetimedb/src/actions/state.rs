@@ -38,6 +38,25 @@ pub fn movement_fraction(action_id: &str, phase: u8) -> f32 {
     }
 }
 
+/// Whether aim yaw may update mid-action for a player currently in `phase` of `action_id`.
+/// The client mirrors this exact value via `actions/gates.ts`'s `deriveGates(...).canRotate`
+/// into its own CSP predictor (`client/src/game/frame.ts`), so an action that freezes facing
+/// (e.g. `nova`'s `canRotate: false`) freezes it identically on both sides rather than letting
+/// the client predict ahead of a server correction — the same shape as `movement_fraction`
+/// above. `canRotate` is per-def, not per-phase (docs/action-pipeline.md): a `false` def
+/// freezes yaw for its entire non-idle lifetime (Charging through Recovery), with no
+/// phase-by-phase carve-out. Idle (phase 0) and unknown/empty action ids fail open (free to
+/// rotate) — the same fail-open shape `deriveGates` uses client-side.
+pub fn can_rotate(action_id: &str, phase: u8) -> bool {
+    if action_id.is_empty() || phase == PHASE_IDLE {
+        return true;
+    }
+    match find_action_def(action_id) {
+        Some(def) => def.can_rotate,
+        None => true,
+    }
+}
+
 /// Pure cooldown gate: `ready_tick` is `None` when the action has never been used.
 pub fn cooldown_ready(ready_tick: Option<u64>, now_tick: u64) -> bool {
     ready_tick.map(|ready| now_tick >= ready).unwrap_or(true)
@@ -446,6 +465,30 @@ mod tests {
         }
         assert_eq!(movement_fraction("", PHASE_WINDUP), 1.0);
         assert_eq!(movement_fraction("nonexistent", PHASE_WINDUP), 1.0);
+    }
+
+    #[test]
+    fn can_rotate_matches_def_generic_and_freezes_the_full_non_idle_lifecycle() {
+        for def in ACTION_DEFS {
+            for phase in [PHASE_CHARGING, PHASE_WINDUP, PHASE_ACTIVE, PHASE_HELD, PHASE_RECOVERY] {
+                assert_eq!(can_rotate(def.id, phase), def.can_rotate, "{}: phase {}", def.id, phase);
+            }
+            // Idle always fails open regardless of the def's own value.
+            assert_eq!(can_rotate(def.id, PHASE_IDLE), true, "{}: idle must always allow rotation", def.id);
+        }
+        assert_eq!(can_rotate("", PHASE_WINDUP), true);
+        assert_eq!(can_rotate("nonexistent", PHASE_WINDUP), true);
+    }
+
+    #[test]
+    fn can_rotate_false_def_exists_and_is_frozen_across_every_non_idle_phase() {
+        // A concrete parity fixture: nova is authored canRotate:false in shared/actions.json.
+        // This proves the generic gate above isn't vacuously true for every def.
+        let frozen_def = ACTION_DEFS.iter().find(|d| !d.can_rotate).expect("a canRotate:false def exists (e.g. nova)");
+        for phase in [PHASE_CHARGING, PHASE_WINDUP, PHASE_ACTIVE, PHASE_HELD, PHASE_RECOVERY] {
+            assert!(!can_rotate(frozen_def.id, phase), "{}: phase {} should stay frozen", frozen_def.id, phase);
+        }
+        assert!(can_rotate(frozen_def.id, PHASE_IDLE));
     }
 
     #[test]

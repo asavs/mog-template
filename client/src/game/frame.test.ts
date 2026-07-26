@@ -133,6 +133,7 @@ describe('stepFrame', () => {
       rotationY: 0,
       pitch: 0,
       movementFraction: 1,
+      canRotate: true,
       ...overrides,
     };
   }
@@ -227,6 +228,48 @@ describe('stepFrame', () => {
     const render = stepFrame(runtime, ctx(store));
 
     expect(render.localPosition.z).toBeCloseTo(-4, 5);
+  });
+
+  it('freezes character yaw and predicted movement direction while canRotate is false, but leaves the camera free', () => {
+    const store = makeStore();
+    store.playerTransform.set('local', {
+      identity: { toHexString: () => 'local' },
+      position: { x: 0, y: 0, z: 0 },
+      rotationY: 0,
+      isMoving: false,
+      movementState: { isGrounded: true, wasGrounded: true, isAirborne: false, sprintIntent: false, sprintActive: false },
+      serverTick: 0n,
+      updatedAt: {},
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const runtime = createFrameRuntimeState();
+    stepFrame(runtime, ctx(store)); // consumes the init frame, yaw still 0
+
+    // Mouse-look turns the camera to +90deg while walking forward under a canRotate:false gate
+    // (e.g. mid-windup on a rooted-facing action like nova).
+    const frozen = stepFrame(
+      runtime,
+      ctx(store, { movement: WALK_FORWARD, rotationY: Math.PI / 2, canRotate: false }),
+    );
+    // Character facing stays pinned at the pre-freeze yaw — not the live camera yaw.
+    expect(frozen.localRotationY).toBeCloseTo(0, 5);
+    // Movement direction is governed by the SAME frozen yaw: forward at yaw 0 is -Z, so the
+    // player keeps walking -Z rather than swinging toward -X the way a yaw-PI/2 forward would.
+    expect(frozen.localPosition.z).toBeLessThan(0);
+    expect(frozen.localPosition.x).toBeCloseTo(0, 5);
+    // Camera orbit still tracks the live rotationY input untouched by the gate.
+    const expectedCamera = computeOrbitCamera(frozen.localPosition, Math.PI / 2, 0);
+    expect(frozen.camera.position.x).toBeCloseTo(expectedCamera.position.x, 5);
+    expect(frozen.camera.position.z).toBeCloseTo(expectedCamera.position.z, 5);
+
+    // Once canRotate returns (e.g. Recovery ends), the character catches back up to the live
+    // camera yaw on the very next predicted tick — no lingering desync.
+    const resumed = stepFrame(
+      runtime,
+      ctx(store, { movement: WALK_FORWARD, rotationY: Math.PI / 2, canRotate: true }),
+    );
+    expect(resumed.localRotationY).toBeCloseTo(Math.PI / 2, 5);
   });
 
   it('never renders the local identity as a remote', () => {

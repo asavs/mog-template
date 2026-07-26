@@ -51,18 +51,27 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
             // phase (docs/action-pipeline.md, "movement" field). A player with no action-state
             // row (never granted one, or idle) reads as fraction 1.0 — the same fail-open the
             // client's `deriveGates` uses for an unrecognized/empty action id.
-            let movement_fraction = ctx
-                .db
-                .player_action_state()
-                .identity()
-                .find(transform.identity)
+            let action_state = ctx.db.player_action_state().identity().find(transform.identity);
+            let movement_fraction = action_state
+                .as_ref()
                 .map(|state| actions::state::movement_fraction(&state.action_id, state.phase))
                 .unwrap_or(1.0);
+            // actions::state::can_rotate(action_id, phase) freezes character yaw mid-action
+            // (docs/action-pipeline.md, "canRotate" field). When frozen, the incoming
+            // `player_input.rotation_y` (whatever the player's camera currently points at) is
+            // dropped in favor of the transform's own last-applied yaw — both the stored facing
+            // AND the movement-direction calculation inside `update_transform` key off this
+            // same value, so a rooted-yaw def can't be strafed around its frozen facing either.
+            let can_rotate = action_state
+                .as_ref()
+                .map(|state| actions::state::can_rotate(&state.action_id, state.phase))
+                .unwrap_or(true);
+            let effective_rotation_y = if can_rotate { player_input.rotation_y } else { transform.rotation_y };
             player_logic::update_transform(
                 &mut transform,
                 &mut jump_state,
                 &player_input.input,
-                player_input.rotation_y,
+                effective_rotation_y,
                 movement_fraction,
             );
             if ctx
