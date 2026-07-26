@@ -517,4 +517,348 @@ mod tests {
             "jump airtime should stay near 0.7s, got {total_airtime_seconds}"
         );
     }
+
+    // --- Golden movement-trace fixture (Wave 2M pass B) ---
+
+    use serde::{Deserialize, Serialize};
+    use spacetimedb::{Identity, Timestamp};
+
+    const MOVEMENT_TRACE_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../shared/fixtures/movement-trace.json"
+    );
+
+    #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct TraceInput {
+        forward: bool,
+        backward: bool,
+        left: bool,
+        right: bool,
+        sprint: bool,
+        jump: bool,
+    }
+
+    impl TraceInput {
+        const fn none() -> Self {
+            Self {
+                forward: false,
+                backward: false,
+                left: false,
+                right: false,
+                sprint: false,
+                jump: false,
+            }
+        }
+
+        const fn forward() -> Self {
+            Self {
+                forward: true,
+                ..Self::none()
+            }
+        }
+
+        const fn backward() -> Self {
+            Self {
+                backward: true,
+                ..Self::none()
+            }
+        }
+
+        const fn left() -> Self {
+            Self {
+                left: true,
+                ..Self::none()
+            }
+        }
+
+        const fn right() -> Self {
+            Self {
+                right: true,
+                ..Self::none()
+            }
+        }
+
+        fn to_input_state(self) -> InputState {
+            InputState {
+                forward: self.forward,
+                backward: self.backward,
+                left: self.left,
+                right: self.right,
+                sprint: self.sprint,
+                jump: self.jump,
+                sequence: 0,
+                client_tick: 0,
+            }
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct TraceFrame {
+        tick: u32,
+        input: TraceInput,
+        rotation_y: f32,
+        expected: [f32; 3],
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct TraceMeta {
+        generated_by: String,
+        regenerate: String,
+        tick_rate: f32,
+        delta_seconds: f32,
+        player_collision_radius: f32,
+        start_position: [f32; 3],
+        start_rotation_y: f32,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct MovementTrace {
+        meta: TraceMeta,
+        frames: Vec<TraceFrame>,
+    }
+
+    /// Deterministic canned input script (~200 ticks) covering open walks,
+    /// sprint, jump arc, wall contact + jump-at-wall, corner settle, pillar
+    /// contact + slide, and idle. `rotation_y` is always 0 (forward = -z).
+    fn scripted_inputs() -> Vec<(TraceInput, f32)> {
+        let mut out: Vec<(TraceInput, f32)> = Vec::new();
+        let yaw = 0.0_f32;
+
+        let mut push = |n: usize, input: TraceInput| {
+            for _ in 0..n {
+                out.push((input, yaw));
+            }
+        };
+
+        // Phase 1 — open-space walks (ticks 0-63): each cardinal ~8 ticks,
+        // returning toward center between directions.
+        // forward 0-7, return 8-15
+        push(8, TraceInput::forward());
+        push(8, TraceInput::backward());
+        // backward 16-23, return 24-31
+        push(8, TraceInput::backward());
+        push(8, TraceInput::forward());
+        // right 32-39, return 40-47
+        push(8, TraceInput::right());
+        push(8, TraceInput::left());
+        // left 48-55, return 56-63
+        push(8, TraceInput::left());
+        push(8, TraceInput::right());
+
+        // Phase 2 — sprint (ticks 64-78): hold forward + sprint ~15 ticks.
+        push(
+            15,
+            TraceInput {
+                forward: true,
+                sprint: true,
+                ..TraceInput::none()
+            },
+        );
+
+        // Phase 3 — isolated jump on flat open ground (ticks 79-100):
+        // press jump 1 tick then release; ~20 idle ticks for full arc.
+        push(2, TraceInput::none());
+        push(
+            1,
+            TraceInput {
+                jump: true,
+                ..TraceInput::none()
+            },
+        );
+        push(20, TraceInput::none());
+
+        // Phase 4 — walk into wall_n and jump at contact (ticks 101-153):
+        // from z≈-8 after sprint, forward ~40 ticks reaches z≈-19.55 clamp;
+        // hold into wall, then jump while still holding forward.
+        push(40, TraceInput::forward());
+        push(6, TraceInput::forward());
+        push(
+            1,
+            TraceInput {
+                forward: true,
+                jump: true,
+                ..TraceInput::none()
+            },
+        );
+        push(12, TraceInput::forward());
+
+        // Phase 5 — diagonal/along-wall approach into NE corner (ticks 154-197):
+        // sprint right along wall_n toward x=+20, then forward+right to settle
+        // against both bounds (x and z near ±19.55).
+        push(
+            36,
+            TraceInput {
+                right: true,
+                sprint: true,
+                ..TraceInput::none()
+            },
+        );
+        push(
+            8,
+            TraceInput {
+                forward: true,
+                right: true,
+                ..TraceInput::none()
+            },
+        );
+
+        // Phase 6 — pillar_ne contact + diagonal slide (ticks 198-244):
+        // from SE-ish corner (~19.55, -19.55) steer left+backward toward
+        // pillar_ne (10, -10); hold into it, then add a second axis to slide.
+        push(
+            38,
+            TraceInput {
+                left: true,
+                backward: true,
+                ..TraceInput::none()
+            },
+        );
+        push(
+            6,
+            TraceInput {
+                left: true,
+                backward: true,
+                ..TraceInput::none()
+            },
+        );
+        // Slide: keep left and drop backward, add forward to graze around the cylinder.
+        push(
+            10,
+            TraceInput {
+                left: true,
+                forward: true,
+                ..TraceInput::none()
+            },
+        );
+
+        // Phase 7 — idle (ticks 245-249)
+        push(5, TraceInput::none());
+
+        out
+    }
+
+    fn throwaway_transform(start: [f32; 3], rotation_y: f32) -> PlayerTransform {
+        PlayerTransform {
+            identity: Identity::__dummy(),
+            position: Vector3 {
+                x: start[0],
+                y: start[1],
+                z: start[2],
+            },
+            rotation_y,
+            is_moving: false,
+            movement_state: MovementState::grounded(),
+            server_tick: 0,
+            updated_at: Timestamp::UNIX_EPOCH,
+        }
+    }
+
+    fn throwaway_jump_state() -> PlayerJumpState {
+        PlayerJumpState {
+            identity: Identity::__dummy(),
+            vertical_velocity: 0.0,
+            was_jump_pressed: false,
+        }
+    }
+
+    fn simulate_trace_frames(
+        start_position: [f32; 3],
+        start_rotation_y: f32,
+        script: &[(TraceInput, f32)],
+    ) -> Vec<TraceFrame> {
+        let mut transform = throwaway_transform(start_position, start_rotation_y);
+        let mut jump_state = throwaway_jump_state();
+        let mut frames = Vec::with_capacity(script.len());
+
+        for (tick, (trace_input, rotation_y)) in script.iter().enumerate() {
+            let input = trace_input.to_input_state();
+            update_transform(&mut transform, &mut jump_state, &input, *rotation_y);
+            frames.push(TraceFrame {
+                tick: tick as u32,
+                input: *trace_input,
+                rotation_y: *rotation_y,
+                expected: [
+                    transform.position.x,
+                    transform.position.y,
+                    transform.position.z,
+                ],
+            });
+        }
+        frames
+    }
+
+    #[test]
+    #[ignore = "generator: writes shared/fixtures/movement-trace.json; run with --ignored"]
+    fn generate_movement_trace_fixture() {
+        let start_position = [0.0_f32, 0.0, 0.0];
+        let start_rotation_y = 0.0_f32;
+        let script = scripted_inputs();
+        let frames = simulate_trace_frames(start_position, start_rotation_y, &script);
+
+        let trace = MovementTrace {
+            meta: TraceMeta {
+                generated_by: "server".to_string(),
+                regenerate: "cargo test -p server --manifest-path server/spacetimedb/Cargo.toml -- --ignored generate_movement_trace_fixture --nocapture".to_string(),
+                tick_rate: crate::common::TICK_RATE,
+                delta_seconds: DELTA_TIME,
+                player_collision_radius: collision::PLAYER_COLLISION_RADIUS,
+                start_position,
+                start_rotation_y,
+            },
+            frames,
+        };
+
+        let json = serde_json::to_string_pretty(&trace).expect("serialize movement trace");
+        let path = std::path::Path::new(MOVEMENT_TRACE_PATH);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create fixtures directory");
+        }
+        std::fs::write(path, format!("{json}\n")).expect("write movement-trace.json");
+        eprintln!(
+            "wrote {} frames to {}",
+            trace.frames.len(),
+            path.display()
+        );
+    }
+
+    #[test]
+    fn movement_trace_fixture_replays_deterministically() {
+        let raw = std::fs::read_to_string(MOVEMENT_TRACE_PATH).unwrap_or_else(|err| {
+            panic!(
+                "failed to read movement trace fixture at {MOVEMENT_TRACE_PATH}: {err}\n\
+                 regenerate with: cargo test -p server --manifest-path server/spacetimedb/Cargo.toml \
+                 -- --ignored generate_movement_trace_fixture --nocapture"
+            );
+        });
+        let trace: MovementTrace =
+            serde_json::from_str(&raw).expect("deserialize movement-trace.json");
+
+        assert!(
+            !trace.frames.is_empty(),
+            "fixture must contain at least one frame"
+        );
+
+        let script: Vec<(TraceInput, f32)> = trace
+            .frames
+            .iter()
+            .map(|f| (f.input, f.rotation_y))
+            .collect();
+        let recomputed = simulate_trace_frames(
+            trace.meta.start_position,
+            trace.meta.start_rotation_y,
+            &script,
+        );
+
+        assert_eq!(recomputed.len(), trace.frames.len());
+        for (stored, fresh) in trace.frames.iter().zip(recomputed.iter()) {
+            assert_eq!(stored.tick, fresh.tick);
+            assert_close(fresh.expected[0], stored.expected[0]);
+            assert_close(fresh.expected[1], stored.expected[1]);
+            assert_close(fresh.expected[2], stored.expected[2]);
+        }
+    }
 }
