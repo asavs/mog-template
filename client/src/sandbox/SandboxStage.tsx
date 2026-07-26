@@ -33,10 +33,10 @@ import * as THREE from 'three';
 import { AnimationController, maskClipToBands, type AnimationBand } from '../anim';
 import type {
   AbilityPlaybackOptions,
-  ChainAdvanceResult,
   ChainSpec,
   PhasedRuleNames,
 } from '../anim/AnimationController';
+import { CHAIN_AUDITION_IDLE, ChainAuditionTracker, type ChainAuditionReport } from './chainAudition';
 import {
   ALL_MOTION_KEYS,
   BODY_KEYS,
@@ -87,13 +87,12 @@ export type ChainAudition = {
   advanceToken: number;
 };
 
-/** What actually happened, for the panel's "visible cancel-window feedback". */
-export type ChainAuditionState = {
-  /** The clip currently audible on the overlay or override layer, if any. */
-  activeMotion: string | null;
-  /** Outcome of the most recent `startChain`/`advanceChain` call. */
-  lastResult: ChainAdvanceResult | 'started' | null;
-};
+/**
+ * What actually happened, for the panel's "visible cancel-window feedback".
+ * An alias, not a fresh shape — `chainAudition.ts` owns the real definition
+ * (`ChainAuditionReport`) so the tracker and its consumers can never drift.
+ */
+export type ChainAuditionState = ChainAuditionReport;
 
 export type PlaybackMode = 'raw' | 'layered';
 
@@ -163,20 +162,8 @@ export function SandboxStage({
   const controllerRef = useRef<AnimationController | null>(null);
   /** Every clip the controller can resolve, by key or by catalog id. */
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
-  /** Identity `advanceChain` needs — the spec `startChain` was actually given. */
-  const activeChainSpecRef = useRef<ChainSpec | null>(null);
-  const lastChainResultRef = useRef<ChainAdvanceResult | 'started' | null>(null);
-  const lastReportedChainMotionRef = useRef<string | null | undefined>(undefined);
-  /**
-   * What `onChainState` last actually reported, separate from
-   * `lastChainResultRef` (what the most recent `startChain`/`advanceChain`
-   * call returned). `'ignored'` and `'queued'` change the latter without
-   * moving the audible layer at all — an ignored click never plays anything,
-   * and a queued one only plays once its window opens, later, on its own —
-   * so gating the report on motion alone drops exactly the two outcomes the
-   * panel exists to surface. Comparing both catches every case.
-   */
-  const lastReportedChainResultRef = useRef<ChainAdvanceResult | 'started' | null | undefined>(undefined);
+  /** The chain audition's own bookkeeping — see `chainAudition.ts`. */
+  const chainTrackerRef = useRef(new ChainAuditionTracker());
 
   // Kept current in an effect rather than during render: a ref written while
   // rendering is a mutation React may discard or replay. Initialised from the
@@ -235,6 +222,16 @@ export function SandboxStage({
 
   // --- driver, per mode ----------------------------------------------------
   useEffect(() => {
+    // A mode switch (or the initial body resolving) tears down whatever
+    // controller was running and builds a fresh one below — a brand new
+    // instance with no chain of its own. The tracker's own memory of "what's
+    // running" lives here, not on the controller, so it survives that
+    // teardown unless told not to: reset it here too, or switching
+    // `layered` -> `raw` -> `layered` leaves the panel reporting a chain
+    // against a controller that was never asked to run it.
+    chainTrackerRef.current.reset();
+    onChainState?.(CHAIN_AUDITION_IDLE);
+
     if (!body) return;
 
     if (mode === 'layered') {
@@ -261,6 +258,10 @@ export function SandboxStage({
     controllerRef.current?.dispose();
     controllerRef.current = null;
     return undefined;
+    // `onChainState` deliberately excluded — it is `setChainState`, stable
+    // across renders, and re-running this effect on its identity would tear
+    // down and rebuild the controller for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body, mode]);
 
   // --- stance ---------------------------------------------------------------
@@ -381,23 +382,13 @@ export function SandboxStage({
     // deliberate "start this now" click, so it opens the window itself —
     // a no-op unless a standard clip or a previous chain is still audible.
     controller.enterAbilityRecovery();
-    const started = controller.startChain(spec, chainOptions);
-    activeChainSpecRef.current = started ? spec : null;
-    lastChainResultRef.current = started ? 'started' : 'inactive';
-    lastReportedChainMotionRef.current = undefined;
-    lastReportedChainResultRef.current = undefined;
+    chainTrackerRef.current.start(controller, spec, chainOptions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body, mode, chain?.startToken]);
 
   useEffect(() => {
     if (mode !== 'layered' || !chain || chain.advanceToken === 0) return;
-    const controller = controllerRef.current;
-    const spec = activeChainSpecRef.current;
-    if (!controller || !spec) {
-      lastChainResultRef.current = 'inactive';
-      return;
-    }
-    lastChainResultRef.current = controller.advanceChain(spec, chainOptions);
+    chainTrackerRef.current.advance(controllerRef.current, chainOptions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, chain?.advanceToken]);
 
@@ -439,23 +430,13 @@ export function SandboxStage({
 
     // The "visible cancel-window feedback" a chain audition promises: report
     // whenever what is actually audible changes, not only on the click that
-    // requested it — a QUEUED advance fires later, on its own, once the window
-    // the request was waiting for actually opens. Also report on a RESULT
-    // change with no motion change: 'ignored' and 'queued' are both exactly
-    // that (an ignored click plays nothing at all; a queued one plays nothing
-    // until later) — motion alone would drop both from the panel.
-    if (onChainState && chain && activeChainSpecRef.current) {
+    // requested it — a QUEUED advance fires later, on its own, once the
+    // window the request was waiting for actually opens. See
+    // `ChainAuditionTracker.maybeReport` for why the result is compared too.
+    if (onChainState && chain && chainTrackerRef.current.activeSpec) {
       const state = controller?.getState();
       const activeMotion = state?.overlayMotion ?? state?.overrideMotion ?? null;
-      const result = lastChainResultRef.current;
-      if (
-        activeMotion !== lastReportedChainMotionRef.current
-        || result !== lastReportedChainResultRef.current
-      ) {
-        lastReportedChainMotionRef.current = activeMotion;
-        lastReportedChainResultRef.current = result;
-        onChainState({ activeMotion, lastResult: result });
-      }
+      chainTrackerRef.current.maybeReport(activeMotion, onChainState);
     }
   });
 
