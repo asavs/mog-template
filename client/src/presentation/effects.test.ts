@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ACTION_DEFS } from '../actions/defs.generated';
+import { ACTION_PHASE } from './animBridge';
 import {
   Effects,
   EffectPool,
@@ -164,5 +165,121 @@ describe('Effects.syncProjectiles', () => {
     }));
     effects.syncProjectiles(rows);
     expect(effects.projectiles.entries).toHaveLength(NUM_PROJECTILES);
+  });
+});
+
+describe('Effects.onPlayerActionState', () => {
+  const roll = ACTION_DEFS.find(def => def.effects.some(e => e.kind === 'displace_self'))!;
+  const nonRoll = ACTION_DEFS.find(def => !def.effects.some(e => e.kind === 'displace_self'))!;
+  const position = { x: 1, y: 2, z: 3 };
+
+  it('spawns a roll dash light at the player position when phase is active', () => {
+    const effects = new Effects();
+    effects.onPlayerActionState(
+      'player1',
+      { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n },
+      ACTION_DEFS,
+      position,
+    );
+
+    const match = effects.lights.entries.find(e => e.key?.startsWith('local:player1:'));
+    expect(match).toBeDefined();
+    expect(match!.resource.position.toArray()).toEqual([1, 2, 3]);
+  });
+
+  it('does nothing outside the active phase', () => {
+    const effects = new Effects();
+    effects.onPlayerActionState(
+      'player1',
+      { actionId: roll.id, phase: ACTION_PHASE.windup, phaseStartedTick: 1n },
+      ACTION_DEFS,
+      position,
+    );
+    expect(effects.lights.entries.every(e => e.key === null)).toBe(true);
+  });
+
+  it('does nothing when position is null', () => {
+    const effects = new Effects();
+    effects.onPlayerActionState(
+      'player1',
+      { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n },
+      ACTION_DEFS,
+      null,
+    );
+    expect(effects.lights.entries.every(e => e.key === null)).toBe(true);
+  });
+
+  it('does nothing for an action def with no displace_self effect', () => {
+    const effects = new Effects();
+    effects.onPlayerActionState(
+      'player1',
+      { actionId: nonRoll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n },
+      ACTION_DEFS,
+      position,
+    );
+    expect(effects.lights.entries.every(e => e.key === null)).toBe(true);
+  });
+
+  it('fires only once per (actionId, phase, phaseStartedTick) edge, even across repeated frames', () => {
+    const effects = new Effects();
+    let spawnCount = 0;
+    const originalSpawn = effects.lights.spawn.bind(effects.lights);
+    effects.lights.spawn = (key, seconds) => {
+      spawnCount += 1;
+      return originalSpawn(key, seconds);
+    };
+
+    const row = { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n };
+    effects.onPlayerActionState('player1', row, ACTION_DEFS, position);
+    effects.onPlayerActionState('player1', row, ACTION_DEFS, position);
+    effects.onPlayerActionState('player1', row, ACTION_DEFS, position);
+
+    expect(spawnCount).toBe(1);
+  });
+
+  it('re-fires when phaseStartedTick advances to a new active phase', () => {
+    const effects = new Effects();
+    effects.onPlayerActionState(
+      'player1',
+      { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n },
+      ACTION_DEFS,
+      position,
+    );
+    effects.onPlayerActionState(
+      'player1',
+      { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 2n },
+      ACTION_DEFS,
+      position,
+    );
+
+    const matches = effects.lights.entries.filter(e => e.key?.startsWith('local:player1:'));
+    expect(matches).toHaveLength(2);
+  });
+
+  it('tracks edges per player independently', () => {
+    const effects = new Effects();
+    const row = { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n };
+    effects.onPlayerActionState('player1', row, ACTION_DEFS, position);
+    effects.onPlayerActionState('player2', row, ACTION_DEFS, position);
+
+    const matches = effects.lights.entries.filter(e => e.key?.startsWith('local:'));
+    expect(matches).toHaveLength(2);
+  });
+
+  it('clearPlayer forgets the edge, letting the same (actionId, phase, tick) fire again', () => {
+    const effects = new Effects();
+    let spawnCount = 0;
+    const originalSpawn = effects.lights.spawn.bind(effects.lights);
+    effects.lights.spawn = (key, seconds) => {
+      spawnCount += 1;
+      return originalSpawn(key, seconds);
+    };
+
+    const row = { actionId: roll.id, phase: ACTION_PHASE.active, phaseStartedTick: 1n };
+    effects.onPlayerActionState('player1', row, ACTION_DEFS, position);
+    effects.clearPlayer('player1');
+    effects.onPlayerActionState('player1', row, ACTION_DEFS, position);
+
+    expect(spawnCount).toBe(2);
   });
 });

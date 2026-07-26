@@ -115,6 +115,7 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
       controllerRef.current?.dispose();
       controllerRef.current = null;
       mounted?.root.removeFromParent();
+      effects.clearPlayer(identityHex);
       setReady(false);
     };
     // Body/controller identity does not depend on which player wears it — only mount once.

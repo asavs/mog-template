@@ -353,6 +353,18 @@ export class Effects {
     light.color.setHex(ROLL_DASH_LIGHT_COLOR);
     light.intensity = 1.1;
   }
+
+  /**
+   * `lastLocalEffectEdge` is keyed on `identityHex` on a scene-wide singleton
+   * that outlives any one player, so a departed player's edge key would
+   * otherwise sit there forever. Called from `PlayerBody`'s unmount cleanup
+   * (one `PlayerBody` per player, so unmount is the right "this player is
+   * gone" signal) — never called from `onPlayerActionState` itself, since
+   * that runs every frame for players who are still very much present.
+   */
+  clearPlayer(identityHex: string): void {
+    this.lastLocalEffectEdge.delete(identityHex);
+  }
 }
 
 export function createEffects(budgets?: EffectBudgets): Effects {
