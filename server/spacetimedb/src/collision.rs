@@ -1,17 +1,16 @@
 use crate::common::Vector3;
-use crate::castle_collision;
-use crate::heightmap;
-use crate::rapier_collision;
 
 pub const PLAYER_COLLISION_RADIUS: f32 = 0.45;
 /// Player transform positions are capsule feet, not capsule centers.
+#[allow(dead_code)] // retained for Wave 2M collider capsule shape
 pub const PLAYER_CAPSULE_HEIGHT: f32 = 1.8;
-pub const MAX_WALKABLE_SLOPE_DEGREES: f32 = 70.0;
-pub const MAX_STEP_HEIGHT: f32 = 1.25;
-pub const MAX_SNAP_DOWN_HEIGHT: f32 = 6.0;
 
-const MAX_WALKABLE_SLOPE: f32 = 2.7474775; // tan(70 degrees)
-const SLOPE_SAMPLE_DISTANCE: f32 = 1.0;
+// Hardcoded from shared/arena.json bounds.
+// Wave 2M will replace this with real collider rows shared by client and server.
+const ARENA_MIN_X: f32 = -20.0;
+const ARENA_MAX_X: f32 = 20.0;
+const ARENA_MIN_Z: f32 = -20.0;
+const ARENA_MAX_Z: f32 = 20.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Aabb {
@@ -21,68 +20,15 @@ pub struct Aabb {
     pub max_z: f32,
 }
 
-pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> castle_collision::CapsuleMoveResult {
-    let clamped_desired = clamp_to_world(desired);
-    let terrain_resolved = if castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some()
-        || is_inside_castle_collision_bounds(current)
-        || is_inside_castle_collision_bounds(&clamped_desired)
-    {
-        clamped_desired
-    } else {
-        resolve_player_movement_against(current, &clamped_desired, &[])
-    };
-    rapier_collision::resolve_capsule_sweep(
-        current,
-        &terrain_resolved,
-        PLAYER_COLLISION_RADIUS,
-        PLAYER_CAPSULE_HEIGHT,
-    )
-    .unwrap_or_else(|| {
-        castle_collision::resolve_capsule_sweep(
-            current,
-            &terrain_resolved,
-            PLAYER_COLLISION_RADIUS,
-            PLAYER_CAPSULE_HEIGHT,
-            true,
-        )
-    })
+#[derive(Clone, Debug)]
+pub struct MoveResult {
+    pub position: Vector3,
 }
 
-/// Finds the first reachable walkable castle surface within the short vertical snap band.
-/// It deliberately sweeps from the player's current elevation band instead of looking up a
-/// global X/Z height, so stacked spiral ramps remain distinct.
-pub fn castle_ground_support(position: &Vector3, max_distance: f32) -> Option<Vector3> {
-    let probe_lift = castle_collision::CAPSULE_SKIN * 2.0;
-    let probe_start = Vector3 { x: position.x, y: position.y + probe_lift, z: position.z };
-    let result = rapier_collision::snap_capsule_down(
-        &probe_start,
-        max_distance + probe_lift,
-        PLAYER_COLLISION_RADIUS,
-        PLAYER_CAPSULE_HEIGHT,
-    )
-    .unwrap_or_else(|| {
-        castle_collision::snap_capsule_down(
-            &probe_start,
-            max_distance + probe_lift,
-            PLAYER_COLLISION_RADIUS,
-            PLAYER_CAPSULE_HEIGHT,
-        )
-    });
-    let moved_sideways = ((result.position.x - position.x).powi(2)
-        + (result.position.z - position.z).powi(2))
-    .sqrt() > castle_collision::CAPSULE_SKIN;
-    let moved_above_probe = result.position.y - position.y
-        > probe_lift + castle_collision::CAPSULE_SKIN;
-    let moved_below_snap = position.y - result.position.y
-        > max_distance + castle_collision::CAPSULE_SKIN;
-    if moved_sideways {
-        return None;
-    }
-    result
-        .ground_normal
-        .filter(|normal| normal.y >= castle_collision::MIN_WALKABLE_NORMAL_Y)
-        .filter(|_| !moved_above_probe && !moved_below_snap)
-        .map(|_| result.position)
+pub fn resolve_player_movement(current: &Vector3, desired: &Vector3) -> MoveResult {
+    let clamped = clamp_to_world(desired);
+    let position = resolve_player_movement_against(current, &clamped, &[]);
+    MoveResult { position }
 }
 
 fn resolve_player_movement_against(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> Vector3 {
@@ -117,75 +63,27 @@ fn resolve_player_movement_against(current: &Vector3, desired: &Vector3, blocker
 }
 
 fn clamp_to_world(position: &Vector3) -> Vector3 {
-    let (min_x, max_x, min_z, max_z) = heightmap::world_bounds();
     Vector3 {
         x: position.x.clamp(
-            min_x + PLAYER_COLLISION_RADIUS,
-            max_x - PLAYER_COLLISION_RADIUS,
+            ARENA_MIN_X + PLAYER_COLLISION_RADIUS,
+            ARENA_MAX_X - PLAYER_COLLISION_RADIUS,
         ),
         y: position.y,
         z: position.z.clamp(
-            min_z + PLAYER_COLLISION_RADIUS,
-            max_z - PLAYER_COLLISION_RADIUS,
+            ARENA_MIN_Z + PLAYER_COLLISION_RADIUS,
+            ARENA_MAX_Z - PLAYER_COLLISION_RADIUS,
         ),
     }
 }
 
 fn collides_with_blockers(position: &Vector3, blockers: &[Aabb]) -> bool {
-    blockers.iter().any(|blocker| blocker.contains_capsule_footprint(position))
+    blockers
+        .iter()
+        .any(|blocker| blocker.contains_capsule_footprint(position))
 }
 
-fn can_move_to(current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> bool {
+fn can_move_to(_current: &Vector3, desired: &Vector3, blockers: &[Aabb]) -> bool {
     !collides_with_blockers(desired, blockers)
-        && is_terrain_step_walkable(current, desired)
-}
-
-fn is_inside_castle_collision_bounds(position: &Vector3) -> bool {
-    let asset = castle_collision::castle_collision();
-    position.x >= asset.min[0] - PLAYER_COLLISION_RADIUS
-        && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
-        && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
-        && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS
-}
-
-pub fn is_terrain_step_walkable(current: &Vector3, desired: &Vector3) -> bool {
-    let dx = desired.x - current.x;
-    let dz = desired.z - current.z;
-    let distance = (dx * dx + dz * dz).sqrt();
-    if distance <= 0.001 {
-        return true;
-    }
-
-    let segments = (distance / SLOPE_SAMPLE_DISTANCE).ceil().max(1.0) as u32;
-    let mut previous_x = current.x;
-    let mut previous_z = current.z;
-    let mut previous_ground = heightmap::terrain_height_at(current);
-
-    for i in 1..=segments {
-        let t = i as f32 / segments as f32;
-        let next_x = current.x + (desired.x - current.x) * t;
-        let next_z = current.z + (desired.z - current.z) * t;
-        let next_ground = heightmap::sample_height(next_x, next_z);
-        let step_dx = next_x - previous_x;
-        let step_dz = next_z - previous_z;
-        let step_distance = (step_dx * step_dx + step_dz * step_dz).sqrt().max(0.001);
-        let height_delta = next_ground - previous_ground;
-        let uphill_delta = height_delta.max(0.0);
-        let uphill_slope = uphill_delta / step_distance;
-
-        if uphill_delta > 0.001
-            && (!heightmap::is_terrain_walkable_at(next_x, next_z)
-                || uphill_slope > MAX_WALKABLE_SLOPE)
-        {
-            return false;
-        }
-
-        previous_x = next_x;
-        previous_z = next_z;
-        previous_ground = next_ground;
-    }
-
-    true
 }
 
 impl Aabb {
@@ -216,11 +114,10 @@ mod tests {
         };
 
         let resolved = resolve_player_movement(&current, &desired).position;
-        let (_min_x, max_x, min_z, _max_z) = heightmap::world_bounds();
 
-        assert_close(resolved.x, max_x - PLAYER_COLLISION_RADIUS);
+        assert_close(resolved.x, ARENA_MAX_X - PLAYER_COLLISION_RADIUS);
         assert_close(resolved.y, 2.0);
-        assert_close(resolved.z, min_z + PLAYER_COLLISION_RADIUS);
+        assert_close(resolved.z, ARENA_MIN_Z + PLAYER_COLLISION_RADIUS);
     }
 
     #[test]
