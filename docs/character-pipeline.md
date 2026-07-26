@@ -34,9 +34,8 @@ slam, so equipping a wand on that body played a fireball as a holy slam. The mot
 exists to prevent exactly that, and `act_slam_2h` — the neutral name coined so that gesture
 could survive de-classing — turned out to have no clip, no caller, and no reason to exist.
 
-The presets in the creation screen are the same kind of thing the presets in
-`shared/avatar-loadout.json` already are: a slot map and a grant list. Nothing more may accrue
-to them.
+The presets in the creation screen are a slot map and a grant list — a starting body, starting
+equipment, and nothing else. Nothing more may accrue to them.
 
 ---
 
@@ -47,7 +46,7 @@ to them.
 | 1 | Animations in | Both libraries staged, 79 clips auditioned, 15 bound. Two routines run. Two mechanisms outstanding: the phased action and the chain. |
 | 2 | Props and sets | 7 held props, 23 scenery, one GLB, six sets. Placement and grip are editable in the room and export as source. A garden is the notable gap. |
 | 3 | Base male + female | Not started. `base-characters` is unpacked locally with `Base Characters` and `Hairstyles`. |
-| 4 | Modular clothing | Not started. `outfits-fantasy` unpacked, 52 parts. `avatar/assembleAvatar.ts` already does modular assembly for the legacy presets — foundation or replacement, not yet decided. |
+| 4 | Modular clothing | Not started. `outfits-fantasy` unpacked, 52 parts. Assembly builds on the content seam's `resolveBody` / prop-attach path (`client/src/content/`), not a separate avatar package. |
 | 5 | Creation loop | Not started. Needs 3 and 4 for the real thing; see below for what does not. |
 
 Step 1's remaining work is not "bind more clips." It is two mechanisms, and each unlocks a
@@ -107,11 +106,12 @@ ordered for inspection, worst joins deliberately exposed, and a preview is order
 Those may be two orderings of one table or two tables that share a shape. It is not decided,
 and the decision wants making before either grows further.
 
-The honest cost, unchanged: this is not the game. The content seam — `BODY_KEYS.humanoid`,
-`clipBindings.json`, the carved `dropin/` GLBs, the band-masked controller — is referenced
-only by the sandbox and drill entries. The actual game still loads
-`models/paladin/paladin.fbx` through the legacy `catalog.ts`. So the rooms are real and the
-game is elsewhere until that migration happens.
+The content seam — `BODY_KEYS.humanoid`, `clipBindings.json`, the carved `dropin/` GLBs, the
+band-masked controller — is no longer sandbox-and-drill-only: `client/src/game/PlayerBody.tsx`
+resolves the same `BODY_KEYS.humanoid` body and the same motion keys for the live game as the
+judging rooms do. There is no separate legacy avatar path left to migrate off of. What the
+rooms still have that the game does not is the creation-screen layer described below: a preset
+picker, alternate bodies, and modular clothing.
 
 ---
 
@@ -192,10 +192,11 @@ built from props already imported. That is the argument for starting now.
 ## What the demo needs that does not exist
 
 1. **A preset table** — id, label, scene, stance, and an ordered list of motions to cycle.
-   *Exists as `Drill`, in the wrong place.* It sits in `client/src/drill/`, which is the UI,
-   and the intent was for it to live next to the loadout authority — `shared/avatar-loadout.json`,
-   which already carries a `presets` block for the legacy bodies. Two tables describing a
-   starting bundle, in two layers, is the shape the one rule exists to prevent.
+   *Exists as `Drill`, in the wrong place.* It sits in `client/src/drill/`, which is the UI, and
+   the intent is for the real thing to live next to whatever becomes the loadout authority for
+   starting bundles (a `shared/*.json` row, on the model of `shared/actions.json`) rather than
+   inside the drill UI. Two tables describing a starting bundle, in two layers, is the shape the
+   one rule exists to prevent.
 2. **A garden scene**, for the herbalist. Still missing, and still the only preset blocked on
    a set rather than on a mechanism.
 3. **A motion cycler** — play this list of clips in order, looping, so a preset previews as a

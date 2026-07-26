@@ -58,12 +58,7 @@ Unblocks pipeline steps 4 and 5 (LLM can iterate against a build signal without 
 
 ### Step 3 — Integration tests against live SpacetimeDB
 
-Headless tests (`cargo test`, `npm test`) landed alongside step 2 in PR #62. This step covers the remaining test scripts that need a running SpacetimeDB instance:
-
-- `client/test-reconnect.ts` (`npm run test:reconnect:local`)
-- `client/test-combat-action-state.ts` (`npm run test:combat-action:local`)
-
-Adds a third CI job that installs the SpacetimeDB CLI, starts a standalone instance on `127.0.0.1:3000`, publishes the server module to `mog-game-v1`, then runs the regression scripts against it. The instance is torn down with the runner.
+Headless tests (`cargo test`, `npm test`) landed alongside step 2 in PR #62. This step covers verification that needs a running SpacetimeDB instance rather than mocks: CI's `integration-tests` job installs the SpacetimeDB CLI, starts a standalone instance on `127.0.0.1:3000`, and publishes the server module to `mog-game-v1` as a live-publish smoke check. A live-instance regression script (in the shape of the old `test-reconnect.ts` / `test-combat-action-state.ts` pair) is a natural next addition once there is a playable surface worth scripting against — see `ci.yml`'s `integration-tests` job for the current placeholder.
 
 Maps to issues #51 (Rust unit tests with mocks — partly addressed by the headless `cargo test`) and #44 (automated perf regression — future addition once the integration harness is stable). Grows over time as more headless gameplay scripts are added — "approaching LLM playability" means continually moving more verification from the human's feel-test into CI.
 
