@@ -47,6 +47,11 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
                 .identity()
                 .find(transform.identity)
                 .unwrap_or_else(|| PlayerJumpState::default_for_identity(transform.identity));
+            // NOTE(wave2-actions): actions::state::movement_fraction(action_id, phase) is the
+            // sanctioned hook for gating move speed by action phase (see
+            // docs/action-pipeline.md, "movement" field). player_logic::update_transform /
+            // calculate_next_position (owned by the movement slice) does not yet multiply
+            // desired speed by it — wiring that in is out of this slice's scope.
             player_logic::update_transform(
                 &mut transform,
                 &mut jump_state,
@@ -107,9 +112,48 @@ pub(crate) fn next_server_tick(ctx: &ReducerContext) -> u64 {
     }
 }
 
+/// Advance every live projectile by `speed / TICK_RATE`, resolve a segment hit test against
+/// player capsules (fixed radius, not the def's own `radius` field — see
+/// `actions::effects::first_target_hit_by_segment`), apply damage on hit, and despawn at
+/// `max_distance`. Speed/damage/max_distance are re-derived from `ACTION_DEFS` by
+/// `action_id` each tick (the `Projectile` row itself only stores position/kinematics).
 fn step_projectiles(ctx: &ReducerContext, server_tick: u64) {
-    // TODO(wave1->wave2): step projectile positions, resolve hits via actions::effects
-    let _ = (ctx, server_tick);
+    let rows: Vec<Projectile> = ctx.db.projectile().iter().collect();
+    for mut projectile in rows {
+        let Some(def) = actions::state::find_action_def(&projectile.action_id) else {
+            ctx.db.projectile().id().delete(&projectile.id);
+            continue;
+        };
+        let Some((speed, max_distance, damage, blocked_damage)) = def.effects.iter().find_map(|effect| match effect {
+            actions::EffectDef::Projectile { speed, max_distance, damage, blocked_damage, .. } => Some((*speed, *max_distance, damage, blocked_damage)),
+            _ => None,
+        }) else {
+            ctx.db.projectile().id().delete(&projectile.id);
+            continue;
+        };
+
+        let (new_position, step) = actions::effects::step_projectile_position(&projectile.position, &projectile.direction, speed, crate::common::TICK_RATE);
+        projectile.previous_position = projectile.position.clone();
+        projectile.position = new_position;
+        projectile.distance_traveled += step;
+
+        if let Some(target) = actions::effects::first_target_hit_by_segment(ctx, &projectile.previous_position, &projectile.position, projectile.owner) {
+            // All current projectile defs are instant (hold: null) — full damage fraction.
+            let fraction = 1.0;
+            let raw = actions::effects::lerp_scaled(damage, fraction).round().max(0.0) as u32;
+            let blocked = actions::effects::lerp_scaled(blocked_damage, fraction).round().max(0.0) as u32;
+            actions::effects::apply_damage(ctx, projectile.owner, target, &projectile.action_id, raw, Some(blocked), server_tick, Some(projectile.position.clone()));
+            ctx.db.projectile().id().delete(&projectile.id);
+            continue;
+        }
+
+        if projectile.distance_traveled >= max_distance {
+            ctx.db.projectile().id().delete(&projectile.id);
+            continue;
+        }
+
+        ctx.db.projectile().id().update(projectile);
+    }
 }
 
 fn cleanup_old_action_events(ctx: &ReducerContext, server_tick: u64) {

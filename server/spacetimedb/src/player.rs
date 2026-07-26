@@ -173,11 +173,6 @@ pub(crate) fn cleanup_player(ctx: &ReducerContext, identity: Identity) {
                 .unwrap_or(PLAYER_MAX_HEALTH),
             is_dead: health.as_ref().map(|row| row.is_dead).unwrap_or(false),
             respawn_tick: health.as_ref().map(|row| row.respawn_tick).unwrap_or(0),
-            // legacy fields: always zero post action-pipeline rewrite
-            last_slash_tick: 0,
-            block_until_tick: 0,
-            last_lightning_tick: 0,
-            last_fireball_tick: 0,
             last_seen: ctx.timestamp,
         };
 
@@ -281,6 +276,25 @@ pub(crate) fn respawn_ready_players(ctx: &ReducerContext, server_tick: u64) {
         seed_player_resources(ctx, identity);
 
         spacetimedb::log::info!("Player respawned: {}", identity);
+    }
+}
+
+/// Death cancels any in-flight action state: clears `action_id`/phase back to Idle so a
+/// dead player cannot keep charging/attacking/blocking. Called from
+/// `actions::effects::apply_damage` when a hit brings health to 0. Idempotent no-op if the
+/// player has no action-state row or is already idle.
+pub(crate) fn cancel_action_state(ctx: &ReducerContext, identity: Identity, server_tick: u64) {
+    if let Some(mut action_state) = ctx.db.player_action_state().identity().find(identity) {
+        if action_state.action_id.is_empty() && action_state.phase == 0 {
+            return;
+        }
+        action_state.action_id = String::new();
+        action_state.phase = 0;
+        action_state.phase_started_tick = server_tick;
+        action_state.phase_ends_tick = 0;
+        action_state.charge_ticks = 0;
+        action_state.server_tick = server_tick;
+        ctx.db.player_action_state().identity().update(action_state);
     }
 }
 

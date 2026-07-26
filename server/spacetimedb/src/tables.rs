@@ -103,18 +103,6 @@ pub struct LoggedOutPlayerData {
     pub is_dead: bool,
     #[default(0u64)]
     pub respawn_tick: u64,
-    /// legacy field, no longer written by any live system post action-pipeline rewrite; kept for wire-shape stability
-    #[default(0u64)]
-    pub last_slash_tick: u64,
-    /// legacy field, no longer written by any live system post action-pipeline rewrite; kept for wire-shape stability
-    #[default(0u64)]
-    pub block_until_tick: u64,
-    /// legacy field, no longer written by any live system post action-pipeline rewrite; kept for wire-shape stability
-    #[default(0u64)]
-    pub last_lightning_tick: u64,
-    /// legacy field, no longer written by any live system post action-pipeline rewrite; kept for wire-shape stability
-    #[default(0u64)]
-    pub last_fireball_tick: u64,
 }
 
 #[spacetimedb::table(accessor = client_session)]
