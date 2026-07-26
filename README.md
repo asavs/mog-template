@@ -1,93 +1,132 @@
 # MOG Template
 
-This repo is a learning-first template for a self-hosted 3D multiplayer web game.
+A self-hosted, learning-first template for a 3D multiplayer web game: SpacetimeDB (Rust) as the
+authoritative server, Three.js/React (Vite) as the client, one generic data-driven pipeline for
+every combat/ability action, and a content seam that lets placeholder art and real art bind to
+the same logical keys.
 
-## Project Structure
+The goal is a small, honest multiplayer loop — connect, move, fight — built so that adding a
+new ability or a new piece of content is a data row, not an engine change.
+
+## Project structure
 
 ```text
 mog-template/
-├── client/                  # Three.js / React / Vite app
-├── server/                  # Rust SpacetimeDB module
+├── server/spacetimedb/      # Rust SpacetimeDB module — tables, reducers, the tick loop
+├── client/                  # Vite + React + Three.js app
+│   ├── src/actions/         # Generated action defs + gameplay gates
+│   ├── src/anim/            # Band-masked AnimationController
+│   ├── src/content/         # The content seam — see ART_DROP_IN.md
+│   ├── src/drill/           # Routine-testing room (npm run drill)
+│   ├── src/game/            # The actual game entry
+│   ├── src/sandbox/         # Clip/prop browser (npm run sandbox)
+│   ├── src/sim/             # Client-side prediction: movement, ground collision
+│   └── src/presentation/    # Server state → animation bridge
+├── shared/                  # actions.json / arena.json — codegen input for both sides
+├── tools/                   # Codegen (gen-actions, gen-arena) + env-requirements preflight
 ├── deploy/                  # Production config (Nginx, systemd)
-├── scripts/                 # Deployment and build scripts
-├── docs/                    # Documentation and logs
-└── README.md
+├── scripts/                 # Deploy and local-VM scripts
+└── docs/                    # See docs/README.md for the index
 ```
 
-## Docs
+## The action pipeline
 
-- [Contributor Guide](CONTRIBUTING.md)
-- [Development Pipeline](docs/dev-pipeline.md)
-- [PR Review Workflow](docs/pr-review-workflow.md)
-- [Peer Reviewer Cron](docs/reviewer-cron.md)
-- [GitHub Review App](docs/github-review-app.md)
-- [Architecture Guide](docs/spacetimedb-threejs-architecture.md)
-- [Asset Storage Design](docs/asset-storage.md)
-- [Deployment and Security Checklist](docs/deployment-security-checklist.md)
-- [Environment Requirements](tools/env-requirements/README.md) — what each tool needs and where it runs ([support matrix](docs/environment-matrix.md))
+One generic pipeline expresses every combat/ability primitive. Adding an action is a **row in
+`shared/actions.json`**; adding a new *kind* of effect (damage, heal, displacement, …) is
+**one match arm** in `server/spacetimedb/src/actions/effects.rs`. Nothing else in the system
+branches on an action id — not the client, not the animation bridge, not the input layer.
 
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, draft PR, CI, review, beta deploy, and merge workflow.
-
-### Local Setup
 ```bash
-git clone <repo-url> ~/mog-template
-cd ~/mog-template
+cd client
+npm run gen:actions          # regenerate both sides' typed defs from shared/actions.json
+npm run gen:actions:check    # CI-style: fail if the generated files are stale
 ```
+
+Full wire contract — phases, hold modes, effect kinds, the phase machine — in
+[`docs/action-pipeline.md`](docs/action-pipeline.md).
+
+## Input: 8 primitives
+
+The whole input surface is 8 rows of data (`client/src/input/keymap.ts`): movement (WASD),
+camera/aim (mouse), jump (Space), `primary` (LMB — tap/hold resolves light vs. heavy),
+`block` (RMB, hold), `roll` (Left Shift), `ability1`–`ability5` (1–5), and `potion` (R).
+Rebinding — including unbinding jump or binding sprint, which is on the wire but unbound by
+default — is a row edit in `keymap.ts`, never a code change.
+
+## Content: drop-in art, procedural fallback
+
+Every body, motion clip, and prop is addressed by a stable key (`body.humanoid`,
+`motion.act_swing_1h`, `prop.sword`) that resolves to either a real asset dropped into
+`client/src/content/dropin/` or a procedural placeholder — the same runtime shape either way, so
+swapping art for a placeholder is a file add/delete, never a code change. Full contract,
+including the rig/bone-name aliasing that makes UE5-spelled, Mixamo-spelled, and legacy-spelled
+skeletons all bind: [`client/src/content/ART_DROP_IN.md`](client/src/content/ART_DROP_IN.md).
+Motion naming/layering rules: [`docs/motion-vocabulary.md`](docs/motion-vocabulary.md).
+
+## Running it
 
 ### Server (SpacetimeDB)
-The server logic is in `server/`. It's a Rust module that runs inside SpacetimeDB.
+
 ```bash
 cd server
-spacetime publish # Publish to local SpacetimeDB
+spacetime publish   # publish the module to a local SpacetimeDB instance
 ```
 
-### Client (Vite + React + Three.js)
-The frontend is in `client/`.
+### Client — three entry points
+
 ```bash
 cd client
 npm install
-npm run dev # Start development server
+npm run dev       # the actual game, at /
+npm run sandbox    # clip/prop browser — every content key, every source, bound or not
+npm run drill      # routine room — run a fixed sequence on a body wearing real stances/props
 ```
 
-For beta-shaped local development, use `npm run dev:beta`. CI is the authoritative full-build signal; run local production builds when they are relevant to the change or when debugging CI.
+`npm run dev:beta` / `npm run build:beta` build the same client under a `/beta/` base path, for
+local parity with how a preview deploy is served — see
+[`docs/dev-pipeline.md`](docs/dev-pipeline.md) for when a preview VM actually gets one.
 
-## Deployment
+## Tests
 
-Normal beta and prod deploys run through GitHub Actions after PR review and merge. For manual VM-local deployment work, the scripts are:
-
-To build the client and publish the server module in one go:
 ```bash
-./scripts/deploy.sh
+cd client
+npm run test        # Vitest — unit + integration, no live SpacetimeDB needed
+npm run build        # tsc -b && vite build — the authoritative type/bundle check
 ```
 
-Individual scripts:
-- `./scripts/publish-server.sh`: Publishes the Rust module to SpacetimeDB.
-- `./scripts/generate-bindings.sh`: Regenerates TypeScript bindings from the Rust module.
-- `./scripts/build-client.sh`: Builds Vite app and copies to `/var/www/mog`.
-- `bash ./scripts/fix-permissions.sh`: Applies shared workspace permissions if ownership gets messy.
-- `./scripts/setup-shared-spacetime-config.sh`: Installs a shared VM-local SpacetimeDB CLI config at `/stdb/config/cli.toml`.
-- `./scripts/reset-local-spacetimedb.sh`: Explicitly deletes and recreates local SpacetimeDB data.
+```bash
+cd server/spacetimedb
+cargo test           # Rust unit tests
+```
 
-The SpacetimeDB scripts use `spacetime` when available and otherwise fall back to `/stdb/bin/2.1.0/spacetimedb-cli`. They automatically use `/stdb/config/cli.toml` when it contains a token. To publish with a different database-owner identity, set `SPACETIME_CONFIG_PATH=/path/to/cli.toml`.
+On Windows, run the Rust suite through WSL rather than natively (the SpacetimeDB toolchain is
+Linux-first here):
 
-The `deploy/` folder contains the source-of-truth configurations for Nginx and systemd.
+```bash
+wsl -- bash -lc "cd /mnt/c/path/to/repo/server/spacetimedb && cargo test"
+```
+
+CI is the authoritative full-build signal (`.github/workflows/ci.yml`): server build + tests,
+client build + tests + generated-file drift checks, a live-SpacetimeDB integration smoke, and a
+structural browser playtest. See [`docs/dev-pipeline.md`](docs/dev-pipeline.md) for the full
+branch → CI → review → preview-deploy → merge loop, and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the day-to-day checklist.
+
+## Docs
+
+Start with [`docs/README.md`](docs/README.md) for the full index. Highlights:
+
+- [`docs/action-pipeline.md`](docs/action-pipeline.md) — the action wire contract.
+- [`docs/motion-vocabulary.md`](docs/motion-vocabulary.md) — animation naming/layering rules.
+- [`docs/character-pipeline.md`](docs/character-pipeline.md) — where character content is
+  headed, and what's already real.
+- [`docs/spacetimedb-threejs-architecture.md`](docs/spacetimedb-threejs-architecture.md) — how
+  the stack fits together, written for someone new to realtime multiplayer.
+- [`AGENTS.md`](AGENTS.md) — onboarding for anyone (human or agent) joining cold.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch/PR/check workflow.
 
 ## Credits
 
 Built on the [vibe-coding-starter-pack-3d-multiplayer](https://github.com/majidmanzarpour/vibe-coding-starter-pack-3d-multiplayer)
-by [Majid Manzarpour](https://github.com/majidmanzarpour), licensed under the MIT License.
-The Three.js / React / SpacetimeDB foundation of this project derives from that starter.
-See [NOTICE](NOTICE) for the full attribution and original license text.
-
-## First Milestone
-
-Build the smallest complete multiplayer loop before adding complex gameplay:
-
-1. A player opens the web client.
-2. The client connects to SpacetimeDB.
-3. The player calls a `join_game` reducer.
-4. The client sends input with a reducer like `set_input`.
-5. A scheduled server tick updates authoritative positions at 20-30 Hz.
-6. Clients subscribe to player/transform tables and render smooth motion in Three.js.
+by [Majid Manzarpour](https://github.com/majidmanzarpour), licensed under the MIT License. See
+[NOTICE](NOTICE) for the full attribution and original license text.

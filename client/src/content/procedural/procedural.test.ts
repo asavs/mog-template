@@ -26,7 +26,7 @@ describe('procedural body', () => {
     // Named from the table every consumer looks bones up through, so the
     // placeholder and the imported rig answer to the same ids. That the
     // spelling matches shipped art is asserted by the Quaternius fixture in
-    // `avatar/rig.test.ts`.
+    // `content/rig.test.ts`.
     const body = gen!();
     expect(body.bones.hips?.name).toBe(MOG_BONES.hips);
     expect(body.bones.rightHand?.name).toBe(MOG_BONES.rightHand);

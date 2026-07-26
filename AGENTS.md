@@ -27,7 +27,7 @@ It is a learning-first template, not a production game yet. The stack is intenti
 | Thing | Status |
 |---|---|
 | GitHub repo | `<owner>/mog-template` |
-| GCP VM (`mog-server`) | Debian, `e2-small`; beta/prod runtime, not a development box |
+| GCP VM (`mog-server`) | Debian, `e2-small`; prod runtime (scaffolded off by default, see `docs/prod-enable.md`) and reviewer-daemon host, not a development box |
 | Nginx | installed, running, configured |
 | SpacetimeDB 2.1.0 | installed, running as systemd service on `127.0.0.1:3000` |
 | Rust / Node build tooling | not required for normal VM operation; GitHub Actions is the build environment |
@@ -65,7 +65,7 @@ mog-template/
 │   ├── setup-dev.sh               ← configures hooks, permissions, and git safe-directory
 ...
 ├── docs/
-│   ├── dev-pipeline.md                    ← branch → CI → review → beta → prod workflow
+│   ├── dev-pipeline.md                    ← branch → CI → review → preview VM → prod workflow
 │   ├── asset-storage.md                   ← runtime asset storage and CDN/GCS migration plan
 │   ├── pr-review-workflow.md               ← PR review workflow and checklist
 │   ├── github-review-app.md                ← dedicated agent reviewer GitHub App setup
@@ -116,13 +116,13 @@ gcloud compute ssh mog-server --zone=<your-zone> --project=<your-gcp-project-id>
 
 Note: `gcloud auth login` can leave you pointed at a different project from a prior session — run `gcloud config list` to confirm the active project before creating resources.
 
-The VM is not the normal place to do feature work. Treat `mog-server` as the beta runtime and reviewer-daemon host: GitHub Actions builds artifacts, deploy workflows copy those artifacts to the VM, and the VM applies them. Do not start Codex sessions, run local builds, install development toolchains, or use tmux development sessions there unless you are doing an explicit VM operations task.
+The VM is not the normal place to do feature work. Treat `mog-server` as the prod runtime (when enabled) and reviewer-daemon host: GitHub Actions builds artifacts, deploy workflows copy those artifacts to the VM, and the VM applies them. There is no persistent beta environment — PR review happens against an ephemeral `mog-pr-<N>` preview VM instead (`docs/dev-pipeline.md`), created on approval and torn down on merge/close. Do not start Codex sessions, run local builds, install development toolchains, or use tmux development sessions there unless you are doing an explicit VM operations task.
 
 Canonical VM paths:
 
 | Path | Purpose |
 |---|---|
-| `/var/www/mog-beta` | Beta static web root written only by deploy/apply automation. |
+| `/var/www/mog` | Prod static web root written only by deploy/apply automation. |
 | `/stdb` | SpacetimeDB runtime, data, CLI, and shared config owned by the SpacetimeDB/deploy setup. |
 | `/tmp/deploy-<sha>` | Transient artifact staging created by CI deploy jobs and removed after apply. |
 | `/opt/mog-reviewers/<reviewer-user>` | Stable reviewer checkout for a peer-review daemon (one per reviewer identity). |
@@ -133,7 +133,7 @@ Canonical VM paths:
 ## Docs — Read in This Order
 
 1. **`docs/spacetimedb-threejs-architecture.md`** — how the whole stack fits together. Start here.
-2. **`CONTRIBUTING.md`** — day-to-day branch, draft PR, check, beta deploy, and merge workflow.
+2. **`CONTRIBUTING.md`** — day-to-day branch, draft PR, check, preview deploy, and merge workflow.
 3. **`docs/dev-pipeline.md`** — the end-to-end automation pipeline (branch → CI → review → preview deploy → feel-test → merge → prod). Read before opening a PR.
 4. **`docs/pr-review-workflow.md`** — issue/branch/PR review loop and audit checklist for reviewing work against concrete standards.
 5. **`docs/reviewer-cron.md`** — setup for the peer-account automated reviewer cron.
@@ -194,27 +194,26 @@ for the architecture and the recipes.
 ## Important Constraints
 
 - CI is the authoritative full-build signal. Do not run local full builds by habit, especially on the VM where disk is tight.
-- Do not use `mog-server` for day-to-day development. It should only run beta services, apply CI-built artifacts, and host the reviewer daemons.
+- Do not use `mog-server` for day-to-day development. It should only run the prod service (when enabled), apply CI-built artifacts, and host the reviewer daemons.
 - Before committing code changes, run focused checks that are directly useful for the change. On `mog-server`, `./scripts/generate-bindings.sh`, `./scripts/publish-server.sh`, `./scripts/build-client.sh`, and `./scripts/deploy.sh` are acceptable verification/deployment tools when they are specifically warranted.
 - For client changes, prefer targeted tests first. Run a local production build only when it is directly useful, when debugging CI/build failures, or when a risky client change needs a local bundle signal before pushing.
-- Prefer adding focused headless gameplay/regression scripts, like `client/test-reconnect.ts`, when a change affects networked gameplay behavior that is hard to validate from unit tests alone.
+- Prefer adding focused headless gameplay/regression scripts when a change affects networked gameplay behavior that is hard to validate from unit tests alone — see CI's `integration-tests` job (`.github/workflows/ci.yml`) for where a live-SpacetimeDB regression script plugs in.
 - SpacetimeDB **always** binds to `127.0.0.1:3000` — never `0.0.0.0`
 - Nginx handles all public traffic — port 3000 is never opened in the firewall
 - The `spacetimedb` system user owns `/stdb` — nothing else writes there
 - No secrets in Vite env vars — anything prefixed `VITE_` is visible to players
 - The `deploy/` folder contains canonical copies of live config files — keep them in sync when you edit `/etc/nginx/` or `/etc/systemd/` on the VM
-- Do not edit, stage, commit, or inspect `example code folder/vibe code game december`; it is only a storage folder for sample code.
 
 ---
 
 ## What To Build Next
 
-The VM and minimal multiplayer loop are complete. Remaining tasks:
+The VM, the minimal multiplayer loop, and the action pipeline (movement + combat/ability
+actions, `docs/action-pipeline.md`) are complete. Remaining tasks:
 
 1. **Infrastructure:** Run Certbot for HTTPS (GH issue #1). The static IP is already reserved.
-2. **Gameplay:** Add more complex mechanics (combat, inventory, world state).
-
-Before going live: run Certbot for HTTPS (see GH issue #1).
+2. **Gameplay:** Character customization and creation (`docs/character-pipeline.md`), inventory,
+   persistent world state.
 
 ## ⚠️ PERMISSIONS NOTICE
 If you see "Permission Denied" errors after a git pull or creating new files, run:
