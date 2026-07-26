@@ -341,9 +341,22 @@ export function SandboxStage({
   const phaseExitId = phased?.exit?.id ?? null;
   const phaseDesired = phased?.desired ?? false;
   useEffect(() => {
-    if (mode !== 'layered' || !phased) return;
+    if (mode !== 'layered') return;
     const controller = controllerRef.current;
     if (!controller) return;
+
+    if (!phased) {
+      // The Held picker resolving back to NONE (or the panel deselecting a
+      // phase some other way) must actually tell the controller to release
+      // it — returning here and doing nothing would leave whatever was held
+      // looping on the rig forever, since nothing else will ever ask it to
+      // stop. `held` is required by `PhasedKeys`, but `desired: false`'s own
+      // release path (`playPhased`'s exit branch) never reads it — only
+      // `ruleNames`, to recognise the overlay as this phase's — so an empty
+      // key is safe here.
+      controller.playPhased(false, { held: '' }, PHASE_RULES);
+      return;
+    }
 
     for (const source of [phased.enter, phased.held, phased.exit]) {
       if (source) clipsRef.current.set(source.id, source.clip);
