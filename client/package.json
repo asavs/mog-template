@@ -15,6 +15,17 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:actions": "vite-node test-action-pipeline.ts",
+    "test:actions:local": "STDB_URL=ws://127.0.0.1:3000 vite-node test-action-pipeline.ts",
+    "test:reconnect": "vite-node test-reconnect.ts",
+    "test:reconnect:local": "STDB_URL=ws://127.0.0.1:3000 vite-node test-reconnect.ts",
+    "qa:env:up": "vite-node qa-harness/ensure-env.ts",
+    "qa:harness": "vite-node qa-harness/run-harness.ts",
+    "qa:perf": "QA_MODE=perf vite-node qa-harness/run-harness.ts",
+    "qa:baseline:update": "vite-node qa-harness/run-harness.ts -- --update-baseline",
+    "qa:report": "vite-node qa-harness/report-cli.ts --",
+    "qa:typecheck": "tsc -p qa-harness/tsconfig.qa.json",
+    "qa:test": "vitest run --config qa-harness/vitest.config.ts",
     "env:check": "node ../tools/env-requirements/preflight.mjs",
     "env:fingerprint": "node ../tools/env-requirements/preflight.mjs --fingerprint",
     "gen:actions": "node ../tools/gen-actions/gen.mjs",
@@ -46,6 +57,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.10",
+    "vite-node": "^3.2.4",
     "vitest": "^3.0.0"
   }
 }
