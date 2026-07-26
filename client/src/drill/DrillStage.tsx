@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { AnimationController } from '../anim';
+import type { ChainSpec } from '../anim/AnimationController';
 import {
   ALL_MOTION_KEYS,
   BODY_KEYS,
@@ -97,6 +98,16 @@ export function DrillStage({
   const controllerRef = useRef<AnimationController | null>(null);
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
   const elapsedRef = useRef(0);
+  /**
+   * The exact `ChainSpec` object identity the controller's `this.chain` is
+   * currently running — `advanceChain` must be called against the SAME
+   * object `startChain` was given, per its own contract. A step out of
+   * sequence starts a fresh chain scoped to its remainder (see the fallback
+   * below), so what is actually running is not always `step.chain.spec`;
+   * this ref is the source of truth for which one it is, updated on every
+   * `startChain` and left alone across `advanceChain`.
+   */
+  const activeChainSpecRef = useRef<ChainSpec | null>(null);
 
   const callbacks = useRef({ onStatus, onReport, onElapsed, onEquipped });
   useEffect(() => {
@@ -239,13 +250,21 @@ export function DrillStage({
       // replaced by the real chain machinery below), so it opens the window by
       // hand before every direct play — a no-op unless something is actually
       // still running on the layer this step needs.
+      activeChainSpecRef.current = null;
       controller.enterAbilityRecovery();
       played = controller.playAbility(step.action, options);
     } else if (step.chain.index === 0) {
       controller.enterAbilityRecovery();
       played = controller.startChain(step.chain.spec, options);
+      activeChainSpecRef.current = played ? step.chain.spec : null;
     } else {
-      const result = controller.advanceChain(step.chain.spec, options);
+      // `advanceChain` must be called against the SAME spec object
+      // `startChain` was given — see the ref's own doc comment. That is not
+      // always `step.chain.spec`: a previous out-of-sequence step may have
+      // started a sliced remainder instead, and it is THAT object the
+      // controller is actually tracking.
+      const activeSpec = activeChainSpecRef.current;
+      const result = activeSpec ? controller.advanceChain(activeSpec, options) : 'inactive';
       if (result === 'advanced' || result === 'queued') {
         played = true;
       } else {
@@ -253,16 +272,16 @@ export function DrillStage({
         // stepping here directly from the list, or scrubbing, rather than
         // arriving in sequence from its opener. Start a fresh chain scoped to
         // the remainder, so any step is watchable on its own rather than
-        // silently refusing.
+        // silently refusing — and remember ITS identity, so the next step in
+        // sequence resynchronises onto it instead of falling back again.
+        const remainder: ChainSpec = {
+          steps: step.chain.spec.steps.slice(step.chain.index),
+          cancelWindow: step.chain.spec.cancelWindow,
+          outsideWindow: step.chain.spec.outsideWindow,
+        };
         controller.enterAbilityRecovery();
-        played = controller.startChain(
-          {
-            steps: step.chain.spec.steps.slice(step.chain.index),
-            cancelWindow: step.chain.spec.cancelWindow,
-            outsideWindow: step.chain.spec.outsideWindow,
-          },
-          options,
-        );
+        played = controller.startChain(remainder, options);
+        activeChainSpecRef.current = played ? remainder : null;
       }
     }
     callbacks.current.onStatus(played ? 'ok' : 'refused');
