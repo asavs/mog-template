@@ -115,7 +115,7 @@ describe('tools declarations (requirements.json `tools`)', () => {
     const tools = registry.tools!;
     expect(tools['qa-harness-pr'].requires).toEqual(['gh-cli', 'gh-auth', 'windows-node-modules']);
     expect(tools['qa-harness-local'].requires).toEqual(['headed-display', 'wsl-available', 'windows-node-modules']);
-    expect(tools['preview-up'].requires).toEqual(['gcloud-cli', 'gcloud-auth', 'lfs-real-assets', 'openssh-not-plink']);
+    expect(tools['preview-up'].requires).toEqual(['gcloud-cli', 'gcloud-auth', 'openssh-not-plink']);
     expect(tools['preview-down'].requires).toEqual(['gcloud-cli', 'gcloud-auth']);
   });
 });
