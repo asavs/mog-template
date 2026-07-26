@@ -63,6 +63,12 @@ export const MOTION_ACTION = {
   guardHold: 'motion.act_guard_hold',
   /** Raise to mouth and lower. */
   drink: 'motion.act_drink',
+  /** Two-handed overhead strike, full commitment. Both arms, rooted. */
+  smash2h: 'motion.act_smash_2h',
+  /** Two-handed downward slam into the ground, full-body. */
+  slam2h: 'motion.act_slam_2h',
+  /** Full-body tumble; the displacement is the gameplay effect, not the clip. */
+  roll: 'motion.act_roll',
 } as const;
 
 /**

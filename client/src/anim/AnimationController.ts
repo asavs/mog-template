@@ -59,6 +59,51 @@ export type AbilityPlaybackOptions = {
 };
 
 /**
+ * The three keys a phased motion may bind. `held` is the only required one —
+ * see `playPhased`.
+ */
+export type PhasedKeys = {
+  /** One-shot transition into the held pose. Optional; held starts directly without it. */
+  enter?: string;
+  /** The looping (or static) pose held for as long as the phase is desired. */
+  held: string;
+  /** One-shot transition out. Optional; release fades directly without it. */
+  exit?: string;
+};
+
+/**
+ * Which `MOTION_RULES` entry governs each phase's blend/priority/interruption.
+ * Phased motions stay data-driven the same way every other motion here does;
+ * `playPhased` has no opinion of its own about timing.
+ */
+export type PhasedRuleNames = {
+  enter: MotionRuleName;
+  held: MotionRuleName;
+  exit: MotionRuleName;
+};
+
+/**
+ * An ordered attack run, as data. See `startChain`/`advanceChain`.
+ */
+export type ChainSpec = {
+  /** Motion keys in order. `steps[0]` is the opener, played by `startChain`. */
+  steps: readonly string[];
+  /**
+   * Inclusive fraction (0..1) of the CURRENTLY PLAYING step's own clip duration
+   * during which `advanceChain` crossfades into the next step.
+   */
+  cancelWindow: { fromFraction: number; toFraction: number };
+  /**
+   * What `advanceChain` does when the request lands outside the window.
+   * `'ignore'` (default) drops it. `'queue'` remembers it and fires the next
+   * step automatically once playback reaches the window.
+   */
+  outsideWindow?: 'queue' | 'ignore';
+};
+
+export type ChainAdvanceResult = 'advanced' | 'queued' | 'ignored' | 'inactive';
+
+/**
  * Motion ids are caller-defined strings — the exported defaults are only a
  * fallback. Typing these as the defaults' literal types would allow callers to
  * pass nothing but those same literals, making the options unusable.
@@ -124,6 +169,27 @@ type PendingStop = {
   remainingSeconds: number;
 };
 
+/** The most recently requested phased motion — see `playPhased`. */
+type ActivePhaseRequest = {
+  keys: PhasedKeys;
+  ruleNames: PhasedRuleNames;
+};
+
+type ActiveChain = {
+  spec: ChainSpec;
+  index: number;
+  options: AbilityPlaybackOptions;
+  /** Set when `advanceChain` was called outside the window under `'queue'`. */
+  queuedAdvance: boolean;
+};
+
+/** Guard is `playPhased`'s first caller, expressed as its own fixed rule triplet. */
+const GUARD_PHASE_RULES: PhasedRuleNames = {
+  enter: 'guardEnter',
+  held: 'guardHeld',
+  exit: 'guardExit',
+};
+
 export class AnimationController {
   readonly mixer: THREE.AnimationMixer;
 
@@ -136,7 +202,11 @@ export class AnimationController {
   private hit: LayerAction | null = null;
   private override: LayerAction | null = null;
   private abilityInRecovery = false;
-  private guardDesired = false;
+  /** Whether the most recently requested phased motion wants to be held. */
+  private phaseDesired = false;
+  /** Keys/rules of the most recently requested phased motion, for `onActionFinished`. */
+  private activePhase: ActivePhaseRequest | null = null;
+  private chain: ActiveChain | null = null;
   private dead = false;
   private pendingStops: PendingStop[] = [];
   /**
@@ -203,6 +273,7 @@ export class AnimationController {
       return false;
     });
     this.mixer.update(deltaSeconds);
+    this.consumeQueuedChainAdvance();
   }
 
   setLocomotion(key: string): boolean {
@@ -317,6 +388,91 @@ export class AnimationController {
   }
 
   /**
+   * Play `chain.steps[0]` and remember the chain so `advanceChain` can
+   * continue it. Goes through the exact same gating `playAbility` always has —
+   * a chain is not a way around the recovery/interruption rules, only a way to
+   * advance within them without gameplay re-deriving the timing by hand.
+   */
+  startChain(chain: ChainSpec, options: AbilityPlaybackOptions = {}): boolean {
+    if (chain.steps.length === 0) return false;
+    if (!this.playAbility(chain.steps[0]!, options)) return false;
+    this.chain = { spec: chain, index: 0, options, queuedAdvance: false };
+    return true;
+  }
+
+  /**
+   * Ask the active chain to advance to its next step.
+   *
+   * `chain` must be the SAME `ChainSpec` object `startChain` was given —
+   * identity, not structural equality, is the whole check for "is this still
+   * the chain that's running," so callers should hold one shared constant per
+   * chain rather than building a fresh object per call.
+   */
+  advanceChain(chain: ChainSpec, options: AbilityPlaybackOptions = {}): ChainAdvanceResult {
+    const active = this.chain;
+    if (!active || active.spec !== chain) return 'inactive';
+    if (active.index + 1 >= chain.steps.length) return 'inactive';
+
+    const progress = this.currentChainProgress(active);
+    if (progress === null) return 'inactive';
+
+    if (progress >= chain.cancelWindow.fromFraction && progress <= chain.cancelWindow.toFraction) {
+      return this.fireNextChainStep(active, options) ? 'advanced' : 'ignored';
+    }
+
+    if ((chain.outsideWindow ?? 'ignore') === 'ignore') return 'ignored';
+    active.queuedAdvance = true;
+    active.options = options;
+    return 'queued';
+  }
+
+  /**
+   * A general "enter once, hold as long as desired, exit once" motion. Guard
+   * is this mechanism's first caller (`setGuard`), not a parallel
+   * implementation living beside it — every case it handles (a change of mind
+   * mid-blend, a repeated report, surviving a full-body interrupt) is handled
+   * here, once.
+   *
+   * Only `held` is required. A missing (or unresolvable) `enter`/`exit` clip
+   * degrades to entering/leaving straight from `held` — a caller cannot be
+   * blocked by an unauthored transition. A `held` with no clip at all is a
+   * silent no-op: presentation must never gate gameplay.
+   */
+  playPhased(desired: boolean, keys: PhasedKeys, ruleNames: PhasedRuleNames): boolean {
+    this.phaseDesired = desired;
+    this.activePhase = { keys, ruleNames };
+    if (this.dead) return false;
+
+    if (desired) {
+      if (
+        this.override
+        && (this.override.ruleName !== 'fullBodyAbility' || !this.abilityInRecovery)
+      ) return false;
+      // Already in this phase, or on the way in: nothing to do. An exit in
+      // flight is different — the caller changed its mind, and a change of
+      // mind inside a brief blend is the most ordinary thing an input can
+      // express.
+      if (this.isPhaseOverlay(ruleNames)) {
+        if (this.overlay?.ruleName !== ruleNames.exit) return false;
+      } else if (this.overlay && !this.abilityInRecovery) {
+        return false;
+      }
+      const transitioned = this.startPhaseStep(keys.enter, ruleNames.enter)
+        || this.startPhaseStep(keys.held, ruleNames.held);
+      if (transitioned) {
+        this.releaseFullBodyAbilityForOverlay(MOTION_RULES[this.overlay!.ruleName].enterBlendSeconds);
+      }
+      return transitioned;
+    }
+
+    if (!this.isPhaseOverlay(ruleNames)) return false;
+    // Already leaving. Re-reporting the release must not restart the blend.
+    if (this.overlay?.ruleName === ruleNames.exit) return false;
+    return this.startPhaseStep(keys.exit, ruleNames.exit)
+      || this.clearOverlay(MOTION_RULES[ruleNames.exit].exitBlendSeconds);
+  }
+
+  /**
    * Gameplay owns ability timing and explicitly opens the recovery interrupt window.
    */
   enterAbilityRecovery(): void {
@@ -329,38 +485,7 @@ export class AnimationController {
   }
 
   setGuard(held: boolean): boolean {
-    this.guardDesired = held;
-    if (this.dead) return false;
-
-    if (held) {
-      if (
-        this.override
-        && (
-          this.override.ruleName !== 'fullBodyAbility'
-          || !this.abilityInRecovery
-        )
-      ) return false;
-      // Already guarding, or on the way in: nothing to do. An exit in flight is
-      // different — the player changed their mind, and a change of mind inside
-      // a 250 ms blend is the most ordinary thing an input can express.
-      if (this.isGuardOverlay()) {
-        if (this.overlay?.ruleName !== 'guardExit') return false;
-      } else if (this.overlay && !this.abilityInRecovery) {
-        return false;
-      }
-      const transitioned = this.startGuardMotion('guardEnter', this.guardMotions.enter)
-        || this.startGuardMotion('guardHeld', this.guardMotions.held);
-      if (transitioned) {
-        this.releaseFullBodyAbilityForOverlay(MOTION_RULES.guardEnter.enterBlendSeconds);
-      }
-      return transitioned;
-    }
-
-    if (!this.isGuardOverlay()) return false;
-    // Already leaving. Re-reporting the release must not restart the blend.
-    if (this.overlay?.ruleName === 'guardExit') return false;
-    return this.startGuardMotion('guardExit', this.guardMotions.exit)
-      || this.clearOverlay(MOTION_RULES.guardExit.exitBlendSeconds);
+    return this.playPhased(held, this.guardMotions, GUARD_PHASE_RULES);
   }
 
   playHitReaction(key: string = this.reactionMotions.hit): boolean {
@@ -545,11 +670,18 @@ export class AnimationController {
     return true;
   }
 
-  private startGuardMotion(
-    ruleName: 'guardEnter' | 'guardHeld' | 'guardExit',
-    key: string,
-  ): boolean {
-    const rule = MOTION_RULES[ruleName];
+  /**
+   * Arm and play one phase step onto the overlay slot. `key` may be absent —
+   * a missing enter/exit is how `playPhased` degrades to `held` alone — and a
+   * key with no resolvable (or fully-masked-away) clip is treated the same
+   * way: this returns `false` and touches nothing, so callers can chain
+   * attempts with `||` exactly like the old guard-specific version did.
+   */
+  private startPhaseStep(key: string | undefined, ruleName: MotionRuleName): boolean {
+    if (!key) return false;
+    // Widened to `MotionRule`: `ruleName` ranges over every rule here, not just
+    // the three guard used to be pinned to, and only some declare `overlayWidth`.
+    const rule: MotionRule = MOTION_RULES[ruleName];
     const width: OverlayWidth = rule.overlayWidth ?? 'arms';
 
     const source = this.resolveMotion(key);
@@ -566,6 +698,67 @@ export class AnimationController {
     this.abilityInRecovery = false;
     this.syncBands(rule.enterBlendSeconds);
     return true;
+  }
+
+  private isPhaseOverlay(ruleNames: PhasedRuleNames): boolean {
+    return this.overlay?.ruleName === ruleNames.enter
+      || this.overlay?.ruleName === ruleNames.held
+      || this.overlay?.ruleName === ruleNames.exit;
+  }
+
+  /**
+   * Current step's progress (0..1) through its own clip duration, for the
+   * layer the chain is running on. `null` if that layer no longer belongs to
+   * this chain — something else claimed it since the step started — in which
+   * case the chain is cleared: a stale reference must never let a later
+   * `advanceChain` misfire into a layer something else now owns.
+   */
+  private currentChainProgress(active: ActiveChain): number | null {
+    const currentKey = active.spec.steps[active.index];
+    const upperBodyOnly = active.options.upperBodyOnly ?? true;
+    const running = upperBodyOnly ? this.overlay : this.override;
+    if (!running || running.key !== currentKey) {
+      this.chain = null;
+      return null;
+    }
+    const duration = running.action.getClip().duration;
+    if (duration <= 0) return 1;
+    return Math.min(1, Math.max(0, running.action.time / duration));
+  }
+
+  /**
+   * Fire `active.spec.steps[active.index + 1]`, replacing the current step.
+   * This deliberately reuses `playAbility` rather than duplicating its
+   * crossfade/self-chain logic: it opens the recovery window first (the same
+   * door gameplay uses, and the same one the drill's hand-timed `cancelAfter`
+   * used to open by hand) and lets `playAbility` do everything else, including
+   * the `alternates` swap when a step repeats the clip already playing.
+   */
+  private fireNextChainStep(active: ActiveChain, options: AbilityPlaybackOptions): boolean {
+    const nextKey = active.spec.steps[active.index + 1]!;
+    this.enterAbilityRecovery();
+    if (!this.playAbility(nextKey, options)) return false;
+    active.index += 1;
+    active.options = options;
+    active.queuedAdvance = false;
+    return true;
+  }
+
+  /** Consume a queued chain advance once playback reaches the cancel window. */
+  private consumeQueuedChainAdvance(): void {
+    const active = this.chain;
+    if (!active || !active.queuedAdvance) return;
+
+    const progress = this.currentChainProgress(active);
+    if (progress === null) return;
+    if (progress < active.spec.cancelWindow.fromFraction) return;
+    if (progress > active.spec.cancelWindow.toFraction) {
+      // The window closed before this ever got consumed — drop it rather than
+      // fire a step late into whatever comes after.
+      active.queuedAdvance = false;
+      return;
+    }
+    this.fireNextChainStep(active, active.options);
   }
 
   private canStartOverlay(): boolean {
@@ -702,7 +895,8 @@ export class AnimationController {
     this.overlay = null;
     this.hit = null;
     this.abilityInRecovery = false;
-    this.guardDesired = false;
+    this.phaseDesired = false;
+    this.chain = null;
   }
 
   private fadeAndStop(action: THREE.AnimationAction | null, seconds: number): void {
@@ -727,12 +921,6 @@ export class AnimationController {
     return true;
   }
 
-  private isGuardOverlay(): boolean {
-    return this.overlay?.ruleName === 'guardEnter'
-      || this.overlay?.ruleName === 'guardHeld'
-      || this.overlay?.ruleName === 'guardExit';
-  }
-
   private readonly onActionFinished = (
     event: { action: THREE.AnimationAction; direction: number },
   ): void => {
@@ -743,10 +931,12 @@ export class AnimationController {
       this.override = null;
       this.abilityInRecovery = false;
       this.syncBands(rule.exitBlendSeconds);
-      // setGuard rather than startGuardMotion: the overlay may still be a
-      // guardExit the player already reversed, and only setGuard knows that is
+      // playPhased rather than startPhaseStep: the overlay may still be an
+      // exit the caller already reversed, and only playPhased knows that is
       // interruptible.
-      if (this.guardDesired) this.setGuard(true);
+      if (this.phaseDesired && this.activePhase) {
+        this.playPhased(true, this.activePhase.keys, this.activePhase.ruleNames);
+      }
       return;
     }
 
@@ -765,16 +955,18 @@ export class AnimationController {
     this.overlay = null;
     this.abilityInRecovery = false;
 
-    if (finished.ruleName === 'guardEnter' && this.guardDesired) {
-      if (this.startGuardMotion('guardHeld', this.guardMotions.held)) return;
-    } else if (finished.ruleName === 'guardHeld' && !this.guardDesired) {
-      if (this.startGuardMotion('guardExit', this.guardMotions.exit)) return;
-    } else if (this.guardDesired && !this.override) {
-      // Whatever just ended — an exit the player reversed, or an ability they
-      // fired while still holding block — the layer is free and guard wants it.
+    const phase = this.activePhase;
+    if (phase && finished.ruleName === phase.ruleNames.enter && this.phaseDesired) {
+      if (this.startPhaseStep(phase.keys.held, phase.ruleNames.held)) return;
+    } else if (phase && finished.ruleName === phase.ruleNames.held && !this.phaseDesired) {
+      if (this.startPhaseStep(phase.keys.exit, phase.ruleNames.exit)) return;
+    } else if (phase && this.phaseDesired && !this.override) {
+      // Whatever just ended — an exit the caller reversed, or an ability fired
+      // while the phase was still desired — the layer is free and the phase
+      // wants it.
       if (
-        this.startGuardMotion('guardEnter', this.guardMotions.enter)
-        || this.startGuardMotion('guardHeld', this.guardMotions.held)
+        this.startPhaseStep(phase.keys.enter, phase.ruleNames.enter)
+        || this.startPhaseStep(phase.keys.held, phase.ruleNames.held)
       ) return;
     }
 

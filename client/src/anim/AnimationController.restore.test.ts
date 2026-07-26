@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { AnimationController } from './AnimationController';
-import { maskClipToBands } from './mask';
+import { maskClipToBands, maskClipToOverlay } from './mask';
 
 /** Clip touching one upper-body and one lower-body bone. */
 function clip(name: string, duration: number): THREE.AnimationClip {
@@ -100,5 +100,43 @@ describe('base upper layer after an overlay finishes', () => {
 
     // Rest pose here is identity; a dead upper layer would leave it there.
     expect(arm.quaternion.angleTo(new THREE.Quaternion())).toBeGreaterThan(0.05);
+  });
+
+  it('is audible again once a full-body override that interrupted it finishes', () => {
+    // The other path into the same bug: the overlay is never explicitly
+    // re-fired. It sits untouched behind a full-body override the whole time,
+    // and only `syncBands` noticing the override is gone is what's supposed to
+    // bring it back — the exact mechanism the T-pose fix depends on.
+    const clips = new Map([
+      ['loco', clip('loco', 2)],
+      ['overlayAbility', clip('overlayAbility', 2)],
+      ['fullBodyAbility', clip('fullBodyAbility', 0.3)],
+    ]);
+    const controller = new AnimationController(rig(), key => clips.get(key) ?? null);
+
+    expect(controller.setLocomotion('loco')).toBe(true);
+    advance(controller, 0.3);
+    expect(controller.playAbility('overlayAbility', { upperBodyOnly: true })).toBe(true);
+    advance(controller, 0.1);
+
+    // Same door gameplay uses to let one ability's motion supersede another.
+    controller.enterAbilityRecovery();
+    expect(controller.playAbility('fullBodyAbility', { upperBodyOnly: false })).toBe(true);
+    expect(controller.getState().overlayMotion).toBe('overlayAbility');
+    expect(controller.getState().overrideMotion).toBe('fullBodyAbility');
+
+    // Past the override's own duration, its exit blend, and the overlay's
+    // fade back in — all without any further explicit call.
+    advance(controller, 1.5);
+
+    const state = controller.getState();
+    expect(state.overrideMotion).toBeNull();
+    expect(state.overlayMotion).toBe('overlayAbility');
+
+    const overlayAction = controller.mixer.existingAction(
+      maskClipToOverlay(clips.get('overlayAbility')!, 'torso'),
+    );
+    expect(overlayAction?.isRunning()).toBe(true);
+    expect(overlayAction?.getEffectiveWeight() ?? 0).toBeGreaterThan(0.9);
   });
 });
