@@ -178,7 +178,11 @@ pub fn update_transform(
             desired_position.y = ending_ground_y;
         }
     }
-    let move_result = collision::resolve_player_movement(&transform.position, &desired_position);
+    let move_result = collision::resolve_player_movement_with_castle_support(
+        &transform.position,
+        &desired_position,
+        started_on_castle,
+    );
     let mut resolved_position = move_result.position;
     if move_result.hit_ceiling && jump_state.vertical_velocity > 0.0 {
         jump_state.vertical_velocity = 0.0;

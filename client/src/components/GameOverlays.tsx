@@ -116,6 +116,9 @@ function DevHud({
         Correction: {metrics.localCorrectionError.toFixed(3)} m<br />
         Server/predicted: {metrics.serverPredictedPositionDelta.toFixed(3)} m<br />
         Visual offset: {metrics.visualCorrectionOffset.toFixed(3)} m<br />
+        Castle collision: {metrics.castleCollisionQueryHz.toFixed(1)} q/s, {metrics.castleCollisionFrameMs.toFixed(2)} ms/0.5s, max {metrics.castleCollisionMaxMs.toFixed(2)} ms<br />
+        Castle support: {metrics.castleCollisionSupportQueryHz.toFixed(1)} q/s, {metrics.castleCollisionSupportFrameMs.toFixed(2)} ms, max {metrics.castleCollisionSupportMaxMs.toFixed(2)} ms<br />
+        Castle sweep: {metrics.castleCollisionSweepQueryHz.toFixed(1)} q/s, {metrics.castleCollisionSweepFrameMs.toFixed(2)} ms, max {metrics.castleCollisionSweepMaxMs.toFixed(2)} ms<br />
         Predicted/local: {metrics.predictedTickCount}/{metrics.localClientTick}<br />
         Ack/sent: {metrics.acknowledgedClientTick}/{metrics.lastSentClientTick}<br />
         Server tick: {metrics.latestServerTick}<br />

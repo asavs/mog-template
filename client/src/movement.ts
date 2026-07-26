@@ -8,6 +8,7 @@ import {
   logCollisionDebug,
 } from './collisionDebug';
 import {
+  CASTLE_CAPSULE_SKIN,
   CASTLE_GROUND_SNAP_DISTANCE,
   castleGroundSupport,
   resolveCastleCapsuleSweep,
@@ -25,6 +26,7 @@ import {
   getRapierCastleGroundSupport,
   resolveRapierCastleMovement,
 } from './rapierCastleBridge';
+import { recordCastleCollisionQuery } from './collisionPerf';
 import {
   DEFAULT_LOCOMOTION_CONFIG,
   GRAVITY,
@@ -64,6 +66,15 @@ const WORLD_MIN_Z = HEIGHTMAP_MIN_Z;
 const WORLD_MAX_Z = HEIGHTMAP_MAX_Z;
 const MAX_WALKABLE_SLOPE = Math.tan(THREE.MathUtils.degToRad(MAX_WALKABLE_SLOPE_DEGREES));
 const SLOPE_SAMPLE_DISTANCE = 1.0;
+const CASTLE_SUPPORT_PROBE_LIFT = CASTLE_CAPSULE_SKIN * 2;
+const MAX_CASTLE_SUPPORT_CACHE_ENTRIES = 256;
+
+type CastleGroundSupportDetails = {
+  position: THREE.Vector3 | null;
+  source: 'rapier' | 'custom' | 'none';
+};
+
+const castleSupportCache = new Map<string, CastleGroundSupportDetails>();
 
 export function isMoving(input: InputState): boolean {
   return isMovingInput(input);
@@ -84,14 +95,14 @@ export function sprintActiveForState(
 export function createMovementState(
   position: THREE.Vector3,
   input: InputState,
-  wasGrounded = isGroundedAt(position),
+  wasGrounded?: boolean,
   previousSprintActive = false,
 ): MovementState {
   const isGrounded = isGroundedAt(position);
   const sprintIntent = input.sprint;
   return {
     isGrounded,
-    wasGrounded,
+    wasGrounded: wasGrounded ?? isGrounded,
     isAirborne: !isGrounded,
     sprintIntent,
     sprintActive: sprintActiveForState(isGrounded, input, previousSprintActive),
@@ -162,7 +173,9 @@ export function applyMovement(
 
 export function resolvePlayerMovement(current: THREE.Vector3, desired: THREE.Vector3): THREE.Vector3 {
   const clampedDesired = clampToWorld(desired);
-  if (isCastleCollisionReady()
+  const mayTouchCastle = castleMovementMayTouch(current, clampedDesired)
+    || castleSupportProbeMayTouch(current, CASTLE_GROUND_SNAP_DISTANCE);
+  if (mayTouchCastle
     && (activeCastleGroundSupport(current, CASTLE_GROUND_SNAP_DISTANCE)
       || isInsideCastleCollisionBounds(current)
       || isInsideCastleCollisionBounds(clampedDesired))) {
@@ -215,6 +228,48 @@ function isInsideCastleCollisionBounds(position: THREE.Vector3): boolean {
     && position.x <= asset.max[0] + PLAYER_COLLISION_RADIUS
     && position.z >= asset.min[2] - PLAYER_COLLISION_RADIUS
     && position.z <= asset.max[2] + PLAYER_COLLISION_RADIUS;
+}
+
+function castleAabbMayTouch(
+  minX: number,
+  minY: number,
+  minZ: number,
+  maxX: number,
+  maxY: number,
+  maxZ: number,
+): boolean {
+  if (!isCastleCollisionReady()) return false;
+  const asset = castleCollisionAsset();
+  return maxX >= asset.min[0] - CASTLE_CAPSULE_SKIN
+    && minX <= asset.max[0] + CASTLE_CAPSULE_SKIN
+    && maxY >= asset.min[1] - CASTLE_CAPSULE_SKIN
+    && minY <= asset.max[1] + CASTLE_CAPSULE_SKIN
+    && maxZ >= asset.min[2] - CASTLE_CAPSULE_SKIN
+    && minZ <= asset.max[2] + CASTLE_CAPSULE_SKIN;
+}
+
+function castleMovementMayTouch(current: THREE.Vector3, desired: THREE.Vector3): boolean {
+  const radius = PLAYER_COLLISION_RADIUS + CASTLE_CAPSULE_SKIN;
+  return castleAabbMayTouch(
+    Math.min(current.x, desired.x) - radius,
+    Math.min(current.y, desired.y) - CASTLE_CAPSULE_SKIN,
+    Math.min(current.z, desired.z) - radius,
+    Math.max(current.x, desired.x) + radius,
+    Math.max(current.y, desired.y) + PLAYER_CAPSULE_HEIGHT + CASTLE_CAPSULE_SKIN,
+    Math.max(current.z, desired.z) + radius,
+  );
+}
+
+function castleSupportProbeMayTouch(position: THREE.Vector3, maxDistance: number): boolean {
+  const radius = PLAYER_COLLISION_RADIUS + CASTLE_CAPSULE_SKIN;
+  return castleAabbMayTouch(
+    position.x - radius,
+    position.y - maxDistance - CASTLE_CAPSULE_SKIN,
+    position.z - radius,
+    position.x + radius,
+    position.y + CASTLE_SUPPORT_PROBE_LIFT + PLAYER_CAPSULE_HEIGHT + CASTLE_CAPSULE_SKIN,
+    position.z + radius,
+  );
 }
 
 export function isTerrainStepWalkable(current: THREE.Vector3, desired: THREE.Vector3): boolean {
@@ -296,29 +351,71 @@ function activeCastleGroundSupport(position: THREE.Vector3, maxDistance: number)
   return activeCastleGroundSupportDetailed(position, maxDistance).position;
 }
 
-function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance: number): {
-  position: THREE.Vector3 | null;
-  source: 'rapier' | 'custom' | 'none';
-} {
-  if (!isCastleCollisionReady()) return { position: null, source: 'none' };
+function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance: number): CastleGroundSupportDetails {
+  const cacheKey = castleSupportCacheKey(position, maxDistance);
+  const cached = readCastleSupportCache(cacheKey);
+  if (cached) return cached;
+  if (!isCastleCollisionReady()) {
+    return writeCastleSupportCache(cacheKey, { position: null, source: 'none' });
+  }
+  if (!castleSupportProbeMayTouch(position, maxDistance)) {
+    return writeCastleSupportCache(cacheKey, { position: null, source: 'none' });
+  }
 
+  const supportStartedAt = performance.now();
   const rapierSupport = getRapierCastleGroundSupport(
     position,
     maxDistance,
     PLAYER_COLLISION_RADIUS,
     PLAYER_CAPSULE_HEIGHT,
   );
-  if (rapierSupport) return { position: rapierSupport, source: 'rapier' };
+  recordCastleCollisionQuery(performance.now() - supportStartedAt, 'support');
+  if (rapierSupport) {
+    return writeCastleSupportCache(cacheKey, { position: rapierSupport, source: 'rapier' });
+  }
 
+  const customStartedAt = performance.now();
   const customSupport = castleGroundSupport(
     position,
     maxDistance,
     PLAYER_COLLISION_RADIUS,
     PLAYER_CAPSULE_HEIGHT,
   );
-  return customSupport
+  recordCastleCollisionQuery(performance.now() - customStartedAt, 'support');
+  return writeCastleSupportCache(cacheKey, customSupport
     ? { position: customSupport, source: 'custom' }
-    : { position: null, source: 'none' };
+    : { position: null, source: 'none' });
+}
+
+function readCastleSupportCache(key: string): CastleGroundSupportDetails | null {
+  const cached = castleSupportCache.get(key);
+  if (!cached) return null;
+  castleSupportCache.delete(key);
+  castleSupportCache.set(key, cached);
+  return cloneCastleSupportDetails(cached);
+}
+
+function writeCastleSupportCache(
+  key: string,
+  result: CastleGroundSupportDetails,
+): CastleGroundSupportDetails {
+  castleSupportCache.set(key, cloneCastleSupportDetails(result));
+  if (castleSupportCache.size > MAX_CASTLE_SUPPORT_CACHE_ENTRIES) {
+    const oldestKey = castleSupportCache.keys().next().value;
+    if (oldestKey) castleSupportCache.delete(oldestKey);
+  }
+  return cloneCastleSupportDetails(result);
+}
+
+function castleSupportCacheKey(position: THREE.Vector3, maxDistance: number): string {
+  return `${position.x},${position.y},${position.z},${maxDistance}`;
+}
+
+function cloneCastleSupportDetails(result: CastleGroundSupportDetails): CastleGroundSupportDetails {
+  return {
+    position: result.position?.clone() ?? null,
+    source: result.source,
+  };
 }
 
 function movementDistance(from: THREE.Vector3, to: THREE.Vector3): number {
@@ -391,7 +488,10 @@ export function simulateMovementTick(
   // full-XYZ reachability pass, so upward jumps and falls cannot bypass castle
   // ceilings, undersides, or ramps after horizontal prediction has run.
   let resolvedVerticalVelocity = jumpPhysicsAfterTick.verticalVelocity;
-  if (isCastleCollisionReady()) {
+  let resolvedGroundedOverride: boolean | null = null;
+  if (castleMovementMayTouch(fullTickStart, position)
+    || castleSupportProbeMayTouch(fullTickStart, CASTLE_GROUND_SNAP_DISTANCE)
+    || castleSupportProbeMayTouch(position, CASTLE_GROUND_SNAP_DISTANCE)) {
     const wasGrounded = movementStateBeforeTick.isGrounded;
     const isStartingJump = input.jump && !wasJumpPressed && wasGrounded;
     const startingCastleSupport = activeCastleGroundSupportDetailed(
@@ -409,19 +509,31 @@ export function simulateMovementTick(
       sweepTarget.y = Math.max(fullTickStart.y, endingGroundY);
     }
     const desiredBeforeCastle = sweepTarget.clone();
-    const rapierCollision = resolveRapierCastleMovement(
-      fullTickStart,
-      sweepTarget,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
-    );
-    const collisionSolver = rapierCollision ? 'rapier' : 'custom';
-    const collision = rapierCollision ?? resolveCastleCapsuleSweep(
-      fullTickStart,
-      sweepTarget,
-      PLAYER_COLLISION_RADIUS,
-      PLAYER_CAPSULE_HEIGHT,
-    );
+    const shouldSweepCastle = castleMovementMayTouch(fullTickStart, sweepTarget);
+    let rapierCollision = null;
+    if (shouldSweepCastle) {
+      const sweepStartedAt = performance.now();
+      rapierCollision = resolveRapierCastleMovement(
+        fullTickStart,
+        sweepTarget,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+      );
+      recordCastleCollisionQuery(performance.now() - sweepStartedAt, 'sweep');
+    }
+    const collisionSolver = rapierCollision ? 'rapier' : (shouldSweepCastle ? 'custom' : 'none');
+    let collision = rapierCollision;
+    if (!collision && shouldSweepCastle) {
+      const customSweepStartedAt = performance.now();
+      collision = resolveCastleCapsuleSweep(
+        fullTickStart,
+        sweepTarget,
+        PLAYER_COLLISION_RADIUS,
+        PLAYER_CAPSULE_HEIGHT,
+      );
+      recordCastleCollisionQuery(performance.now() - customSweepStartedAt, 'sweep');
+    }
+    collision ??= { position: sweepTarget.clone(), groundNormal: null, hitCeiling: false, hitWall: false };
     const collisionResolvedPosition = shouldTraceCollision ? collision.position.clone() : null;
     position.copy(collision.position);
     if ((collision.hitCeiling && resolvedVerticalVelocity > 0)
@@ -431,10 +543,13 @@ export function simulateMovementTick(
     const terrainGroundY = terrainHeightAt(fullTickStart);
     const startedOnCastle = startingCastleSupport.position !== null;
     const terrainResolvedGroundY = terrainHeightAt(position);
-    const castleResolvedGround = activeCastleGroundSupportDetailed(
-      position,
-      CASTLE_GROUND_SNAP_DISTANCE,
-    );
+    const collisionGroundedBySweep = collision.groundNormal !== null;
+    const castleResolvedGround: CastleGroundSupportDetails = collisionGroundedBySweep
+      ? { position: position.clone(), source: collisionSolver }
+      : activeCastleGroundSupportDetailed(
+        position,
+        CASTLE_GROUND_SNAP_DISTANCE,
+      );
     const resolvedGroundY = castleResolvedGround.position ? castleResolvedGround.position.y : terrainResolvedGroundY;
     if (wasGrounded && isStartingJump) {
       if (!startedOnCastle && terrainGroundY - terrainResolvedGroundY <= MAX_SNAP_DOWN_HEIGHT) {
@@ -442,7 +557,9 @@ export function simulateMovementTick(
       }
     } else if (wasGrounded) {
       if (castleResolvedGround.position) {
-        if (resolvedVerticalVelocity <= 0 && desiredBeforeCastle.y <= fullTickStart.y) {
+        if (collisionGroundedBySweep && resolvedVerticalVelocity <= 0) {
+          resolvedVerticalVelocity = 0;
+        } else if (resolvedVerticalVelocity <= 0 && desiredBeforeCastle.y <= fullTickStart.y) {
           position.y = castleResolvedGround.position.y;
           resolvedVerticalVelocity = 0;
         }
@@ -454,8 +571,9 @@ export function simulateMovementTick(
       position.y = resolvedGroundY;
       resolvedVerticalVelocity = 0;
     }
+    resolvedGroundedOverride = collisionGroundedBySweep || position.y <= resolvedGroundY + GROUNDED_EPSILON;
     if (shouldTraceCollision && collisionResolvedPosition && afterHorizontalMovement && afterJumpPhysics) {
-      const finalGroundY = groundHeightAt(position);
+      const finalGroundY = resolvedGroundY;
       const desiredDistance = movementDistance(fullTickStart, desiredBeforeCastle);
       const resolvedDistance = movementDistance(fullTickStart, position);
       logCollisionDebug({
@@ -491,7 +609,7 @@ export function simulateMovementTick(
       });
     }
   }
-  const resolvedGrounded = isGroundedAt(position);
+  const resolvedGrounded = resolvedGroundedOverride ?? isGroundedAt(position);
   const locomotionState = settleLocomotionAfterMove(
     {
       ...locomotionAfterTransition,

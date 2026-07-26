@@ -5,6 +5,7 @@ import {
   type NetMetrics,
   type TransformSnapshot,
 } from '../netcode';
+import { sampleCastleCollisionPerf } from '../collisionPerf';
 
 type UseHudMetricsOptions = {
   metricsRef: MutableRefObject<NetMetrics>;
@@ -19,6 +20,7 @@ export function useHudMetrics({ metricsRef, snapshotBuffersRef }: UseHudMetricsO
       const metrics = metricsRef.current;
       const now = performance.now();
       updateRates(metrics, now);
+      const castleCollisionPerf = sampleCastleCollisionPerf(now);
 
       let newestSnapshotAt = 0;
       let totalBufferLength = 0;
@@ -33,6 +35,16 @@ export function useHudMetrics({ metricsRef, snapshotBuffersRef }: UseHudMetricsO
 
       metrics.latestSnapshotAgeMs = newestSnapshotAt > 0 ? now - newestSnapshotAt : 0;
       metrics.avgBufferLength = bufferCount > 0 ? totalBufferLength / bufferCount : 0;
+      metrics.castleCollisionQueryHz = castleCollisionPerf.queryHz;
+      metrics.castleCollisionFrameMs = castleCollisionPerf.totalMs;
+      metrics.castleCollisionMaxMs = castleCollisionPerf.maxMs;
+      metrics.castleCollisionLastMs = castleCollisionPerf.lastMs;
+      metrics.castleCollisionSupportQueryHz = castleCollisionPerf.supportQueryHz;
+      metrics.castleCollisionSupportFrameMs = castleCollisionPerf.supportTotalMs;
+      metrics.castleCollisionSupportMaxMs = castleCollisionPerf.supportMaxMs;
+      metrics.castleCollisionSweepQueryHz = castleCollisionPerf.sweepQueryHz;
+      metrics.castleCollisionSweepFrameMs = castleCollisionPerf.sweepTotalMs;
+      metrics.castleCollisionSweepMaxMs = castleCollisionPerf.sweepMaxMs;
       setHudMetrics({ ...metrics });
     }, 500);
 
