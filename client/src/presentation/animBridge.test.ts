@@ -59,6 +59,7 @@ describe('driveAnimationFromActionState', () => {
       driveAnimationFromActionState(controller, ACTION_DEFS, {
         actionId: def.id,
         phase: ACTION_PHASE.windup,
+        phaseStartedTick: 1n,
       });
 
       const abilityCalls = controller.calls.filter(call => call.method === 'playAbility');
@@ -76,6 +77,7 @@ describe('driveAnimationFromActionState', () => {
       driveAnimationFromActionState(controller, ACTION_DEFS, {
         actionId: def.id,
         phase: ACTION_PHASE.active,
+        phaseStartedTick: 1n,
       });
       expect(controller.calls.filter(call => call.method === 'playAbility')).toHaveLength(1);
     }
@@ -87,6 +89,7 @@ describe('driveAnimationFromActionState', () => {
       driveAnimationFromActionState(controller, ACTION_DEFS, {
         actionId: def.id,
         phase: ACTION_PHASE.recovery,
+        phaseStartedTick: 1n,
       });
       expect(controller.calls.filter(call => call.method === 'playAbility')).toHaveLength(0);
       expect(controller.calls.filter(call => call.method === 'enterAbilityRecovery')).toHaveLength(1);
@@ -95,7 +98,7 @@ describe('driveAnimationFromActionState', () => {
 
   it('plays no motion and opens no recovery window while idle', () => {
     const controller = mockController();
-    driveAnimationFromActionState(controller, ACTION_DEFS, { actionId: '', phase: ACTION_PHASE.idle });
+    driveAnimationFromActionState(controller, ACTION_DEFS, { actionId: '', phase: ACTION_PHASE.idle, phaseStartedTick: 0n });
 
     expect(controller.calls.filter(call => call.method === 'playAbility')).toHaveLength(0);
     expect(controller.calls.filter(call => call.method === 'enterAbilityRecovery')).toHaveLength(0);
@@ -112,6 +115,7 @@ describe('driveAnimationFromActionState', () => {
       driveAnimationFromActionState(controller, ACTION_DEFS, {
         actionId: def.id,
         phase: ACTION_PHASE.held,
+        phaseStartedTick: 1n,
       });
 
       const phasedCalls = controller.calls.filter(call => call.method === 'playPhased');
@@ -134,6 +138,7 @@ describe('driveAnimationFromActionState', () => {
     driveAnimationFromActionState(controller, ACTION_DEFS, {
       actionId: 'attack_light',
       phase: ACTION_PHASE.windup,
+      phaseStartedTick: 1n,
     });
 
     const blockDef = ACTION_DEFS.find(def => def.id === 'block')!;
@@ -155,6 +160,7 @@ describe('driveAnimationFromActionState', () => {
     driveAnimationFromActionState(charging, ACTION_DEFS, {
       actionId: 'attack_heavy',
       phase: ACTION_PHASE.charging,
+      phaseStartedTick: 1n,
     });
     expect(charging.calls.filter(call => call.method === 'playAbility')).toHaveLength(0);
 
@@ -162,10 +168,65 @@ describe('driveAnimationFromActionState', () => {
     driveAnimationFromActionState(released, ACTION_DEFS, {
       actionId: 'attack_heavy',
       phase: ACTION_PHASE.windup,
+      phaseStartedTick: 2n,
     });
     expect(released.calls.filter(call => call.method === 'playAbility')).toEqual([
       { method: 'playAbility', args: [heavy.motion, { upperBodyOnly: false, movement: heavy.movement.windup }] },
     ]);
+  });
+
+  // Regression for the "one cast loops forever" bug: this function is called
+  // every render frame with whatever the row currently says, and a real
+  // `AnimationController` clears its own overlay slot as soon as a one-shot
+  // ability clip finishes playing — even if gameplay hasn't reported Recovery
+  // yet (see `animBridge.ts`'s `lastFiredAbilityEdge` doc). Before the edge
+  // check existed, calling this repeatedly for a row parked in the SAME
+  // phase — exactly what happens when render frames outpace server ticks, or
+  // the row simply hasn't changed yet — fired a fresh `playAbility` every
+  // single call, which on the real controller replays the clip from frame 0
+  // each time. The mock here always returns `true` and never clears its own
+  // state (unlike the real controller), so without the bridge's own edge
+  // check this test would see one `playAbility` call per invocation — 20 of
+  // them — not one.
+  it('fires playAbility exactly once for 20 same-phase row updates in a row (edge, not level)', () => {
+    const def = ACTION_DEFS.find(d => d.motionLayer === 'upper') ?? ACTION_DEFS[0]!;
+    const controller = mockController();
+    const row = { actionId: def.id, phase: ACTION_PHASE.active, phaseStartedTick: 7n } as const;
+
+    for (let i = 0; i < 20; i += 1) {
+      driveAnimationFromActionState(controller, ACTION_DEFS, row);
+    }
+
+    expect(controller.calls.filter(call => call.method === 'playAbility')).toHaveLength(1);
+  });
+
+  it('fires playAbility again when phaseStartedTick advances even though actionId and phase repeat (a fast combo revisiting the same phase)', () => {
+    const def = ACTION_DEFS.find(d => d.motionLayer === 'upper') ?? ACTION_DEFS[0]!;
+    const controller = mockController();
+
+    driveAnimationFromActionState(controller, ACTION_DEFS, { actionId: def.id, phase: ACTION_PHASE.windup, phaseStartedTick: 1n });
+    driveAnimationFromActionState(controller, ACTION_DEFS, { actionId: def.id, phase: ACTION_PHASE.windup, phaseStartedTick: 1n });
+    driveAnimationFromActionState(controller, ACTION_DEFS, { actionId: def.id, phase: ACTION_PHASE.windup, phaseStartedTick: 5n });
+
+    expect(controller.calls.filter(call => call.method === 'playAbility')).toHaveLength(2);
+  });
+
+  it('is unaffected by server_tick-style noise: the edge key is (actionId, phase, phaseStartedTick) only', () => {
+    // The real row also carries `server_tick`, advancing every tick — not part
+    // of `ActionStateRow`, and deliberately not part of the edge key. Nothing
+    // to assert on that field directly (it isn't in the type), but this test
+    // documents the intent: repeated identical rows below are exactly what a
+    // ticking-but-unchanged `server_tick` would look like from this bridge's
+    // point of view, and must stay a no-op.
+    const def = ACTION_DEFS.find(d => d.motionLayer === 'upper') ?? ACTION_DEFS[0]!;
+    const controller = mockController();
+    const row = { actionId: def.id, phase: ACTION_PHASE.windup, phaseStartedTick: 3n } as const;
+
+    driveAnimationFromActionState(controller, ACTION_DEFS, row);
+    driveAnimationFromActionState(controller, ACTION_DEFS, row);
+    driveAnimationFromActionState(controller, ACTION_DEFS, row);
+
+    expect(controller.calls.filter(call => call.method === 'playAbility')).toHaveLength(1);
   });
 });
 

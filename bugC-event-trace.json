@@ -1,0 +1,110 @@
+[
+  {
+    "label": "attack_light (LMB)",
+    "ms": 925,
+    "before": {
+      "actionEvent": 0,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 1,
+      "projectile": 0
+    }
+  },
+  {
+    "label": "block (RMB hold)",
+    "ms": 2453,
+    "before": {
+      "actionEvent": 1,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 0,
+      "projectile": 0
+    }
+  },
+  {
+    "label": "roll (ShiftLeft)",
+    "ms": 3373,
+    "before": {
+      "actionEvent": 0,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 0,
+      "projectile": 0
+    }
+  },
+  {
+    "label": "potion (KeyR)",
+    "ms": 4890,
+    "before": {
+      "actionEvent": 0,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 1,
+      "projectile": 0
+    }
+  },
+  {
+    "label": "ability_bolt (Digit1)",
+    "ms": 6111,
+    "before": {
+      "actionEvent": 1,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 1,
+      "projectile": 1
+    }
+  },
+  {
+    "label": "ability_lance (Digit2)",
+    "ms": 7624,
+    "before": {
+      "actionEvent": 1,
+      "projectile": 1
+    },
+    "after": {
+      "actionEvent": 0,
+      "projectile": 1
+    }
+  },
+  {
+    "label": "ability_nova (Digit3)",
+    "ms": 9242,
+    "before": {
+      "actionEvent": 0,
+      "projectile": 1
+    },
+    "after": {
+      "actionEvent": 1,
+      "projectile": 0
+    }
+  },
+  {
+    "label": "ability_quake (Digit4)",
+    "ms": 11056,
+    "before": {
+      "actionEvent": 1,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 1,
+      "projectile": 0
+    }
+  },
+  {
+    "label": "ability_mend (Digit5)",
+    "ms": 12868,
+    "before": {
+      "actionEvent": 1,
+      "projectile": 0
+    },
+    "after": {
+      "actionEvent": 1,
+      "projectile": 0
+    }
+  }
+]

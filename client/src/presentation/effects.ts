@@ -25,6 +25,7 @@
 
 import * as THREE from 'three';
 import type { ActionDef } from '../actions/defs.generated';
+import { ACTION_PHASE, type ActionPhase } from './animBridge';
 
 // ---------------------------------------------------------------------------
 // The generic pool
@@ -187,6 +188,19 @@ export type EffectProjectileRow = {
 const MELEE_FLASH_SECONDS = 0.15;
 const AOE_RING_SECONDS = 0.4;
 const IMPACT_LIGHT_SECONDS = 0.2;
+const HEAL_LIGHT_SECONDS = 0.5;
+const ROLL_DASH_LIGHT_SECONDS = 0.25;
+
+/**
+ * `lights` is one shared, re-tinted pool (`PointLightState.color`) rather than a
+ * pool per kind of pulse — every caller MUST set `.color` on every spawn, not
+ * just the ones that care, or a slot re-borrowed from a differently-colored
+ * pulse silently keeps the old tint (the pool only resets `key`/`remainingSeconds`
+ * on `spawn`, never the resource's own fields — see `EffectPool.spawn`).
+ */
+const IMPACT_LIGHT_COLOR = 0xffffff;
+const HEAL_LIGHT_COLOR = 0x7dffb2;
+const ROLL_DASH_LIGHT_COLOR = 0xd9e8ff;
 
 export type EffectBudgets = {
   lights?: number;
@@ -200,6 +214,16 @@ export class Effects {
   readonly meleeFlashes: EffectPool<MeleeFlashState>;
   readonly aoeRings: EffectPool<AoeRingState>;
   readonly projectiles: EffectPool<ProjectileVisualState>;
+
+  /**
+   * Last `(actionId, phase, phaseStartedTick)` `onPlayerActionState` has already
+   * reacted to, per player (`identityHex`) — the same edge-detection reason
+   * `animBridge.ts`'s `lastFiredAbilityEdge` exists, restated here because this
+   * is driven straight off `player_action_state`, not an `action_event` row, and
+   * a scene-wide `Effects` singleton (not one instance per player) needs the key
+   * to keep each player's edge separate.
+   */
+  private readonly lastLocalEffectEdge = new Map<string, string>();
 
   constructor(budgets: EffectBudgets = {}) {
     this.lights = createPointLightPool(budgets.lights ?? NUM_EFFECT_LIGHTS);
@@ -248,13 +272,27 @@ export class Effects {
           // point-light pulse, the same as melee's flash.
           const state = this.lights.spawn(event.id, IMPACT_LIGHT_SECONDS);
           state.position.set(event.position.x, event.position.y, event.position.z);
+          state.color.setHex(IMPACT_LIGHT_COLOR);
           state.intensity = 1;
           break;
         }
+        case 'heal_self': {
+          // potion / mend: a soft green pulse on the actor so "something
+          // happened" reads even though the effect itself (health going up)
+          // has no shape of its own.
+          const state = this.lights.spawn(event.id, HEAL_LIGHT_SECONDS);
+          state.position.set(event.position.x, event.position.y, event.position.z);
+          state.color.setHex(HEAL_LIGHT_COLOR);
+          state.intensity = 1.4;
+          break;
+        }
         default:
-          // heal_self / displace_self / invulnerable / mitigation: no visual
-          // here yet. Silent, not an error — a def with an effect kind this
-          // module doesn't render is not a bug, only a plainer cast.
+          // displace_self / invulnerable / mitigation: no `action_event` row
+          // exists for these on the server (they are passive/self-status
+          // checks, not one-shot occurrences — see `effects.rs`'s
+          // `apply_active_enter`), so there is nothing here to react to. The
+          // roll dash gets its visual from `onPlayerActionState` instead,
+          // driven off the action-state row directly rather than an event.
           break;
       }
     }
@@ -280,6 +318,52 @@ export class Effects {
       state.direction.set(row.direction.x, row.direction.y, row.direction.z);
       state.actionId = row.actionId;
     }
+  }
+
+  /**
+   * The client-local counterpart to `onActionEvent`, for effect kinds that
+   * never get an `action_event` row: `displace_self` (today, only `roll`)
+   * fires every server tick through `apply_active_tick`, updating position
+   * directly with no accompanying event — from here, all that's visible is
+   * `player_action_state.phase` reaching Active. Driven straight off that row
+   * (`identityHex`'s own `player_transform.position` for where to put it), one
+   * call per player per frame, cheap to call unconditionally the same way
+   * `driveAnimationFromActionState` is.
+   *
+   * Picked by effect KIND on the def, same discipline as `onActionEvent` —
+   * never by `actionId`.
+   */
+  onPlayerActionState(
+    identityHex: string,
+    state: { actionId: string; phase: ActionPhase; phaseStartedTick: bigint },
+    defs: readonly ActionDef[],
+    position: { x: number; y: number; z: number } | null,
+  ): void {
+    if (state.phase !== ACTION_PHASE.active || !position) return;
+
+    const edgeKey = `${state.actionId} ${state.phase} ${state.phaseStartedTick}`;
+    if (this.lastLocalEffectEdge.get(identityHex) === edgeKey) return;
+    this.lastLocalEffectEdge.set(identityHex, edgeKey);
+
+    const def = defs.find(d => d.id === state.actionId);
+    if (!def?.effects.some(effect => effect.kind === 'displace_self')) return;
+
+    const light = this.lights.spawn(`local:${identityHex}:${edgeKey}`, ROLL_DASH_LIGHT_SECONDS);
+    light.position.set(position.x, position.y, position.z);
+    light.color.setHex(ROLL_DASH_LIGHT_COLOR);
+    light.intensity = 1.1;
+  }
+
+  /**
+   * `lastLocalEffectEdge` is keyed on `identityHex` on a scene-wide singleton
+   * that outlives any one player, so a departed player's edge key would
+   * otherwise sit there forever. Called from `PlayerBody`'s unmount cleanup
+   * (one `PlayerBody` per player, so unmount is the right "this player is
+   * gone" signal) — never called from `onPlayerActionState` itself, since
+   * that runs every frame for players who are still very much present.
+   */
+  clearPlayer(identityHex: string): void {
+    this.lastLocalEffectEdge.delete(identityHex);
   }
 }
 

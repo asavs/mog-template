@@ -80,6 +80,16 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
       if (disposed || !resolved || !groupRef.current) return;
 
       mounted = resolved;
+      // Rig-to-convention seam: `content/restPose.ts` documents the mog_humanoid
+      // rest pose as facing +Z. The yaw this body is mounted under — `game/App.tsx`'s
+      // `Scene` sets `group.rotation.y = <sim yaw>` on the parent of this root, and
+      // `sim/movement.ts`'s forward vector (`forwardX = -sin(yaw), forwardZ = -cos(yaw)`)
+      // — treats yaw 0 as facing -Z, the same convention Three.js cameras use. Left
+      // uncorrected, the rig's face points 180° opposite its direction of travel (the
+      // "moonwalking" bug). Rotate the mounted root once so the rig's local forward
+      // lines up with the sim's forward before any parent yaw is applied on top.
+      const RIG_FORWARD_TO_SIM_FORWARD_RADIANS = Math.PI;
+      resolved.root.rotation.y = RIG_FORWARD_TO_SIM_FORWARD_RADIANS;
       groupRef.current.add(resolved.root);
       for (const [key, clip] of motions) {
         if (clip) clipsRef.current.set(key, clip);
@@ -105,6 +115,7 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
       controllerRef.current?.dispose();
       controllerRef.current = null;
       mounted?.root.removeFromParent();
+      effects.clearPlayer(identityHex);
       setReady(false);
     };
     // Body/controller identity does not depend on which player wears it — only mount once.
@@ -119,10 +130,25 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
     controller.setLocomotion(locomotionKey());
 
     const actionState = store.playerActionState.get(identityHex);
-    driveAnimationFromActionState(controller, ACTION_DEFS, {
+    const resolvedActionState = {
       actionId: actionState?.actionId ?? '',
       phase: (actionState?.phase ?? 0) as ActionPhase,
-    });
+      phaseStartedTick: actionState?.phaseStartedTick ?? 0n,
+    };
+    driveAnimationFromActionState(controller, ACTION_DEFS, resolvedActionState);
+
+    // Client-local visuals for effect kinds with no `action_event` row of
+    // their own (today, `roll`'s dash) — see `Effects.onPlayerActionState`'s
+    // doc. Safe to call unconditionally, unlike `driveNewActionEvents` below:
+    // this identity's `player_action_state` row is only ever read by THIS
+    // `PlayerBody` instance, so there is no witness-side double-spawn to
+    // guard against the way there is for scene-wide `action_event` rows.
+    effects.onPlayerActionState(
+      identityHex,
+      resolvedActionState,
+      ACTION_DEFS,
+      store.playerTransform.get(identityHex)?.position ?? null,
+    );
 
     const health = store.playerHealth.get(identityHex);
     driveDeathReaction(controller, { isDead: health?.isDead ?? false });
