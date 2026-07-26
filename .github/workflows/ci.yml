@@ -110,6 +110,15 @@ jobs:
         working-directory: client
         run: npm test
 
+      # qa-harness's own unit tests (scenario generation, grid/invariant/net-proxy/
+      # preview-target/env-requirements math) live in a separate Vitest project
+      # (qa-harness/vitest.config.ts) deliberately excluded from `npm test`'s
+      # src/**-scoped run — see that config's header comment. Gate them here so a
+      # future edit to the action/scenario matrix can't silently rot untested.
+      - name: Run harness unit tests
+        working-directory: client
+        run: npm run qa:test
+
       # Lets browser-playtest serve the already-built bundle (via `vite
       # preview`) instead of rebuilding it (repo rule: build once, reuse via
       # artifact) — it then exercises the actual production artifact.
