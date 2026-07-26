@@ -7,13 +7,11 @@ This repo uses pull requests as the working unit for humans and agents. Start wi
 Read the docs that match the work:
 
 - `AGENTS.md` for repo orientation, constraints, and access notes.
-- `docs/dev-pipeline.md` for the branch, CI, review, beta deploy, feel-test, and merge pipeline.
+- `docs/dev-pipeline.md` for the branch, CI, review, preview deploy, feel-test, and merge pipeline.
 - `server/GUIDELINES.md` before editing `server/`.
 - `client/GUIDELINES.md` before editing `client/`.
 - `docs/deployment-security-checklist.md` before changing Nginx, systemd, firewall, deploy scripts, secrets, or VM config.
 - `docs/asset-storage.md` before changing large runtime assets or asset loading behavior.
-
-Do not edit, stage, commit, or inspect `example code folder/vibe code game december`.
 
 ## Branch And PR Flow
 
@@ -27,8 +25,8 @@ Do not edit, stage, commit, or inspect `example code folder/vibe code game decem
 8. Patch until CI is green.
 9. Mark the PR ready for review.
 10. Address review feedback.
-11. Let the beta deploy run after approval.
-12. A human feel-tests beta and merges when satisfied.
+11. A trusted approval + green CI spins up an ephemeral preview VM (`mog-pr-<N>`) for the PR.
+12. A human feel-tests the announced preview URL and merges when satisfied.
 
 Branch names should describe the change:
 
@@ -92,17 +90,25 @@ the architecture and how to add a requirement, tool, or environment.
 
 ## VM Usage Policy
 
-The VM (`mog-server` in these docs) is the beta/prod runtime, not a development machine. Normal contributors and agents should not use it for day-to-day coding, Codex sessions, local builds, tmux workspaces, or dependency installation.
+`mog-server` (referenced in these docs) is the prod runtime — scaffolded but off by default, see
+`docs/prod-enable.md` — and the reviewer-daemon host, not a development machine. PR review runs
+against its own short-lived preview VM instead (`mog-pr-<N>`, one per approved PR, torn down on
+merge/close — see `docs/dev-pipeline.md`); there is no persistent shared beta host. Normal
+contributors and agents should not use `mog-server` for day-to-day coding, Codex sessions, local
+builds, tmux workspaces, or dependency installation.
 
-GitHub Actions builds and tests the project. Deploy workflows copy prebuilt artifacts to the VM, where the apply script publishes the server module and swaps static client files into the beta/prod web roots.
+GitHub Actions builds and tests the project. Deploy workflows copy prebuilt artifacts to the
+target VM (preview or prod), where the apply script publishes the server module and swaps in
+the static client files.
 
-SSH into the VM only for explicit operations work such as service inspection, deploy debugging, reviewer daemon maintenance, disk cleanup, or infrastructure changes.
+SSH into a VM only for explicit operations work such as service inspection, deploy debugging,
+reviewer daemon maintenance, disk cleanup, or infrastructure changes.
 
 Runtime and reviewer state should stay separated:
 
 | Path | Purpose |
 |---|---|
-| `/var/www/mog-beta` | Beta static web root. |
+| `/var/www/mog` | Prod static web root (on `mog-server`, when prod deploy is enabled). |
 | `/stdb` | SpacetimeDB runtime and data. |
 | `/tmp/deploy-<sha>` | Temporary CI artifact staging. |
 | `/opt/mog-reviewers/<reviewer-user>` | Per-reviewer daemon checkout. |
@@ -122,7 +128,7 @@ Starts the local root-shaped app at `/`. The Vite dev server proxies `/v1` to lo
 npm run dev:beta
 ```
 
-Starts the local beta-shaped app under `/beta/`. It uses the same local SpacetimeDB proxy and selects the beta database by base path.
+Starts the local beta-shaped app under `/beta/`. It uses the same local SpacetimeDB proxy and selects the `mog-game-beta` database by base path (`client/src/environment.ts`) — useful for exercising the base-path-aware code paths locally; no deployed environment currently serves this build.
 
 ```bash
 npm run build
@@ -134,24 +140,26 @@ Builds the prod/root bundle for `/`.
 npm run build:beta
 ```
 
-Builds the beta bundle for `/beta/`.
-
-Deploy workflows use the correct build mode in CI. Local dev scripts are for fast iteration; deployed beta/prod coherence is verified through GitHub Actions.
+Builds the beta bundle for `/beta/`. No deploy workflow currently ships this build; it exists
+for local base-path testing. CI's own builds use the root/prod bundle (`npm run build`), with
+`VITE_STDB_DB_NAME` overridden per-target where needed (see below).
 
 ## Deployment Model
 
-Beta and prod currently run on the same VM with separate SpacetimeDB databases and web roots:
+There is no persistent beta environment. PR review runs against an ephemeral preview VM
+(`mog-pr-<N>`) instead:
 
-| Environment | Database | Web root | Client base |
-|---|---|---|---|
-| Prod | `mog-game-v1` | `/var/www/mog` | `/` |
-| Beta | `mog-game-beta` | `/var/www/mog-beta` | `/beta/` |
+| Environment | Database | Lifetime |
+|---|---|---|
+| Preview (`mog-pr-<N>`) | `PREVIEW_DB_NAME` (defaults to `mog-game-v1`), a fresh world per deploy | Created on trusted approval + green CI; redeployed in place on new commits; torn down on merge/close or after its 3-hour TTL |
+| Prod (`mog-server`) | `mog-game-v1` | Always-on when enabled (scaffolded off by default — `docs/prod-enable.md`); deploys on push to `master` |
 
-Preview deploys build the PR branch in GitHub Actions and deploy to beta after CI is green and the PR is approved. Prod deploys from `master` after merge.
+Full model, including the ADR-style decision log for why previews are ephemeral rather than a
+shared always-on box, in `docs/dev-pipeline.md`.
 
 Keep deploy configuration source-of-truth files under `deploy/` in sync with live VM config.
 
-Disk cleanup on the VM should use `scripts/cleanup-runtime-artifacts.sh` or the matching `mog-runtime-cleanup.timer`. Do not manually delete `/var/www/mog-beta`, `/var/www/mog`, `/stdb`, reviewer checkouts, or reviewer state directories to recover space.
+Disk cleanup on the VM should use `scripts/cleanup-runtime-artifacts.sh` or the matching `mog-runtime-cleanup.timer`. Do not manually delete `/var/www/mog`, `/stdb`, reviewer checkouts, or reviewer state directories to recover space.
 
 ## Asset Changes
 

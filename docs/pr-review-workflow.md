@@ -34,7 +34,7 @@ Reviewers should inspect the diff directly and use these local docs first:
 - `client/GUIDELINES.md` for React, Three.js, networking, prediction, and interpolation.
 - `docs/spacetimedb-threejs-architecture.md` for the intended system shape.
 - `docs/deployment-security-checklist.md` for infrastructure and secret-handling changes.
-- Feature docs such as `docs/combat-action-state.md` when the PR touches that area.
+- Feature docs such as `docs/action-pipeline.md` when the PR touches that area.
 
 Use external references when a claim depends on language, framework, or platform behavior:
 

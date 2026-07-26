@@ -11,8 +11,7 @@
         "gcloud-auth",
         "headed-display",
         "windows-node-modules",
-        "wsl-available",
-        "lfs-real-assets"
+        "wsl-available"
       ],
       "notes": "gcloud's ssh transport here is PuTTY/plink, so heredoc-over-ssh deploy steps break (openssh-not-plink is unsatisfiable on this host); the SpacetimeDB CLI is Linux-only and lives inside WSL instead of on this PATH."
     },
@@ -25,7 +24,6 @@
         "gcloud-cli",
         "gcloud-auth",
         "headed-display",
-        "lfs-real-assets",
         "openssh-not-plink"
       ],
       "notes": "gh is not installed here — PR-targeting flows run from the Windows host or CI. headed-display needs WSLg or an exported DISPLAY."
@@ -41,7 +39,6 @@
         "gcloud-auth",
         "spacetime-cli",
         "headed-display",
-        "lfs-real-assets",
         "openssh-not-plink"
       ],
       "notes": "No GPU: headed Chromium renders via SwiftShader, so CI runs structural checks only (see ci.yml's browser-playtest job)."

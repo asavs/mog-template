@@ -70,7 +70,7 @@ Before reviewing, the app must read:
 - `server/GUIDELINES.md`
 - `client/GUIDELINES.md`
 - `docs/pr-review-workflow.md`
-- feature docs touched by the PR, such as `docs/combat-action-state.md`
+- feature docs touched by the PR, such as `docs/action-pipeline.md`
 
 The app should inspect the PR diff and nearby changed code. It should not rely only on generated summaries. When a finding depends on platform behavior, the app should consult current official docs for Rust, SpacetimeDB, TypeScript, React, or Three.js rather than relying on a vendored experiment packet.
 

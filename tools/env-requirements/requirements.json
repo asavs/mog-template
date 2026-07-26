@@ -55,16 +55,6 @@
       "severity": "fail",
       "platforms": ["win32"]
     },
-    "lfs-real-assets": {
-      "why": "If Git LFS content was not pulled, the terrain .glb is a ~130-byte pointer file instead of the real model, so the client ships broken terrain and never becomes joinable.",
-      "remedy": "Fetch LFS objects: `git lfs pull`.",
-      "probe": {
-        "type": "file-min-size",
-        "path": "client/public/models/terrain/castle-terrain-zone.glb",
-        "minBytes": 1048576
-      },
-      "severity": "fail"
-    },
     "spacetime-cli": {
       "why": "Publishing and starting the module (`spacetime publish`, `spacetime start`) invoke the SpacetimeDB CLI; absent it the integration and publish steps abort. The CLI is Linux-only, so on the Windows dev setup it lives inside WSL rather than on the host PATH.",
       "remedy": "Install it: `curl -sSf https://install.spacetimedb.com | sh -s -- --yes`.",
@@ -83,7 +73,7 @@
     },
     "preview-up": {
       "label": "Preview-VM create/deploy (scripts/preview-up.sh)",
-      "requires": ["gcloud-cli", "gcloud-auth", "lfs-real-assets", "openssh-not-plink"]
+      "requires": ["gcloud-cli", "gcloud-auth", "openssh-not-plink"]
     },
     "preview-down": {
       "label": "Preview-VM teardown (scripts/preview-down.sh)",

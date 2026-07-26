@@ -16,10 +16,10 @@ dropin/body/body.humanoid.glb                replaces the mannequin
 - **Filename must equal the key**, plus `.glb`, `.gltf`, or `.fbx`.
   Keys are listed in `../keys.ts`. A filename that matches no key is ignored.
 - **Motion files** should contain a single take; the first clip is used.
-- **Rigs** must use the `mog_humanoid` bone names (see `../../avatar/rig.ts`).
+- **Rigs** must use the `mog_humanoid` bone names (see `../rig.ts`).
   Mixamo-style names are also accepted. Anything else will not bind.
 - **Scale** is world units, 1 = 1 metre, against the rest pose in
-  `../restPose.ts` (a 1.8 m figure). Author to that and props line up.
+  `../restPose.ts` (a 2.0 m figure). Author to that and props line up.
 
 Subfolders are for humans — binding is by filename alone, so the layout above is
 convention rather than requirement.

@@ -1,7 +1,7 @@
 /**
  * Canonical rest pose for the `mog_humanoid` rig.
  *
- * `avatar/rig.ts` names the bones; this gives them proportions. Procedural
+ * `rig.ts` names the bones; this gives them proportions. Procedural
  * bodies are built from it, procedural motion is authored against it, and
  * imported art is retargeted onto it — so placeholder and real assets share one
  * skeleton and one scale.
@@ -13,9 +13,10 @@
 import type { RestPose } from './types';
 
 /**
- * Matches `BODY_PRESENTATION.referenceHeight` in the avatar catalog, so
- * procedural and imported bodies normalize to the same size and every socket
- * offset, camera framing, and capsule stays valid across a content swap.
+ * `resolveBody`'s `normalizeHeight` (`resolve.ts`) scales every imported body to
+ * this height, so procedural and imported bodies normalize to the same size and
+ * every socket offset, camera framing, and capsule stays valid across a content
+ * swap.
  */
 const REFERENCE_HEIGHT = 2.0;
 
