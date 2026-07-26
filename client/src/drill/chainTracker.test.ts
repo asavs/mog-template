@@ -194,6 +194,50 @@ describe('DrillChainTracker', () => {
     });
   });
 
+  describe('the drill-prop-change analog — no explicit reset() call needed at this edge either', () => {
+    // `DrillStage.tsx`'s `drill` prop can change (a different routine picked
+    // in the room) without ever calling `chainTrackerRef.current.reset()` —
+    // nothing in this file's wiring does that today, or needs to. This is
+    // the same root-spec-identity check the round-6 test exercises, just
+    // named for the specific edge SandboxStage.tsx's analogous
+    // `ChainAuditionTracker` needed a dedicated fix for in round 8: proof
+    // that `DrillChainTracker` already generalises to it for free, because
+    // every operation re-validates identity rather than trusting a caller
+    // to have reset first.
+    it('switching to a DIFFERENT drill entirely, mid-combo, falls back instead of misusing the old drill\'s chain', () => {
+      const tracker = new DrillChainTracker();
+      // Routine A: play its opener.
+      tracker.playStep(mockController(), 'sword_a', { spec: SWORD_CHAIN, index: 0 }, {});
+
+      // The room switches to routine B — a completely different `Drill`,
+      // with its own chain, whose step at the SAME relative index (1) as
+      // where routine A left off. No `reset()` call anywhere in between.
+      const controller = mockController();
+      const played = tracker.playStep(controller, 'cross', { spec: PUNCH_CHAIN, index: 1 }, {});
+
+      expect(controller.calls.map(c => c.method)).toEqual(['enterAbilityRecovery', 'startChain']);
+      expect(played).toBe(true);
+      const startedSpec = controller.calls[1].args[0] as ChainSpec;
+      expect(startedSpec.steps).toEqual(['cross', 'hook']);
+    });
+
+    it('switching drills then back to the first one\'s opener starts clean, not as a false "sequential" continuation', () => {
+      const tracker = new DrillChainTracker();
+      tracker.playStep(mockController(), 'sword_a', { spec: SWORD_CHAIN, index: 0 }, {});
+      tracker.playStep(mockController(), 'jab', { spec: PUNCH_CHAIN, index: 0 }, {});
+
+      // Back to routine A's opener — this is index 0, so it always takes the
+      // "fresh start" branch regardless of tracked state, but confirms nothing
+      // from the PUNCH_CHAIN detour leaks into it.
+      const controller = mockController();
+      const played = tracker.playStep(controller, 'sword_a', { spec: SWORD_CHAIN, index: 0 }, {});
+
+      expect(controller.calls.map(c => c.method)).toEqual(['enterAbilityRecovery', 'startChain']);
+      expect(controller.calls[1].args[0]).toBe(SWORD_CHAIN);
+      expect(played).toBe(true);
+    });
+  });
+
   describe('general contract', () => {
     it('starts with nothing running', () => {
       const tracker = new DrillChainTracker();
