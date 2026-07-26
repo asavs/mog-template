@@ -30,10 +30,8 @@ pub fn resolve_player_movement(
     current: &Vector3,
     desired: &Vector3,
 ) -> castle_collision::CapsuleMoveResult {
-    let current_castle_supported = castle_support_probe_may_touch(
-        current,
-        castle_collision::GROUND_SNAP_DISTANCE,
-    ) && castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some();
+    let current_castle_supported =
+        castle_ground_support(current, castle_collision::GROUND_SNAP_DISTANCE).is_some();
     resolve_player_movement_with_castle_support(current, desired, current_castle_supported)
 }
 

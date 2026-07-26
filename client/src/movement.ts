@@ -344,13 +344,14 @@ function activeCastleGroundSupport(position: THREE.Vector3, maxDistance: number)
 }
 
 function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance: number): CastleGroundSupportDetails {
-  const cached = readCastleSupportCache(position, maxDistance);
+  const cacheKey = castleSupportCacheKey(position, maxDistance);
+  const cached = readCastleSupportCache(cacheKey);
   if (cached) return cached;
   if (!isCastleCollisionReady()) {
-    return writeCastleSupportCache(position, maxDistance, { position: null, source: 'none' });
+    return writeCastleSupportCache(cacheKey, { position: null, source: 'none' });
   }
   if (!castleSupportProbeMayTouch(position, maxDistance)) {
-    return writeCastleSupportCache(position, maxDistance, { position: null, source: 'none' });
+    return writeCastleSupportCache(cacheKey, { position: null, source: 'none' });
   }
 
   const supportStartedAt = performance.now();
@@ -362,7 +363,7 @@ function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance:
   );
   recordCastleCollisionQuery(performance.now() - supportStartedAt, 'support');
   if (rapierSupport) {
-    return writeCastleSupportCache(position, maxDistance, { position: rapierSupport, source: 'rapier' });
+    return writeCastleSupportCache(cacheKey, { position: rapierSupport, source: 'rapier' });
   }
 
   const customStartedAt = performance.now();
@@ -373,13 +374,12 @@ function activeCastleGroundSupportDetailed(position: THREE.Vector3, maxDistance:
     PLAYER_CAPSULE_HEIGHT,
   );
   recordCastleCollisionQuery(performance.now() - customStartedAt, 'support');
-  return writeCastleSupportCache(position, maxDistance, customSupport
+  return writeCastleSupportCache(cacheKey, customSupport
     ? { position: customSupport, source: 'custom' }
     : { position: null, source: 'none' });
 }
 
-function readCastleSupportCache(position: THREE.Vector3, maxDistance: number): CastleGroundSupportDetails | null {
-  const key = castleSupportCacheKey(position, maxDistance);
+function readCastleSupportCache(key: string): CastleGroundSupportDetails | null {
   const cached = castleSupportCache.get(key);
   if (!cached) return null;
   castleSupportCache.delete(key);
@@ -388,11 +388,9 @@ function readCastleSupportCache(position: THREE.Vector3, maxDistance: number): C
 }
 
 function writeCastleSupportCache(
-  position: THREE.Vector3,
-  maxDistance: number,
+  key: string,
   result: CastleGroundSupportDetails,
 ): CastleGroundSupportDetails {
-  const key = castleSupportCacheKey(position, maxDistance);
   castleSupportCache.set(key, cloneCastleSupportDetails(result));
   if (castleSupportCache.size > MAX_CASTLE_SUPPORT_CACHE_ENTRIES) {
     const oldestKey = castleSupportCache.keys().next().value;
