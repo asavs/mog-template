@@ -234,8 +234,15 @@ export function DrillStage({
 
     let played: boolean;
     if (!step.chain) {
+      // Gameplay opens this window itself as its own ability's timing allows;
+      // the drill has no such clock (the stopwatch that used to do it here was
+      // replaced by the real chain machinery below), so it opens the window by
+      // hand before every direct play — a no-op unless something is actually
+      // still running on the layer this step needs.
+      controller.enterAbilityRecovery();
       played = controller.playAbility(step.action, options);
     } else if (step.chain.index === 0) {
+      controller.enterAbilityRecovery();
       played = controller.startChain(step.chain.spec, options);
     } else {
       const result = controller.advanceChain(step.chain.spec, options);
@@ -247,6 +254,7 @@ export function DrillStage({
         // arriving in sequence from its opener. Start a fresh chain scoped to
         // the remainder, so any step is watchable on its own rather than
         // silently refusing.
+        controller.enterAbilityRecovery();
         played = controller.startChain(
           {
             steps: step.chain.spec.steps.slice(step.chain.index),

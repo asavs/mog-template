@@ -366,6 +366,11 @@ export function SandboxStage({
       cancelWindow: chain.cancelWindow,
       outsideWindow: chain.outsideWindow,
     };
+    // The sandbox has no gameplay clock to open this window on its own timing
+    // (unlike `animBridge`'s real Recovery row); a chain audition is a
+    // deliberate "start this now" click, so it opens the window itself —
+    // a no-op unless a standard clip or a previous chain is still audible.
+    controller.enterAbilityRecovery();
     const started = controller.startChain(spec, chainOptions);
     activeChainSpecRef.current = started ? spec : null;
     lastChainResultRef.current = started ? 'started' : 'inactive';
