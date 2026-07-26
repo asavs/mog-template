@@ -74,8 +74,18 @@ Slot bindings (`shared/actions.json` `slots`) resolve edges server-side:
 - Release before `holdThresholdTicks` resolves the tap action (Charging ticks already served
   convert to its windup); at/after threshold, the hold action releases with its
   `chargeFraction`.
-- Single-bound slots ignore the irrelevant edge. `aim` is captured at Press and refreshed at
-  Release; the server clamps targeted effects to their `maxRange`.
+- Single-bound slots ignore the irrelevant edge. `aim` is accepted on the wire for both Press
+  and Release but is **not persisted or read** — `player_action_state` has no column for it
+  (the schema was frozen during implementation waves; see "Source of truth" above), so it is
+  logged and dropped (`action_input`'s `let _ = aim;`). Targeted effects instead read the
+  actor's LIVE `player_transform` at the moment the active window fires: `melee_arc` and
+  `displace_self` use the live facing (`forward_vector(rotation_y)`) from the actor's
+  position at that tick, and `aoe_at_target` resolves its target point as
+  `actor_position + forward * maxRange` — always exactly `maxRange` out along current facing,
+  never short of it and never off-axis toward wherever the player was aiming when they
+  pressed. A target that turns after Windup starts changes where its own attack lands (nothing
+  freezes `canRotate` mid-cast defs); a target that stands still gets exactly what "aim" would
+  have produced anyway. See "Post-v2 candidates" below for what real aim capture would need.
 
 The threshold lives server-side because sustain and charge require server-measured hold time
 anyway; tap-vs-hold therefore cannot desync from what the server resolves. The client mirrors
@@ -127,3 +137,31 @@ AnimationController: hold-capable defs run the phased path (`<motion>_enter` / `
 from the def's `movement` value; Recovery enters the controller's recovery state; hit/death
 react from `action_event` / health rows. Missing clips degrade to procedural or to nothing —
 a granted action always fires.
+
+A full-layer (`motionLayer: full`), hold-capable def — today, only `attack_heavy` — is silent
+during Charging: `driveAnimationFromActionState` only runs the phased enter/held/exit path for
+`motionLayer: upper` defs, because `AnimationController.playPhased` is hard-wired to the
+overlay slot (`this.overlay`), never the full-body override layer `playFullBody`/`playAbility`
+`{upperBodyOnly: false}` uses. The swing itself plays normally once Charging releases into
+Windup; only the charge-up HOLD has no visual. Checked at Checkpoint B integration for a
+same-wave fix and left as-is: making `playPhased` (or an override-layer sibling of it) support
+the full-body layer is a real change to `anim/AnimationController.ts`'s layer model, not a
+call-site wire-up, and risks the one thing this wave's own charter forbids — destabilizing
+`anim/`'s test suite for a wave that owns integration, not animation-layer design.
+
+## Post-v2 candidates
+
+Gaps intentionally left open by the waves that shipped this pipeline, recorded here so they
+are a choice someone can pick up rather than a thing someone rediscovers by reading Rust:
+
+- **Aim capture.** `action_input`'s `aim` parameter is wire-contract-complete but inert (see
+  "Input" above) — every targeted effect reads live facing/position at fire time instead of
+  wherever the player was actually aiming when they pressed or released. Real aim would need
+  a persisted column (`player_action_state` or a new small table keyed by identity) written at
+  Press and optionally refreshed at Release, since the frozen-schema constraint that blocked it
+  during Wave 2 no longer applies once a wave is scoped to extend the schema on purpose.
+- **Full-body charge pose.** `attack_heavy`'s Charging phase (and any future full-layer,
+  hold-capable def) has no held pose — see the note just above. Needs `AnimationController` to
+  either grow an override-layer phased path alongside `playPhased`'s overlay-only one, or grow
+  a "hold this layer at reduced weight" primitive `animBridge.ts` can drive during Charging.
+  Either is an `anim/` design change with its own test-suite responsibility, not a wire-up.

@@ -7,8 +7,11 @@
  * identity, then mounts the r3f scene and HUD. Movement/camera live in
  * `frame.ts`, driven once per r3f frame from here.
  *
- * `// integration: wave2-anim` marks where agent E's presentation layer
- * (skinned rig + AnimationController) replaces the placeholder capsules.
+ * The scene is `world/Arena.tsx` (ground + lighting + dressing) plus one
+ * `PlayerBody` per live player — the local one driven by `frame.ts`'s
+ * per-tick locomotion output, every other one by its own network rows. See
+ * `game/PlayerBody.tsx` and `game/EffectsView.tsx` for the two halves of
+ * what used to be the placeholder capsule/plane/lights below.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,9 +22,13 @@ import { deriveGates } from '../actions/gates';
 import type { DbConnection } from '../generated';
 import { useInput } from '../input/useInput';
 import { useSpacetimeConnection } from '../network/useSpacetimeConnection';
+import { createEffects } from '../presentation/effects';
 import { shouldEnableQaGameDebug } from '../qaGate';
-import { Hud } from './Hud';
+import { Arena } from '../world/Arena';
+import { EffectsView } from './EffectsView';
 import { createFrameRuntimeState, stepFrame } from './frame';
+import { Hud } from './Hud';
+import { PlayerBody } from './PlayerBody';
 import { attachGameStore, createGameStore, type GameStore } from './sync';
 
 const PLAYER_NAME_KEY = 'mog.playerName';
@@ -57,16 +64,6 @@ declare global {
   }
 }
 
-function PlayerCapsule({ color }: { color: string }) {
-  return (
-    // integration: wave2-anim — a placeholder capsule stands in for the skinned rig.
-    <mesh castShadow position={[0, 0.9, 0]}>
-      <capsuleGeometry args={[0.35, 1.1, 4, 8]} />
-      <meshStandardMaterial color={color} />
-    </mesh>
-  );
-}
-
 interface SceneProps {
   store: GameStore;
   identityHex: string | null;
@@ -80,6 +77,7 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: Scen
   const localGroupRef = useRef<THREE.Group>(null);
   const remoteGroupsRef = useRef(new Map<string, THREE.Group>());
   const [remoteIds, setRemoteIds] = useState<string[]>([]);
+  const effectsRef = useRef(createEffects());
 
   useFrame((state, delta) => {
     const actionState = identityHex ? store.playerActionState.get(identityHex) : undefined;
@@ -126,15 +124,24 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: Scen
 
   return (
     <>
-      <hemisphereLight intensity={1.1} color="#cfd8ee" groundColor="#2a2118" />
-      <directionalLight position={[6, 10, 4]} intensity={2} castShadow />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#1c2030" />
-      </mesh>
+      <Arena />
 
       <group ref={localGroupRef}>
-        <PlayerCapsule color="#7fd1ff" />
+        {identityHex && (
+          <PlayerBody
+            identityHex={identityHex}
+            store={store}
+            effects={effectsRef.current}
+            ownsSceneEffects
+            local={{
+              // Closures, not the current value: `Scene` only re-renders on
+              // player-count changes, but `PlayerBody`'s own `useFrame` needs
+              // the LIVE per-tick sim output — see `PlayerBody`'s module doc.
+              phase: () => runtimeRef.current.localLocomotionPhase,
+              input: () => movementRef.current,
+            }}
+          />
+        )}
       </group>
 
       {remoteIds.map(id => (
@@ -145,9 +152,11 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: Scen
             else remoteGroupsRef.current.delete(id);
           }}
         >
-          <PlayerCapsule color="#ff9f7f" />
+          <PlayerBody identityHex={id} store={store} effects={effectsRef.current} ownsSceneEffects={false} />
         </group>
       ))}
+
+      <EffectsView effects={effectsRef.current} store={store} />
     </>
   );
 }

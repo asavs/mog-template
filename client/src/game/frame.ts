@@ -10,12 +10,19 @@
  * verbatim), and orbit a camera behind the local player. Everything the v1
  * file did for wizard aim targets, jump debug tracing, and per-class
  * animation timing is gone — that is presentation's job now
- * (`presentation/animBridge.ts`, agent E) or does not exist yet.
+ * (`presentation/animBridge.ts`) or does not exist yet.
  *
- * `predictTick` is the ONE integration seam for agent M's authoritative
- * movement simulation (`../sim/movement`, a parallel worktree — not present
- * in this tree). Until it lands, `localSimFallback.ts` stands in: flat
- * ground, no collision. Flip the import below when it does.
+ * `predictTick` is the CSP predictor: the authoritative movement sim
+ * (`../sim/movement`'s `simulateMovementTick`) run against the same arena
+ * ground/collision (`../sim/ground`'s `createArenaGround`) the server checks
+ * transforms against, so a client-predicted position only ever needs a
+ * correction from network jitter or an action-gated speed change the client
+ * hasn't heard about yet — never from disagreeing physics.
+ *
+ * Locomotion (`../sim/locomotion`'s FSM) is derived per predicted tick from
+ * the resulting sim state and exposed on `FrameRenderState.localLocomotion`
+ * — presentation (`game/App.tsx`) reads it to pick a `motion.loco_*` key
+ * without re-deriving grounded/moving/sprint state of its own.
  */
 
 import * as THREE from 'three';
@@ -26,15 +33,17 @@ import {
   toSnapshot,
   type TransformSnapshot,
 } from '../netcode';
-import type { GameStore } from './sync';
-// integration: wave2-movement — swap for `import { simulateMovementTick } from '../sim/movement'`
-// once agent M's module lands, keeping the same (state, input, rotationY, movementFraction,
-// dtSeconds) => state signature.
+import type { InputState } from '../generated/types';
+import type { MovementState } from '../input/intents';
+import { createArenaGround, type Ground } from '../sim/ground';
 import {
-  simulateMovementTickFallback as simulateMovementTick,
-  type MovementInput,
-  type MovementSimState,
-} from './localSimFallback';
+  isGroundedAt,
+  isMovingInput,
+  phaseFor,
+  type LocomotionPhase,
+} from '../sim/locomotion';
+import { simulateMovementTick, type PlayerSimState } from '../sim/movement';
+import type { GameStore } from './sync';
 
 const TICK_DT = 1 / 20; // matches ACTIONS_TICK_RATE / the server's fixed tick
 const MAX_TICKS_PER_FRAME = 5; // a stalled tab catches up over several frames, never in one jump
@@ -42,27 +51,45 @@ const MAX_PREDICTED_TICKS = 128; // ~6.4s of buffered ticks at 20Hz — generous
 const CAMERA_DISTANCE = 5;
 const CAMERA_HEIGHT = 1.6;
 
+/** One shared, stateless ground/collision resolver — the same rows `sim/ground.ts` bakes from `shared/arena.json`. */
+const ARENA_GROUND: Ground = createArenaGround();
+
 export interface PredictedTick {
   clientTick: number;
-  input: MovementInput;
+  input: MovementState;
   rotationY: number;
   movementFraction: number;
   /** The sim state immediately after this tick was applied. */
-  result: MovementSimState;
+  result: PlayerSimState;
 }
 
-/** One fixed-tick step. The sole call site `predictTick` funnels through, for the integration seam above. */
+/** Wire-shaped movement input has no `sprint` (no default key binds it — see `docs/action-pipeline.md`). */
+function toInputState(movement: MovementState): InputState {
+  return { ...movement, sprint: false, sequence: 0, clientTick: 0 };
+}
+
+/** One fixed-tick step against the real authoritative sim + arena ground. */
 export function predictTick(
-  sim: MovementSimState,
-  input: MovementInput,
+  sim: PlayerSimState,
+  input: MovementState,
   rotationY: number,
   movementFraction: number,
-): MovementSimState {
-  return simulateMovementTick(sim, input, rotationY, movementFraction, TICK_DT);
+): PlayerSimState {
+  return simulateMovementTick(sim, toInputState(input), rotationY, ARENA_GROUND, TICK_DT, movementFraction);
+}
+
+/** The locomotion phase a just-applied tick settled into — see module doc. */
+function locomotionPhaseFor(result: PlayerSimState, input: MovementState): LocomotionPhase {
+  return phaseFor(
+    isGroundedAt(result.position, ARENA_GROUND.groundY),
+    result.verticalVelocity,
+    isMovingInput(toInputState(input)),
+    result.sprintActive,
+  );
 }
 
 export interface ReconcileResult {
-  sim: MovementSimState;
+  sim: PlayerSimState;
   remaining: PredictedTick[];
 }
 
@@ -73,10 +100,10 @@ export interface ReconcileResult {
  * own recorded input/rotation/movementFraction — never re-derived, so a
  * replay is deterministic even if the live input has since changed.
  *
- * Vertical velocity/grounded state do not travel over the wire (the server
- * only sends position), so the replay inherits whatever the first remaining
- * predicted tick already computed for them rather than resetting to zero —
- * otherwise every reconcile would cancel an in-flight jump.
+ * Vertical velocity/rotation/sprint state do not travel over the wire (the
+ * server only sends position), so the replay inherits whatever the first
+ * remaining predicted tick already computed for them rather than resetting
+ * to zero — otherwise every reconcile would cancel an in-flight jump.
  */
 export function reconcileLocalPrediction(
   predicted: readonly PredictedTick[],
@@ -85,10 +112,12 @@ export function reconcileLocalPrediction(
 ): ReconcileResult {
   const pending = predicted.filter(tick => tick.clientTick > lastProcessedClientTick);
 
-  let sim: MovementSimState = {
+  let sim: PlayerSimState = {
     position: { ...serverPosition },
+    rotationY: pending[0]?.result.rotationY ?? 0,
     verticalVelocity: pending[0]?.result.verticalVelocity ?? 0,
-    isGrounded: pending[0]?.result.isGrounded ?? true,
+    wasJumpPressed: pending[0]?.result.wasJumpPressed ?? false,
+    sprintActive: pending[0]?.result.sprintActive ?? false,
   };
 
   const remaining: PredictedTick[] = [];
@@ -122,10 +151,14 @@ export function computeOrbitCamera(
 }
 
 export interface FrameRuntimeState {
-  local: MovementSimState;
+  local: PlayerSimState;
+  /** The locomotion phase the most recent predicted (or reconciled-idle) tick settled into. */
+  localLocomotionPhase: LocomotionPhase;
   predicted: PredictedTick[];
   clientTickCounter: number;
   lastProcessedClientTick: number;
+  /** `player_transform.serverTick` as of the last reconcile — see `reconcileFromStore`. */
+  lastServerTick: bigint | null;
   initializedFromServer: boolean;
   accumulatorSeconds: number;
   renderTickClock: RenderTickClock;
@@ -134,10 +167,12 @@ export interface FrameRuntimeState {
 
 export function createFrameRuntimeState(): FrameRuntimeState {
   return {
-    local: { position: { x: 0, y: 0, z: 0 }, verticalVelocity: 0, isGrounded: true },
+    local: { position: { x: 0, y: 0, z: 0 }, rotationY: 0, verticalVelocity: 0, wasJumpPressed: false, sprintActive: false },
+    localLocomotionPhase: 'grounded_idle',
     predicted: [],
     clientTickCounter: 0,
     lastProcessedClientTick: 0,
+    lastServerTick: null,
     initializedFromServer: false,
     accumulatorSeconds: 0,
     renderTickClock: new RenderTickClock(),
@@ -150,7 +185,7 @@ export interface StepFrameContext {
   store: GameStore;
   /** Local player's identity, hex-encoded — the same key sync.ts uses. Null before joining. */
   localIdentityHex: string | null;
-  movement: MovementInput;
+  movement: MovementState;
   /** Facing yaw AND camera yaw — see input/useInput.ts's module doc for why they're one value. */
   rotationY: number;
   pitch: number;
@@ -166,6 +201,8 @@ export interface RemoteRenderState {
 export interface FrameRenderState {
   localPosition: THREE.Vector3;
   localRotationY: number;
+  /** For presentation's `motion.loco_*` key selection — see module doc. */
+  localLocomotionPhase: LocomotionPhase;
   remotes: ReadonlyMap<string, RemoteRenderState>;
   camera: OrbitCamera;
 }
@@ -183,7 +220,13 @@ export function stepFrame(runtime: FrameRuntimeState, ctx: StepFrameContext): Fr
   );
   const camera = computeOrbitCamera(localPosition, ctx.rotationY, ctx.pitch);
 
-  return { localPosition, localRotationY: ctx.rotationY, remotes, camera };
+  return {
+    localPosition,
+    localRotationY: ctx.rotationY,
+    localLocomotionPhase: runtime.localLocomotionPhase,
+    remotes,
+    camera,
+  };
 }
 
 function reconcileFromStore(runtime: FrameRuntimeState, ctx: StepFrameContext): void {
@@ -194,25 +237,38 @@ function reconcileFromStore(runtime: FrameRuntimeState, ctx: StepFrameContext): 
   if (!runtime.initializedFromServer) {
     runtime.local = {
       position: { x: transform.position.x, y: transform.position.y, z: transform.position.z },
+      rotationY: transform.rotationY,
       verticalVelocity: 0,
-      isGrounded: true,
+      wasJumpPressed: false,
+      sprintActive: false,
     };
     runtime.predicted = [];
     runtime.initializedFromServer = true;
+    runtime.lastServerTick = transform.serverTick;
     return;
   }
 
+  // Gated on `player_transform.serverTick` — NOT on a fresh `player_input_ack` — because not
+  // every authoritative position change is input-driven: `roll`'s `displace_self` effect (and
+  // any future knockback/pull) moves the actor straight through
+  // `player_logic`/`collision::resolve_player_movement` without ever touching
+  // `update_player_input`, so no new ack accompanies it. `player_transform` only republishes on
+  // an actual pose delta (`transform_needs_publish_from_snapshot` — no idle rebroadcast), so
+  // "the row changed" is exactly "there is a correction worth reconciling," ack or not.
+  if (transform.serverTick === runtime.lastServerTick) return;
+  runtime.lastServerTick = transform.serverTick;
+
   const ack = ctx.store.playerInputAck.get(ctx.localIdentityHex);
-  if (!ack || ack.lastProcessedClientTick === runtime.lastProcessedClientTick) return;
+  const lastProcessedClientTick = ack?.lastProcessedClientTick ?? runtime.lastProcessedClientTick;
 
   const { sim, remaining } = reconcileLocalPrediction(
     runtime.predicted,
     transform.position,
-    ack.lastProcessedClientTick,
+    lastProcessedClientTick,
   );
   runtime.local = sim;
   runtime.predicted = remaining;
-  runtime.lastProcessedClientTick = ack.lastProcessedClientTick;
+  runtime.lastProcessedClientTick = lastProcessedClientTick;
 }
 
 function predictPendingTicks(runtime: FrameRuntimeState, ctx: StepFrameContext): void {
@@ -226,6 +282,7 @@ function predictPendingTicks(runtime: FrameRuntimeState, ctx: StepFrameContext):
 
     const result = predictTick(runtime.local, ctx.movement, ctx.rotationY, ctx.movementFraction);
     runtime.local = result;
+    runtime.localLocomotionPhase = locomotionPhaseFor(result, ctx.movement);
     runtime.predicted.push({
       clientTick: runtime.clientTickCounter,
       input: ctx.movement,

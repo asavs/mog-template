@@ -6,6 +6,11 @@ use crate::common::{
 use crate::locomotion::{self, LocomotionContext, LocomotionState, Vec2, DEFAULT_LOCOMOTION_CONFIG};
 use crate::{PlayerJumpState, PlayerTransform};
 
+/// `movement_fraction` is `actions::state::movement_fraction(action_id, phase)` — the same
+/// value the client mirrors via `actions/gates.ts`'s `deriveGates(...).movementFraction` into
+/// its own CSP predictor (`client/src/sim/movement.ts`), so an action that roots the player
+/// (e.g. `attack_heavy`'s windup, whose `movement.windup` is `0.0`) roots it identically on
+/// both sides rather than letting the client predict ahead of a server correction.
 pub fn calculate_next_position(
     current_pos: &Vector3,
     current_ground_y: f32,
@@ -14,6 +19,7 @@ pub fn calculate_next_position(
     sprint_active: bool,
     vertical_velocity: &mut f32,
     was_jump_pressed: &mut bool,
+    movement_fraction: f32,
 ) -> Vector3 {
     let is_grounded = locomotion::is_grounded_at(current_pos, current_ground_y);
     let current_locomotion = LocomotionState {
@@ -80,7 +86,7 @@ pub fn calculate_next_position(
             PLAYER_SPEED * SPRINT_MULTIPLIER
         } else {
             PLAYER_SPEED
-        };
+        } * movement_fraction;
         let move_dist = speed * DELTA_TIME;
 
         next_pos.x += (move_dir.x / length) * move_dist;
@@ -138,6 +144,7 @@ pub fn update_transform(
     jump_state: &mut PlayerJumpState,
     input: &InputState,
     rotation_y: f32,
+    movement_fraction: f32,
 ) {
     let ground_y = crate::common::GROUND_Y;
     let was_grounded = transform.position.y <= ground_y + GROUNDED_EPSILON;
@@ -151,6 +158,7 @@ pub fn update_transform(
         sprint_active,
         &mut jump_state.vertical_velocity,
         &mut jump_state.was_jump_pressed,
+        movement_fraction,
     );
 
     let mut resolved_position = collision::resolve_player_movement(&transform.position, &desired_position).position;
@@ -349,6 +357,7 @@ mod tests {
             false,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         assert_eq!(next, start);
     }
@@ -367,6 +376,7 @@ mod tests {
             false,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         assert_close(next.x, 0.0);
         assert_close(next.z, -PLAYER_SPEED * DELTA_TIME);
@@ -387,6 +397,7 @@ mod tests {
             false,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         let dist = (next.x * next.x + next.z * next.z).sqrt();
         assert_close(dist, PLAYER_SPEED * DELTA_TIME);
@@ -407,6 +418,7 @@ mod tests {
             true,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         assert_close(next.z, -(PLAYER_SPEED * SPRINT_MULTIPLIER * DELTA_TIME));
     }
@@ -433,6 +445,7 @@ mod tests {
             false,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         assert_close(next.z, -PLAYER_SPEED * DELTA_TIME);
     }
@@ -479,6 +492,7 @@ mod tests {
             false,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         assert_close(next.x, -PLAYER_SPEED * DELTA_TIME);
         assert_close(next.z, 0.0);
@@ -498,6 +512,7 @@ mod tests {
             false,
             &mut vertical_velocity,
             &mut was_jump_pressed,
+            1.0,
         );
         assert_close(next.y, JUMP_FORCE * DELTA_TIME);
     }
@@ -516,6 +531,36 @@ mod tests {
             total_airtime_seconds > 0.65 && total_airtime_seconds < 0.75,
             "jump airtime should stay near 0.7s, got {total_airtime_seconds}"
         );
+    }
+
+    #[test]
+    fn movement_fraction_zero_roots_the_player_like_attack_heavys_windup() {
+        // Parity fixture for docs/action-pipeline.md's "movement" field: the client mirrors
+        // this exact value via `actions/gates.ts`'s `deriveGates(...).movementFraction`
+        // (see `client/src/sim/movement.test.ts`'s matching test) into its own CSP predictor,
+        // so both sides root the player identically during a def whose windup fraction is 0.
+        use crate::actions::state::{find_action_def, movement_fraction, PHASE_WINDUP};
+
+        let def = find_action_def("attack_heavy").expect("attack_heavy is a defined action");
+        assert_eq!(def.movement.windup, 0.0);
+        let fraction = movement_fraction("attack_heavy", PHASE_WINDUP);
+        assert_eq!(fraction, 0.0);
+
+        let mut input = default_input();
+        input.forward = true;
+        let mut vertical_velocity = 0.0;
+        let mut was_jump_pressed = false;
+        let next = calculate_next_position(
+            &Vector3::zero(),
+            GROUND_Y,
+            0.0,
+            &input,
+            false,
+            &mut vertical_velocity,
+            &mut was_jump_pressed,
+            fraction,
+        );
+        assert_eq!(next, Vector3::zero());
     }
 
     // --- Golden movement-trace fixture (Wave 2M pass B) ---
@@ -776,7 +821,9 @@ mod tests {
 
         for (tick, (trace_input, rotation_y)) in script.iter().enumerate() {
             let input = trace_input.to_input_state();
-            update_transform(&mut transform, &mut jump_state, &input, *rotation_y);
+            // No action state during trace generation — 1.0 matches this fixture's
+            // pre-existing (action-pipeline-agnostic) recorded values exactly.
+            update_transform(&mut transform, &mut jump_state, &input, *rotation_y, 1.0);
             frames.push(TraceFrame {
                 tick: tick as u32,
                 input: *trace_input,
@@ -818,7 +865,12 @@ mod tests {
             std::fs::create_dir_all(parent).expect("create fixtures directory");
         }
         std::fs::write(path, format!("{json}\n")).expect("write movement-trace.json");
-        eprintln!(
+        // `spacetime publish`'s print-statement scanner matches source text crate-wide
+        // (comments included) without respecting `#[cfg(test)]`, so a bare stderr-print macro
+        // here — this fn only ever runs via `cargo test -- --ignored`, never in the published
+        // module — still blocks publish. `log` is already a real dependency (see Cargo.toml);
+        // using it here costs nothing and satisfies the scanner.
+        log::info!(
             "wrote {} frames to {}",
             trace.frames.len(),
             path.display()

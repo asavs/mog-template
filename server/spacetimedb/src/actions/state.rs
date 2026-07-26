@@ -17,10 +17,10 @@ pub fn find_action_def(action_id: &str) -> Option<&'static ActionDef> {
 /// Movement-speed multiplier for a player currently in `phase` of `action_id`.
 /// This is the ONLY coordination point between the action pipeline and the movement tick —
 /// callers must key off this signature and never branch on action_id directly.
-/// TODO(movement, out of this slice's scope): the movement tick (player_logic.rs /
-/// a future movement.rs, owned by a parallel wave) does not yet multiply desired move
-/// speed by this fraction. Wire it in at the movement tick's speed calculation once that
-/// module is ready to consume it.
+/// Wired into the movement tick at `tick.rs::game_tick`, which reads this player's
+/// `player_action_state` row and multiplies it into `player_logic::update_transform`'s
+/// speed calculation. The client mirrors the same value via `actions/gates.ts`'s
+/// `deriveGates(...).movementFraction` into its own CSP predictor (`sim/movement.ts`).
 pub fn movement_fraction(action_id: &str, phase: u8) -> f32 {
     if action_id.is_empty() {
         return 1.0;

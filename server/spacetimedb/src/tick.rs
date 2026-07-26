@@ -47,16 +47,23 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
                 .identity()
                 .find(transform.identity)
                 .unwrap_or_else(|| PlayerJumpState::default_for_identity(transform.identity));
-            // NOTE(wave2-actions): actions::state::movement_fraction(action_id, phase) is the
-            // sanctioned hook for gating move speed by action phase (see
-            // docs/action-pipeline.md, "movement" field). player_logic::update_transform /
-            // calculate_next_position (owned by the movement slice) does not yet multiply
-            // desired speed by it — wiring that in is out of this slice's scope.
+            // actions::state::movement_fraction(action_id, phase) gates move speed by action
+            // phase (docs/action-pipeline.md, "movement" field). A player with no action-state
+            // row (never granted one, or idle) reads as fraction 1.0 — the same fail-open the
+            // client's `deriveGates` uses for an unrecognized/empty action id.
+            let movement_fraction = ctx
+                .db
+                .player_action_state()
+                .identity()
+                .find(transform.identity)
+                .map(|state| actions::state::movement_fraction(&state.action_id, state.phase))
+                .unwrap_or(1.0);
             player_logic::update_transform(
                 &mut transform,
                 &mut jump_state,
                 &player_input.input,
                 player_input.rotation_y,
+                movement_fraction,
             );
             if ctx
                 .db

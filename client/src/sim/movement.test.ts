@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deriveGates, Phase } from '../actions/gates';
 import type { InputState } from '../generated/types';
 import { createArenaGround } from './ground';
 import {
@@ -180,6 +181,27 @@ describe('authoritative movement tick parity', () => {
 
     expect(current.position.x).toBeLessThan(-10.5);
     expect(current.position.z).toBeLessThan(-10);
+  });
+
+  it('roots the player during windup for a def whose movement.windup is 0 (attack_heavy) — parity with server player_logic::tests', () => {
+    // Mirrors server/spacetimedb/src/player_logic.rs's
+    // `movement_fraction_zero_roots_the_player_like_attack_heavys_windup`: both sides derive
+    // the SAME fraction from the same def (docs/action-pipeline.md's "movement" field) and
+    // must root movement identically, or client prediction would diverge from a server
+    // correction the instant an action like this starts.
+    const gates = deriveGates('attack_heavy', Phase.Windup);
+    expect(gates.movementFraction).toBe(0);
+
+    const next = simulateMovementTick(
+      state(),
+      input({ forward: true }),
+      0,
+      ground,
+      DELTA_TIME,
+      gates.movementFraction,
+    );
+
+    expect(next.position).toEqual(state().position);
   });
 
   it('does not activate sprint from a midair press', () => {
