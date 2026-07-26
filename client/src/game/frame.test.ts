@@ -7,6 +7,7 @@ import {
   predictTick,
   reconcileLocalPrediction,
   stepFrame,
+  type FrameRuntimeState,
   type PredictedTick,
   type StepFrameContext,
 } from './frame';
@@ -138,6 +139,29 @@ describe('stepFrame', () => {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function rowAt(position: { x: number; y: number; z: number }, serverTick: bigint): any {
+    return {
+      identity: { toHexString: () => 'local' },
+      position,
+      rotationY: 0,
+      isMoving: false,
+      movementState: { isGrounded: true, wasGrounded: true, isAirborne: false, sprintIntent: false, sprintActive: false },
+      serverTick,
+      updatedAt: {},
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function ackAt(lastProcessedClientTick: number, serverTick: bigint): any {
+    return {
+      identity: { toHexString: () => 'local' },
+      lastInputSeq: lastProcessedClientTick,
+      lastProcessedClientTick,
+      serverTick,
+    };
+  }
+
   it('initializes local position from the first player_transform row seen for the local identity', () => {
     const store = makeStore();
     store.playerTransform.set('local', {
@@ -208,17 +232,6 @@ describe('stepFrame', () => {
     // `player_transform` row itself (gated on `serverTick`, not on the ack) or a roll would
     // fire successfully server-side and the local render would never show it moving.
     const store = makeStore();
-    const rowAt = (position: { x: number; y: number; z: number }, serverTick: bigint) => ({
-      identity: { toHexString: () => 'local' },
-      position,
-      rotationY: 0,
-      isMoving: false,
-      movementState: { isGrounded: true, wasGrounded: true, isAirborne: false, sprintIntent: false, sprintActive: false },
-      serverTick,
-      updatedAt: {},
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any;
-
     store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 0n));
     const runtime = createFrameRuntimeState();
     stepFrame(runtime, ctx(store)); // consumes the init frame — no movement held
@@ -228,6 +241,82 @@ describe('stepFrame', () => {
     const render = stepFrame(runtime, ctx(store));
 
     expect(render.localPosition.z).toBeCloseTo(-4, 5);
+
+    // No lingering glide: roll's displacement is bigger than VISUAL_CORRECTION_SNAP_METERS, so it
+    // applies instantly (offset cleared to zero) rather than gliding — the NEXT frame (no further
+    // store change) stays exactly at -4 instead of sliding back toward the pre-roll position.
+    const next = stepFrame(runtime, ctx(store));
+    expect(next.localPosition.z).toBeCloseTo(-4, 5);
+  });
+
+  it('spreads a genuine reconciliation correction across several frames instead of snapping in one (the #216 teleport fix)', () => {
+    // Simulates the state right after a reconcile landed a small, real correction (the kind real
+    // network latency produces — not a huge displacement like roll): the physics position
+    // (`runtime.local`) has already moved to the corrected spot, but the render is still one
+    // frame's worth of lag behind it via `visualCorrectionOffset`. Constructed directly rather
+    // than driven through a live reconcile so the test isolates the decay behavior itself.
+    const store = makeStore();
+    store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 5n));
+    const runtime: FrameRuntimeState = createFrameRuntimeState();
+    runtime.initializedFromServer = true;
+    runtime.lastServerTick = 5n; // matches the store row — reconcileFromStore will no-op below
+    runtime.local = { position: { x: 0, y: 0, z: -1 }, rotationY: 0, verticalVelocity: 0, wasJumpPressed: false, sprintActive: false };
+    runtime.visualCorrectionOffset = { x: 0, y: 0, z: 1 }; // render started 1 unit behind physics
+
+    const zSamples: number[] = [];
+    for (let i = 0; i < 30; i += 1) {
+      zSamples.push(stepFrame(runtime, ctx(store)).localPosition.z);
+    }
+
+    // The very first frame after the correction does NOT already sit on the corrected physics
+    // position (-1) — the old, unsmoothed code would render -1 immediately. It's still between
+    // the old render spot (0) and the corrected one (-1).
+    expect(zSamples[0]).toBeGreaterThan(-1);
+    expect(zSamples[0]).toBeLessThan(0);
+
+    // Monotonic convergence — never overshoots or oscillates away from the physics position.
+    for (let i = 1; i < zSamples.length; i += 1) {
+      expect(zSamples[i]).toBeLessThanOrEqual(zSamples[i - 1] + 1e-9);
+    }
+    // Fully settled well within the 1.5s this loop covers.
+    expect(zSamples[zSamples.length - 1]).toBeCloseTo(-1, 2);
+  });
+
+  it('does not drift or teleport across a movement->idle boundary when the input ack lags several ticks behind (historical #176/#177 signature)', () => {
+    const store = makeStore();
+    store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 0n));
+    const runtime = createFrameRuntimeState();
+    stepFrame(runtime, ctx(store)); // init frame — tick 1 predicted, STILL
+
+    // Walk forward for 10 ticks, then release to idle — no ack has arrived for ANY of this yet
+    // (real latency: the ack is still in flight).
+    let render = stepFrame(runtime, ctx(store, { movement: WALK_FORWARD }));
+    for (let i = 0; i < 9; i += 1) {
+      render = stepFrame(runtime, ctx(store, { movement: WALK_FORWARD }));
+    }
+    const zAfterWalking = render.localPosition.z;
+    expect(zAfterWalking).toBeLessThan(0);
+
+    for (let i = 0; i < 5; i += 1) {
+      render = stepFrame(runtime, ctx(store));
+    }
+    const zAfterStopping = render.localPosition.z;
+    expect(zAfterStopping).toBeCloseTo(zAfterWalking, 5); // genuinely idle: no further drift
+
+    // The ack finally lands, but only acknowledges the first 3 of the 10 walking ticks — the
+    // server was several ticks behind the client the whole time, exactly the lagged-ack shape
+    // real latency produces. The transform row carries the SAME deterministic replay result a
+    // correct client would compute for those 3 ticks, so a correct reconcile is a near-no-op.
+    let serverSim = { position: { x: 0, y: 0, z: 0 }, rotationY: 0, verticalVelocity: 0, wasJumpPressed: false, sprintActive: false };
+    for (let i = 0; i < 3; i += 1) serverSim = predictTick(serverSim, WALK_FORWARD, 0, 1);
+    store.playerInputAck.set('local', ackAt(3, 1n));
+    store.playerTransform.set('local', rowAt(serverSim.position, 1n));
+
+    const reconciled = stepFrame(runtime, ctx(store));
+    // Crossing the movement->idle boundary with a lagging ack must not register as a large
+    // correction: the #176/#177 bug (slicing predicted ticks by raw tick-count/delta rather than
+    // by the acked clientTick) discarded unacked movement ticks here and produced drift/teleport.
+    expect(Math.abs(reconciled.localPosition.z - zAfterStopping)).toBeLessThan(0.3);
   });
 
   it('freezes character yaw and predicted movement direction while canRotate is false, but leaves the camera free', () => {
