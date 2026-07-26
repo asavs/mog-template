@@ -1,13 +1,215 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-height: 100svh;
+  background: #05070c;
+  color: #e6ebf5;
+  overflow: hidden;
+}
+
+#root {
+  height: 100svh;
+}
+
+.game-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.game-shell canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- connection / join ----------------------------------------------------- */
+
+.connecting {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 1.1rem;
+  color: #9aa4bd;
+}
+
+.join-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 12, 0.72);
+}
+
+.join-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px 32px;
+  background: #12151d;
+  border: 1px solid #232838;
+  border-radius: 10px;
+  min-width: 260px;
+}
+
+.join-card h1 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.join-card input {
+  padding: 10px 12px;
+  background: #0e1016;
+  border: 1px solid #2c3245;
+  border-radius: 6px;
+  color: inherit;
+  font-size: 1rem;
+}
+
+.join-card button {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #4d7cff;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.join-card button:disabled {
+  background: #2c3245;
+  cursor: not-allowed;
+}
+
+.lock-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 1.2rem;
+  color: #e6ebf5;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  background: rgba(5, 7, 12, 0.25);
+}
+
+/* --- HUD --------------------------------------------------------------------- */
+
+.hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  pointer-events: none;
+  font-size: 13px;
+}
+
+.hud__health {
+  position: relative;
+  width: 260px;
+  height: 18px;
+  background: #1a1e2a;
+  border: 1px solid #2c3245;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hud__health-fill {
+  height: 100%;
+  background: #d94b4b;
+  transition: width 120ms linear;
+}
+
+.hud__health-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e6ebf5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.hud__charge {
+  position: relative;
+  width: 160px;
+  height: 8px;
+  background: #1a1e2a;
+  border: 1px solid #2c3245;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hud__charge-fill {
+  height: 100%;
+  background: #f0b429;
+  transition: width 50ms linear;
+}
+
+.hud__hotbar {
+  display: flex;
+  gap: 6px;
+}
+
+.hud__slot {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #12151d;
+  border: 1px solid #2c3245;
+  border-radius: 6px;
+  overflow: hidden;
   text-align: center;
+}
+
+.hud__slot-name {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: #7a84a0;
+}
+
+.hud__slot-action {
+  font-size: 9px;
+  color: #e6ebf5;
+  padding: 0 2px;
+  word-break: break-word;
+}
+
+.hud__slot-cooldown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.hud__slot-resource {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 9px;
+  color: #9adcff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
