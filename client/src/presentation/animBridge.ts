@@ -52,6 +52,16 @@ export type ActionStateRow = {
   /** `''` when idle. */
   actionId: string;
   phase: ActionPhase;
+  /**
+   * Server tick the current `phase` began on (`player_action_state.phase_started_tick`).
+   * The row also carries `server_tick`, which advances every tick regardless of
+   * whether the action changed — NOT part of this bridge's edge key, or every
+   * call would look like a fresh edge. `phaseStartedTick` is what actually
+   * distinguishes "still in this phase" from "re-entered this phase," including
+   * the case a combo revisits the same `(actionId, phase)` pair back-to-back
+   * with nothing else visibly different in between. See `driveAnimationFromActionState`.
+   */
+  phaseStartedTick: bigint;
 };
 
 /**
@@ -113,6 +123,36 @@ const INSTANT_PLAY_PHASES: ReadonlySet<ActionPhase> = new Set([
 ]);
 
 /**
+ * The last `(actionId, phase, phaseStartedTick)` this bridge has already fired
+ * `playAbility` for, per controller (i.e. per player — see the module doc: the
+ * same bridge functions drive every player's own `AnimationController`
+ * instance, so a `WeakMap` keyed by controller keeps that state isolated
+ * without making the exported functions themselves stateful for one player).
+ *
+ * Why this exists: `AnimationController.playAbility`'s own re-fire guard
+ * (`abilityInRecovery`) only blocks a re-fire WHILE the clip is still
+ * playing. A one-shot ability clip that finishes before gameplay reports
+ * Recovery (the common case whenever the clip is shorter than the
+ * windup+active window) clears the controller's overlay slot on its own —
+ * see `AnimationController`'s `onActionFinished`. Called every render frame
+ * with the SAME `(action_id, phase)` the row has held for several frames (or
+ * ticks), this bridge would otherwise see a now-empty overlay slot and
+ * replay the clip from frame 0 — the whole clip firing back-to-back for as
+ * long as the row stays in that phase. That is the "one cast loops forever"
+ * failure mode. Tracking the edge here, upstream of the controller, fixes it
+ * regardless of how the controller's own slot bookkeeping behaves.
+ */
+const lastFiredAbilityEdge = new WeakMap<PresentationController, string | null>();
+
+/** `(actionId, phase, phaseStartedTick)` as one comparable key. Deliberately NOT
+ * `server_tick` — that field advances every tick regardless of whether the
+ * action changed, so keying on it would make every call look like a fresh
+ * edge and defeat the whole point. */
+function actionEdgeKey(state: ActionStateRow): string {
+  return `${state.actionId} ${state.phase} ${state.phaseStartedTick}`;
+}
+
+/**
  * Drive every def's presentation from the current action-state row.
  *
  * Two independent, data-driven passes, per `docs/action-pipeline.md`:
@@ -127,12 +167,19 @@ const INSTANT_PLAY_PHASES: ReadonlySet<ActionPhase> = new Set([
  *    normally once the charge releases into Windup. Flagged in the wave
  *    report as a gap for whichever wave next needs a visible charge-up pose
  *    on a two-hander.
- * 2. Every def plays its `motion` once via `playAbility` on entering
- *    Windup/Active — `playAbility`/`playFullBody` are themselves idempotent
- *    under a repeated call for the action already in flight (they require
- *    `enterAbilityRecovery` before a same-layer re-fire succeeds), so calling
- *    this every tick while a def is mid-flight is safe and does not restart
- *    the clip.
+ * 2. Every def plays its `motion` once via `playAbility` on the EDGE into
+ *    Windup/Active — this function is called every render frame with
+ *    whatever the row currently says, often many times over for the same
+ *    phase (frame rate outpaces tick rate, or the row simply has not changed
+ *    yet), so it tracks the last `(actionId, phase, phaseStartedTick)` it
+ *    already fired for (`lastFiredAbilityEdge`) and fires `playAbility` again
+ *    only when that triple changes. This is NOT redundant with the
+ *    controller's own `abilityInRecovery` re-fire guard — that guard only
+ *    covers the clip still being in flight; a clip that finishes naturally
+ *    before gameplay reports Recovery clears the controller's overlay slot on
+ *    its own, and without this edge check the very next frame would see a
+ *    free slot and replay the same clip from frame 0, over and over, for as
+ *    long as the row stays in that phase. See `lastFiredAbilityEdge`'s doc.
  *
  * `enterAbilityRecovery()` is called whenever the row is in Recovery,
  * regardless of which def — also idempotent, and it only has any effect at
@@ -153,15 +200,19 @@ export function driveAnimationFromActionState(
   if (!current) return;
 
   if (INSTANT_PLAY_PHASES.has(state.phase)) {
-    controller.playAbility(current.motion, {
-      upperBodyOnly: current.motionLayer === 'upper',
-      // The clip's mask width is fixed for its whole one-shot duration (see
-      // `AbilityPlaybackOptions.movement`), so one phase has to be the
-      // representative value. Windup is where the clip starts and where an
-      // authored gesture's freedom-to-move is most meaningful to read, so
-      // that is the one this uses rather than averaging across phases.
-      movement: current.movement.windup,
-    });
+    const edgeKey = actionEdgeKey(state);
+    if (lastFiredAbilityEdge.get(controller) !== edgeKey) {
+      lastFiredAbilityEdge.set(controller, edgeKey);
+      controller.playAbility(current.motion, {
+        upperBodyOnly: current.motionLayer === 'upper',
+        // The clip's mask width is fixed for its whole one-shot duration (see
+        // `AbilityPlaybackOptions.movement`), so one phase has to be the
+        // representative value. Windup is where the clip starts and where an
+        // authored gesture's freedom-to-move is most meaningful to read, so
+        // that is the one this uses rather than averaging across phases.
+        movement: current.movement.windup,
+      });
+    }
   }
 
   if (state.phase === ACTION_PHASE.recovery) {
