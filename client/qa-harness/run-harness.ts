@@ -17,10 +17,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureEnv } from './ensure-env';
-import type { CharacterClass, RunData, TraceRecord } from './trace-types';
+import type { BotLabel, RunData, TraceRecord } from './trace-types';
 import { summarizeByPhase, checkStructuralIntegrity, type TraceSummary } from './trace-stats';
 import { compareToBaseline, formatFailures, type ComparisonFailure } from './compare-baseline';
-import { checkConfigChannels, checkInvariants, formatInvariantFailures, type InvariantFailure } from './invariants';
+import { checkInvariants, formatInvariantFailures, type InvariantFailure } from './invariants';
 import { parseQaTier, selectPhases, type PhaseDef } from './scenarios';
 import { writeRunNdjson, writeFramesCsv } from './trace-io';
 import { writeReport } from './report';
@@ -54,7 +54,6 @@ import {
 } from './page-driver';
 import { formatAnnounce, isRemoteClientUrl, parsePrArg, resolvePreviewTarget } from './preview-target';
 import { checkTool, formatResults, formatUnsupportedBanner } from '../../tools/env-requirements/preflight.mjs';
-import { listLoadoutPresetIds } from '../src/components/characterConfig';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, 'runs');
@@ -96,12 +95,10 @@ const MODE =
         ? 'grid'
         : 'phases';
 
-/** Default: every catalog loadout preset (wizard, paladin, acolyte, …). Override with QA_CLASSES. */
-const DEFAULT_QA_CLASSES = listLoadoutPresetIds().join(',') || 'wizard,paladin';
-const CLASSES = (process.env.QA_CLASSES ?? DEFAULT_QA_CLASSES)
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean) as CharacterClass[];
+// v2 has no character classes — every joined player has every capability
+// (docs/action-pipeline.md: "Row membership IS the capability gate"), so there is nothing
+// left for a QA_CLASSES-style knob to select between. One bot, labeled for filenames/logs.
+const BOT_LABEL: BotLabel = process.env.QA_RUN_BOT_LABEL ?? 'solo';
 
 const STDB_TARGET_HOST = '127.0.0.1';
 const STDB_TARGET_PORT = 3000;
@@ -116,13 +113,13 @@ function makeSessionConfig(opts: { clientUrl?: string; runLabel?: string; stdbUr
   };
 }
 
-async function runOneClass(
+async function runOneBot(
   browser: Browser,
-  characterClass: CharacterClass,
+  botLabel: BotLabel,
   cfg: SessionConfig,
   phases: PhaseDef[],
 ): Promise<RunData> {
-  const session = await openBotSession(browser, characterClass, cfg);
+  const session = await openBotSession(browser, botLabel, cfg);
   let run: RunData | undefined;
 
   try {
@@ -134,7 +131,7 @@ async function runOneClass(
     for (const phase of phases) {
       await setPhase(session.page, phase.name);
       await captureChromeTrace(session, cfg, phase.name, AUTOTRACE_PHASES, () =>
-        phase.run({ page: session.page, cdp, characterClass }),
+        phase.run({ page: session.page, cdp, botLabel }),
       );
     }
 
@@ -272,28 +269,28 @@ type CheckResult = {
  * applies) and, if a baseline exists for this class, its drift against that
  * baseline (skipped, not failed, if no baseline has been established yet).
  */
-function checkTrace(characterClass: string, trace: TraceRecord[], phases: PhaseDef[]): CheckResult {
+function checkTrace(botLabel: string, trace: TraceRecord[], phases: PhaseDef[]): CheckResult {
   const structuralIssues = checkStructuralIntegrity(trace);
   if (structuralIssues.length > 0) {
-    console.error(`[run-harness] ${characterClass}: structural integrity issues:`);
+    console.error(`[run-harness] ${botLabel}: structural integrity issues:`);
     structuralIssues.forEach((issue) => console.error(`  ${issue}`));
   }
 
   const summary = summarizeByPhase(trace);
-  const invariantFailures = STRUCTURAL_ONLY
-    ? []
-    : [
-        ...checkConfigChannels(trace),
-        ...checkInvariants(summary, phases),
-      ];
+  // No checkConfigChannels here: that check compared against window.__gameDebug's
+  // config_walkSpeed/config_sprintMultiplier channels, which don't exist in v2 (see
+  // trace-types.ts's TraceRecord doc) — there is no live channel to compare against anymore.
+  // The function itself still exists and is still tested (invariants.test.ts) as a pure
+  // generic check; it's just not wired to a real source in this wave.
+  const invariantFailures = STRUCTURAL_ONLY ? [] : checkInvariants(summary, phases);
   if (STRUCTURAL_ONLY) {
     console.log('[run-harness] QA_CHECKS=structural: movement invariants skipped');
   }
   if (invariantFailures.length > 0) {
-    console.error(formatInvariantFailures(characterClass, invariantFailures));
+    console.error(formatInvariantFailures(botLabel, invariantFailures));
   }
 
-  const baselinePath = path.join(BASELINES_DIR, `${characterClass}.json`);
+  const baselinePath = path.join(BASELINES_DIR, `${botLabel}.json`);
   // Generated matrix phases carry config-derived invariant expectations and
   // deliberately never acquire environment-specific recorded baselines.
   const baselineEligibleNames = new Set(
@@ -311,7 +308,7 @@ function checkTrace(characterClass: string, trace: TraceRecord[], phases: PhaseD
   }
 
   if (!fs.existsSync(baselinePath)) {
-    console.log(`[run-harness] ${characterClass}: no baseline yet at ${baselinePath} (run with --update-baseline to establish one)`);
+    console.log(`[run-harness] ${botLabel}: no baseline yet at ${baselinePath} (run with --update-baseline to establish one)`);
     return { ok: structuralIssues.length === 0 && invariantFailures.length === 0, structuralIssues, invariantFailures };
   }
 
@@ -325,14 +322,14 @@ function checkTrace(characterClass: string, trace: TraceRecord[], phases: PhaseD
     (phase) => !(phase in (baseline as Record<string, unknown>)),
   );
   for (const phase of missingBaselinePhases) {
-    console.log(`[compare-baseline] ${characterClass}: ${phase}: no baseline (skipped)`);
+    console.log(`[compare-baseline] ${botLabel}: ${phase}: no baseline (skipped)`);
   }
 
   const comparison = compareToBaseline(baselineSummary, comparedBaseline);
   if (comparison.length > 0) {
-    console.error(formatFailures(characterClass, comparison));
+    console.error(formatFailures(botLabel, comparison));
   } else {
-    console.log(`[run-harness] ${characterClass}: within baseline tolerance (${Object.keys(baselineSummary).length} phases checked)`);
+    console.log(`[run-harness] ${botLabel}: within baseline tolerance (${Object.keys(baselineSummary).length} phases checked)`);
   }
 
   return {
@@ -344,36 +341,31 @@ function checkTrace(characterClass: string, trace: TraceRecord[], phases: PhaseD
 }
 
 async function mainPhases(browser: Browser, cfg: SessionConfig): Promise<{ ok: boolean; reports: string[] }> {
-  const reports: string[] = [];
-  let ok = true;
+  const phases = selectPhases(PHASE_SPEC, QA_TIER);
+  const phaseNames = phases.map((p) => p.name);
+  console.log(`[run-harness] running ${BOT_LABEL}: ${phaseNames.join(', ')}`);
+  const run = await runOneBot(browser, BOT_LABEL, cfg, phases);
+  const result = checkTrace(BOT_LABEL, run.frames, phases);
+  const base = writeRun(run, checkFailurePhases(result));
 
-  for (const characterClass of CLASSES) {
-    const phases = selectPhases(PHASE_SPEC, characterClass, QA_TIER);
-    const phaseNames = phases.map((p) => p.name);
-    console.log(`[run-harness] running ${characterClass}: ${phaseNames.join(', ')}`);
-    const run = await runOneClass(browser, characterClass, cfg, phases);
-    const result = checkTrace(characterClass, run.frames, phases);
-    const base = writeRun(run, checkFailurePhases(result));
-    ok = result.ok && ok;
+  const reportPath = writeReport(`${base}.html`, run, {
+    structuralIssues: result.structuralIssues,
+    invariantFailures: result.invariantFailures,
+    comparison: result.comparison,
+  });
+  console.log(`[run-harness] report -> ${reportPath}`);
 
-    const reportPath = writeReport(`${base}.html`, run, {
-      structuralIssues: result.structuralIssues,
-      invariantFailures: result.invariantFailures,
-      comparison: result.comparison,
-    });
-    console.log(`[run-harness] report -> ${reportPath}`);
-    reports.push(reportPath);
-  }
-
-  return { ok, reports };
+  return { ok: result.ok, reports: [reportPath] };
 }
 
-// Duel runs don't compare against phase baselines (different phases, and the
-// pass/fail signal is the interaction assertion itself) — structural checks
-// and the duel issues decide the verdict.
+// Duel runs don't compare against phase baselines (a different, named 2-session scenario, and
+// the pass/fail signal is the interaction assertion itself) — structural checks and the duel
+// issues decide the verdict. QA_DUEL_SCENARIO selects which one (default: block_absorb — see
+// duel.ts's DUEL_SCENARIOS).
 async function mainDuel(browser: Browser, cfg: SessionConfig): Promise<{ ok: boolean; reports: string[] }> {
-  console.log('[run-harness] running duel: wizard fires at paladin, verifying hp drop');
-  const { runs, issues } = await runDuel(browser, cfg);
+  const scenarioName = process.env.QA_DUEL_SCENARIO ?? 'block_absorb';
+  console.log(`[run-harness] running duel scenario: ${scenarioName}`);
+  const { runs, issues } = await runDuel(browser, cfg, scenarioName);
   if (issues.length > 0) {
     console.error('[run-harness] duel issues:');
     issues.forEach((issue) => console.error(`  ${issue}`));
@@ -499,21 +491,19 @@ async function mainGrid(browser: Browser, baseCfg: SessionConfig): Promise<{ ok:
         runLabel: label,
       });
 
-      for (const characterClass of CLASSES) {
-        const phases = selectPhases(phaseSpec, characterClass, QA_TIER);
-        console.log(`[grid] ${label} ${characterClass} (${profile.delayMs}ms +/- ${profile.jitterMs}ms): ${phases.map((p) => p.name).join(', ')}`);
-        const run = await runOneClass(browser, characterClass, cfg, phases);
-        const base = writeRun(run);
-        const structuralIssues = checkStructuralIntegrity(run.frames);
-        if (structuralIssues.length > 0) {
-          ok = false;
-          console.error(`[grid] ${label} ${characterClass}: structural integrity issues:`);
-          structuralIssues.forEach((issue) => console.error(`  ${issue}`));
-        }
-        const reportPath = writeReport(`${base}.html`, run, { structuralIssues });
-        reports.push(reportPath);
-        summaries.push(summarizeGridRun(latencyMs, run));
+      const phases = selectPhases(phaseSpec, QA_TIER);
+      console.log(`[grid] ${label} ${BOT_LABEL} (${profile.delayMs}ms +/- ${profile.jitterMs}ms): ${phases.map((p) => p.name).join(', ')}`);
+      const run = await runOneBot(browser, BOT_LABEL, cfg, phases);
+      const base = writeRun(run);
+      const structuralIssues = checkStructuralIntegrity(run.frames);
+      if (structuralIssues.length > 0) {
+        ok = false;
+        console.error(`[grid] ${label} ${BOT_LABEL}: structural integrity issues:`);
+        structuralIssues.forEach((issue) => console.error(`  ${issue}`));
       }
+      const reportPath = writeReport(`${base}.html`, run, { structuralIssues });
+      reports.push(reportPath);
+      summaries.push(summarizeGridRun(latencyMs, run));
     }
   } finally {
     await lane.close();

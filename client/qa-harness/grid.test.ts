@@ -10,22 +10,18 @@ import {
 import { effectiveProfileAt } from './net-proxy';
 import type { RunData, TraceRecord } from './trace-types';
 
-function frame(t: number, phase: string, x: number, corr: number, offset: number): TraceRecord {
+function frame(t: number, phase: string, x: number): TraceRecord {
   return {
     t,
     phase,
     simPosition: { x, y: 0, z: 0 },
-    renderPosition: { x, y: 0, z: 0 },
-    visualOffset: { x: offset, y: 0, z: 0 },
-    offsetLength: offset,
-    cameraPosition: { x: 0, y: 0, z: 0 },
-    localServerTick: String(t),
-    localCorrectionError: corr,
+    joined: true,
+    remoteCount: 0,
     channels: null,
   };
 }
 
-function run(characterClass: 'wizard' | 'paladin', frames: TraceRecord[]): RunData {
+function run(characterClass: string, frames: TraceRecord[]): RunData {
   return {
     meta: {
       version: 2,
@@ -95,33 +91,29 @@ describe('grid helpers', () => {
   });
 
   it('aggregates the real summarizeByPhase metric fields across cells', () => {
-    const low = summarizeGridRun(0, run('wizard', [
-      frame(0, 'walk_forward', 0, 0.1, 0.2),
-      frame(16, 'walk_forward', 1, 0.3, 0.4),
+    const low = summarizeGridRun(0, run('solo', [
+      frame(0, 'walk_forward', 0),
+      frame(16, 'walk_forward', 1),
     ]));
-    const high = summarizeGridRun(150, run('wizard', [
-      frame(0, 'walk_forward', 0, 0.2, 0.3),
-      frame(16, 'walk_forward', 2, 0.4, 0.5),
+    const high = summarizeGridRun(150, run('solo', [
+      frame(0, 'walk_forward', 0),
+      frame(16, 'walk_forward', 2),
     ]));
 
     expect(aggregateGridSummaries([high, low])).toEqual([
       {
         latencyMs: 0,
-        characterClass: 'wizard',
+        characterClass: 'solo',
         phase: 'walk_forward',
         netDisplacement: 1,
         maxFrameDelta: 1,
-        meanCorrErr: 0.2,
-        meanOffset: 0.30000000000000004,
       },
       {
         latencyMs: 150,
-        characterClass: 'wizard',
+        characterClass: 'solo',
         phase: 'walk_forward',
         netDisplacement: 2,
         maxFrameDelta: 2,
-        meanCorrErr: 0.30000000000000004,
-        meanOffset: 0.4,
       },
     ]);
   });

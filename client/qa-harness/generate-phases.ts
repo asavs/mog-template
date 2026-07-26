@@ -1,13 +1,15 @@
 import type { Page } from 'playwright';
-import {
-  CHARACTER_CONFIGS,
-  type CharacterConfigKey,
-  type WizardSpell,
-} from '../src/components/characterConfig.ts';
-import { click, lookAround, tapKey, type PhaseDef } from './phase-helpers';
-import type { CharacterClass } from './trace-types';
+import { lookAround, tapKey, type PhaseDef } from './phase-helpers';
+import { ACTION_DEFS, SLOT_BINDINGS, type ActionDef, type SlotBinding } from '../src/actions/defs.generated';
+import { Phase } from '../src/actions/gates';
+import { KEY_BINDINGS, MOUSE_BINDINGS } from '../src/input/keymap';
+import { readLocalStoreField } from './page-driver';
 
-const MOVEMENT_DURATION_MS = 1500;
+// 750ms, not the pre-rewrite 1500ms — see scenarios.ts's module doc: v2's small arena gives
+// every spawn's default facing only 5.55 units of clearance to its nearest wall, and
+// PLAYER_SPEED * 1500ms (9 units) drove straight into it. Scaled by the same 0.5 factor as
+// the handwritten movement phases so distances stay comparable across both.
+const MOVEMENT_DURATION_MS = 750;
 
 const DIRECTIONS = [
   ['n', ['KeyW']],
@@ -20,27 +22,18 @@ const DIRECTIONS = [
   ['sw', ['KeyS', 'KeyA']],
 ] as const;
 
+// v2 has no key bound to sprint (client/src/input/keymap.ts: "Sprint exists in the wire
+// InputState but intentionally has no default key"; ShiftLeft is bound to the `roll` slot
+// instead) — the old sprint dimension of this matrix would now roll the bot mid-walk instead
+// of sprinting it, so it is dropped rather than silently testing the wrong thing.
 const MODIFIERS = ['none', 'jump', 'camera_turn'] as const;
-
-type CapabilityConfig = {
-  capabilities: {
-    melee: boolean;
-    block: boolean;
-    spells: readonly WizardSpell[];
-    drinkPotion: boolean;
-  };
-};
-
-type CapabilityConfigs = Record<string, CapabilityConfig>;
 
 async function runMovement(
   page: Parameters<PhaseDef['run']>[0]['page'],
   directionKeys: readonly string[],
-  sprint: boolean,
   modifier: (typeof MODIFIERS)[number],
 ) {
-  const keys = sprint ? ['ShiftLeft', ...directionKeys] : [...directionKeys];
-  for (const key of keys) await page.keyboard.down(key);
+  for (const key of directionKeys) await page.keyboard.down(key);
 
   try {
     if (modifier === 'none') {
@@ -48,413 +41,270 @@ async function runMovement(
       return;
     }
 
-    await page.waitForTimeout(650);
+    await page.waitForTimeout(325);
     if (modifier === 'jump') {
-      await tapKey(page, 'Space');
-      await page.waitForTimeout(MOVEMENT_DURATION_MS - 770);
+      await tapKey(page, 'Space', 60);
+      await page.waitForTimeout(MOVEMENT_DURATION_MS - 385);
     } else {
       await lookAround(page, 10, 8);
-      await page.waitForTimeout(MOVEMENT_DURATION_MS - 810);
+      await page.waitForTimeout(MOVEMENT_DURATION_MS - 405);
     }
   } finally {
-    for (const key of [...keys].reverse()) await page.keyboard.up(key);
+    for (const key of [...directionKeys].reverse()) await page.keyboard.up(key);
   }
 }
 
-function movementName(
-  direction: string,
-  sprint: boolean,
-  modifier: (typeof MODIFIERS)[number],
-): string {
+function movementName(direction: string, modifier: (typeof MODIFIERS)[number]): string {
   const parts = [`mv_${direction}`];
-  if (sprint) parts.push('sprint');
   if (modifier === 'jump') parts.push('jump');
   if (modifier === 'camera_turn') parts.push('turn');
   return parts.join('_');
 }
 
+/** Generic over direction/modifier only — no character concept involved. Sprint dropped, see
+ * the MODIFIERS comment above. */
 export function generateMovementMatrix(): PhaseDef[] {
   const phases: PhaseDef[] = [];
 
   for (const [direction, keys] of DIRECTIONS) {
-    for (const sprint of [false, true]) {
-      for (const modifier of MODIFIERS) {
-        phases.push({
-          name: movementName(direction, sprint, modifier),
-          group: 'matrix',
-          // Camera-relative movement curves while the camera turns. Its net
-          // displacement may shrink, so only the configured speed cap applies.
-          // Jump phases keep the distance expectation but skip straightness:
-          // the vertical arc inflates 3D pathLength (see invariants.ts).
-          expect:
-            modifier === 'camera_turn'
-              ? {
-                  kind: 'max-speed',
-                  speed: sprint ? 'sprint' : 'walk',
-                  durationMs: MOVEMENT_DURATION_MS,
-                }
-              : {
-                  kind: 'linear-move',
-                  speed: sprint ? 'sprint' : 'walk',
-                  durationMs: MOVEMENT_DURATION_MS,
-                  ...(modifier === 'jump' ? { straight: false as const } : {}),
-                },
-          run: ({ page }) => runMovement(page, keys, sprint, modifier),
-        });
-      }
+    for (const modifier of MODIFIERS) {
+      phases.push({
+        name: movementName(direction, modifier),
+        group: 'matrix',
+        // Camera-relative movement curves while the camera turns. Its net
+        // displacement may shrink, so only the configured speed cap applies.
+        // Jump phases keep the distance expectation but skip straightness:
+        // the vertical arc inflates 3D pathLength (see invariants.ts).
+        expect:
+          modifier === 'camera_turn'
+            ? { kind: 'max-speed', speed: 'walk', durationMs: MOVEMENT_DURATION_MS }
+            : {
+                kind: 'linear-move',
+                speed: 'walk',
+                durationMs: MOVEMENT_DURATION_MS,
+                ...(modifier === 'jump' ? { straight: false as const } : {}),
+              },
+        run: ({ page }) => runMovement(page, keys, modifier),
+      });
     }
   }
 
   return phases;
 }
 
-const SPELL_KEYS: Record<WizardSpell, 'Digit1' | 'Digit2'> = {
-  fireball: 'Digit1',
-  lightning: 'Digit2',
-};
+// ---------------------------------------------------------------------------
+// Action primitive matrix (Wave 3F, v2). Every joined player has every capability — v2 has no
+// character classes, no equip system, no per-class capability gate
+// (docs/action-pipeline.md: "Row membership IS the capability gate", and SLOT_BINDINGS seeds
+// identically for everyone on join). So instead of one phase per (class, capability), this
+// generates one phase per PRIMITIVE — a shape of the action pipeline itself — picked
+// generically from shared/actions.json's own data (never a hardcoded action id):
+//   light tap / heavy full charge / heavy early release: the dual-bound slot whose hold action
+//     is `hold.mode: "charge"` (today: primary/attack_light+attack_heavy, but this generalizes
+//     to whichever slot authors that shape).
+//   block absorb: the def carrying a `mitigation` effect.
+//   roll through attack: the def carrying an `invulnerable` effect.
+//   potion: the def with a `resource` cost.
+//   projectile ability / aoe ability: the first def (registry order) carrying a `projectile` /
+//     `aoe_at_target` effect.
+// All of these drive REAL keyboard/mouse input through the client's own keymap
+// (client/src/input/keymap.ts) — never a synthetic escape hatch — so they exercise the exact
+// same intents.ts/useInput.ts path a player does, and therefore require pointer lock to be
+// engaged (see run-harness.ts's acquirePointerLock) exactly like the old class-gated combat
+// phases did. That also means, like those, they cannot run where pointer lock never engages
+// (GitHub-hosted CI runners — see qa-harness/README.md's "Playwright pointer lock" note).
+// ---------------------------------------------------------------------------
 
-function classesWith(
-  configs: CapabilityConfigs,
-  predicate: (config: CapabilityConfig) => boolean,
-): CharacterClass[] {
-  return (Object.entries(configs) as Array<[CharacterConfigKey, CapabilityConfig]>)
-    .filter(([, config]) => predicate(config))
-    .map(([characterClass]) => characterClass);
+type SlotInput = { kind: 'key'; code: string } | { kind: 'mouse'; button: 'left' | 'right' | 'middle' };
+
+const MOUSE_BUTTON_NAMES: Record<number, 'left' | 'right' | 'middle'> = { 0: 'left', 1: 'middle', 2: 'right' };
+
+function slotInputMap(): Map<string, SlotInput> {
+  const map = new Map<string, SlotInput>();
+  for (const row of KEY_BINDINGS) {
+    if (row.binding.kind === 'slot') map.set(row.binding.slot, { kind: 'key', code: row.code });
+  }
+  for (const row of MOUSE_BINDINGS) {
+    map.set(row.binding.slot, { kind: 'mouse', button: MOUSE_BUTTON_NAMES[row.button] ?? 'left' });
+  }
+  return map;
+}
+const SLOT_INPUTS = slotInputMap();
+
+function slotInput(slot: string): SlotInput {
+  const input = SLOT_INPUTS.get(slot);
+  if (!input) throw new Error(`generate-phases: no physical input bound to slot ${slot} (client/src/input/keymap.ts)`);
+  return input;
 }
 
-export function generateCapabilityPhases(
-  configs: CapabilityConfigs = CHARACTER_CONFIGS,
-): PhaseDef[] {
-  const phases: PhaseDef[] = [];
+export async function pressSlot(page: Page, slot: string) {
+  const input = slotInput(slot);
+  if (input.kind === 'key') await page.keyboard.down(input.code);
+  else await page.mouse.down({ button: input.button });
+}
+export async function releaseSlot(page: Page, slot: string) {
+  const input = slotInput(slot);
+  if (input.kind === 'key') await page.keyboard.up(input.code);
+  else await page.mouse.up({ button: input.button });
+}
+
+export function bindingFor(actionId: string): SlotBinding {
+  const binding = SLOT_BINDINGS.find((b) => b.tapAction === actionId || b.holdAction === actionId);
+  if (!binding) throw new Error(`generate-phases: no SLOT_BINDINGS row binds ${actionId}`);
+  return binding;
+}
+
+function findChargeHold(): { def: ActionDef; binding: SlotBinding } {
+  for (const binding of SLOT_BINDINGS) {
+    if (!binding.holdAction) continue;
+    const def = ACTION_DEFS.find((d) => d.id === binding.holdAction);
+    if (def?.hold?.mode === 'charge') return { def, binding };
+  }
+  throw new Error('generate-phases: no charge-mode hold action found in ACTION_DEFS');
+}
+
+function findTapOf(binding: SlotBinding): ActionDef {
+  const def = ACTION_DEFS.find((d) => d.id === binding.tapAction);
+  if (!def) throw new Error(`generate-phases: dual-bound slot ${binding.slot} has no tap action def`);
+  return def;
+}
+
+export function findByEffect(kind: string): { def: ActionDef; binding: SlotBinding } {
+  const def = ACTION_DEFS.find((d) => d.effects.some((e) => e.kind === kind));
+  if (!def) throw new Error(`generate-phases: no ActionDef carries a ${kind} effect`);
+  return { def, binding: bindingFor(def.id) };
+}
+
+function findResourceCosting(): { def: ActionDef; binding: SlotBinding } {
+  const def = ACTION_DEFS.find((d) => d.resource !== null);
+  if (!def) throw new Error('generate-phases: no ActionDef has a resource cost');
+  return { def, binding: bindingFor(def.id) };
+}
+
+/** Polls the local identity's `player_action_state.phase` via single in-page round trips
+ * (readLocalStoreField) until it reaches `phase` — cheap because each poll is one
+ * page.evaluate, not a per-frame browser trace read. */
+export async function waitForActionPhase(page: Page, phase: number, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = await readLocalStoreField(page, 'playerActionState', 'phase');
+    if (current === phase) return;
+    await page.waitForTimeout(30);
+  }
+  throw new Error(`generate-phases: timed out waiting for action phase ${phase}`);
+}
+
+export async function waitForIdle(page: Page, timeoutMs = 12000) {
+  await waitForActionPhase(page, Phase.Idle, timeoutMs);
+}
+
+export function generateActionMatrixPhases(): PhaseDef[] {
   const stationary = { kind: 'stationary' } as const;
+  const { def: heavyDef, binding: primaryBinding } = findChargeHold();
+  findTapOf(primaryBinding); // asserts the dual-bound slot really has a tap side too
+  const blockCase = findByEffect('mitigation');
+  const rollCase = findByEffect('invulnerable');
+  const potionCase = findResourceCosting();
+  const projectileCase = findByEffect('projectile');
+  const aoeCase = findByEffect('aoe_at_target');
 
-  const meleeClasses = classesWith(configs, (config) => config.capabilities.melee);
-  if (meleeClasses.length > 0) {
-    phases.push({
-      name: 'gen_melee_slash',
-      group: 'matrix',
-      classes: meleeClasses,
-      expect: stationary,
-      run: async ({ page }) => {
-        await click(page);
-        await page.waitForTimeout(1300);
-        await click(page);
-        await page.waitForTimeout(600);
-      },
-    });
+  if (!heavyDef.hold || heavyDef.hold.mode !== 'charge') {
+    throw new Error('generate-phases: expected the found hold action to be charge-mode');
   }
-
-  const blockClasses = classesWith(configs, (config) => config.capabilities.block);
-  if (blockClasses.length > 0) {
-    phases.push({
-      name: 'gen_block_hold',
-      group: 'matrix',
-      classes: blockClasses,
-      expect: stationary,
-      run: async ({ page }) => {
-        await page.mouse.down({ button: 'right' });
-        await page.waitForTimeout(800);
-        await page.mouse.up({ button: 'right' });
-        await page.waitForTimeout(300);
-      },
-    });
-  }
-
-  for (const spell of Object.keys(SPELL_KEYS) as WizardSpell[]) {
-    const spellClasses = classesWith(
-      configs,
-      (config) => config.capabilities.spells.includes(spell),
-    );
-    if (spellClasses.length === 0) continue;
-
-    phases.push({
-      name: `gen_spell_${spell}`,
-      group: 'matrix',
-      classes: spellClasses,
-      expect: stationary,
-      run: async ({ page }) => {
-        await tapKey(page, SPELL_KEYS[spell]);
-        await click(page);
-        await page.waitForTimeout(400);
-        await click(page);
-        await page.waitForTimeout(600);
-      },
-    });
-  }
-
-  const potionClasses = classesWith(
-    configs,
-    (config) => config.capabilities.drinkPotion,
-  );
-  if (potionClasses.length > 0) {
-    phases.push({
-      name: 'gen_potion_drink',
-      group: 'matrix',
-      classes: potionClasses,
-      expect: stationary,
-      run: async ({ page }) => {
-        await tapKey(page, 'Digit4');
-        await click(page);
-        await page.waitForTimeout(1500);
-      },
-    });
-  }
-
-  return phases;
-}
-
-async function waitForAuthorityMainHand(
-  page: Page,
-  itemId: string | null,
-  timeoutMs = 8_000,
-) {
-  // Prefer authority rows on window.__qaEquipment (server subscription); fall back to data-qa.
-  await page.waitForFunction(
-    (want) => {
-      const eq = (window as unknown as {
-        __qaEquipment?: ReadonlyArray<{ slot: string; itemId: string }>;
-      }).__qaEquipment;
-      if (eq) {
-        const main = eq.find((row) => row.slot === 'main_hand');
-        if (want === null) return !main;
-        return main?.itemId === want;
-      }
-      if (want === null) {
-        return !document.querySelector('[data-qa-unequip="main_hand"]');
-      }
-      const el = document.querySelector(`[data-qa-equip="${want}"]`);
-      return el?.getAttribute('data-qa-equipped') === '1';
-    },
-    itemId,
-    { timeout: timeoutMs },
-  );
-}
-
-/**
- * Inventory sits under a full-viewport R3F canvas. While pointer lock is held,
- * Playwright's normal click hits the canvas instead of the panel. Exit lock and
- * force-click so equip/unequip is reachable mid-session.
- */
-async function clickInventoryControl(
-  page: Page,
-  selector: string,
-  timeoutMs = 15_000,
-) {
-  await page.evaluate(() => {
-    if (document.pointerLockElement) document.exitPointerLock();
-  });
-  await page.waitForTimeout(80);
-  const control = page.locator(selector).first();
-  await control.waitFor({ state: 'visible', timeout: timeoutMs });
-  await control.click({ force: true, timeout: timeoutMs });
-}
-
-type CapWant = {
-  melee?: boolean;
-  notMelee?: boolean;
-  spell?: string;
-  noSpells?: boolean;
-};
-
-async function waitForQaCapabilities(page: Page, want: CapWant, timeoutMs = 10_000) {
-  await page.waitForFunction(
-    (serialized) => {
-      const caps = (window as unknown as {
-        __qaCapabilities?: {
-          melee: boolean;
-          block: boolean;
-          spells: readonly string[];
-          drinkPotion: boolean;
-        };
-      }).__qaCapabilities;
-      if (!caps) return false;
-      const w = serialized as CapWant;
-      if (w.melee === true && !caps.melee) return false;
-      if (w.notMelee === true && caps.melee) return false;
-      if (w.spell && !caps.spells.includes(w.spell)) return false;
-      if (w.noSpells === true && caps.spells.length > 0) return false;
-      return true;
-    },
-    want,
-    { timeout: timeoutMs },
-  );
-}
-
-async function reengagePointerLock(page: Page) {
-  await page.mouse.move(640, 360, { steps: 1 });
-  await page.waitForTimeout(50);
-  if (!(await page.evaluate(() => document.pointerLockElement === document.body))) {
-    await click(page);
-    await page.waitForTimeout(200);
-  }
-}
-
-async function readFireballCount(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const v = (window as unknown as { __gameDebug?: Record<string, unknown> }).__gameDebug
-      ?.fireballProjectiles;
-    return typeof v === 'number' ? v : 0;
-  });
-}
-
-/** Cast fireball and hard-fail if no projectile is observed (grant/combat must work). */
-async function castFireballAndExpectProjectile(page: Page, timeoutMs = 8_000) {
-  await reengagePointerLock(page);
-  await tapKey(page, 'Digit1');
-  const before = await readFireballCount(page);
-  // A few clicks — first may only re-lock; second/third should cast once grants are live.
-  for (let i = 0; i < 3; i += 1) {
-    await click(page);
-    await page.waitForTimeout(350);
-  }
-  await page.waitForFunction(
-    (prev) => {
-      const v = (window as unknown as { __gameDebug?: Record<string, unknown> }).__gameDebug
-        ?.fireballProjectiles;
-      const n = typeof v === 'number' ? v : 0;
-      return n > (prev as number);
-    },
-    before,
-    { timeout: timeoutMs },
-  );
-}
-
-/** Click attack while sword equipped; hard-fail if fireball still spawns (wrong grants). */
-async function slashAndExpectNoFireball(page: Page, settleMs = 1200) {
-  await reengagePointerLock(page);
-  const before = await readFireballCount(page);
-  await click(page);
-  await page.waitForTimeout(settleMs);
-  await click(page);
-  await page.waitForTimeout(400);
-  const after = await readFireballCount(page);
-  if (after > before) {
-    throw new Error(
-      `Expected melee/sword equip to NOT spawn fireballs; fireballProjectiles ${before} -> ${after}`,
-    );
-  }
-}
-
-/**
- * Mid-session equip/unequip via InventoryPanel + hard combat grant asserts.
- * Order is load-bearing: wand → fireball, sword → no fireball / melee click, empty hands → no fireball.
- */
-export function generateEquipPhases(): PhaseDef[] {
-  const stationary = { kind: 'stationary' } as const;
+  const holdSpec = heavyDef.hold;
 
   return [
     {
-      name: 'equip_wand',
+      name: 'prim_light_tap',
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        await page.waitForSelector('[data-qa="inventory-panel"]', { timeout: 10_000 });
-        const equip = page.locator('[data-qa-equip="wand"]');
-        await equip.waitFor({ state: 'visible', timeout: 10_000 });
-        if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-          await clickInventoryControl(page, '[data-qa-equip="wand"]');
-        }
-        await page.locator('[data-qa-equip="wand"][data-qa-equipped="1"]').waitFor({
-          state: 'visible',
-          timeout: 8_000,
-        });
-        await waitForAuthorityMainHand(page, 'wand');
-        // Live grants must flip to cast (paladin: sword→wand is the critical path).
-        await waitForQaCapabilities(page, { spell: 'fireball', notMelee: true });
+        await pressSlot(page, primaryBinding.slot);
+        await releaseSlot(page, primaryBinding.slot); // well within the hold threshold -> tap
+        await waitForIdle(page);
       },
     },
     {
-      name: 'cast_after_equip_wand',
+      name: 'prim_heavy_full_charge',
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        const equip = page.locator('[data-qa-equip="wand"]');
-        await equip.waitFor({ state: 'visible', timeout: 10_000 });
-        if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-          await clickInventoryControl(page, '[data-qa-equip="wand"]');
-        }
-        await waitForAuthorityMainHand(page, 'wand');
-        await waitForQaCapabilities(page, { spell: 'fireball' });
-        await castFireballAndExpectProjectile(page);
+        await pressSlot(page, primaryBinding.slot);
+        // Hold well past maxTicks so the server force-releases at full charge.
+        await page.waitForTimeout(((holdSpec.maxTicks + 3) * 1000) / 20);
+        await releaseSlot(page, primaryBinding.slot);
+        await waitForIdle(page);
       },
     },
     {
-      name: 'equip_sword',
+      name: 'prim_heavy_early_release',
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        const equip = page.locator('[data-qa-equip="sword_1h"]');
-        await equip.waitFor({ state: 'visible', timeout: 10_000 });
-        if ((await equip.getAttribute('data-qa-equipped')) !== '1') {
-          await clickInventoryControl(page, '[data-qa-equip="sword_1h"]');
-        }
-        await page.locator('[data-qa-equip="sword_1h"][data-qa-equipped="1"]').waitFor({
-          state: 'visible',
-          timeout: 8_000,
-        });
-        await waitForAuthorityMainHand(page, 'sword_1h');
-        // Sword grants melee_slash only — cast spells must clear.
-        await waitForQaCapabilities(page, { melee: true, noSpells: true });
+        await pressSlot(page, primaryBinding.slot);
+        // Past the slot's own hold threshold (resolves to the HEAVY action, not the tap) but
+        // well short of maxTicks (a partial, not full, charge fraction).
+        const midTicks = Math.max(
+          primaryBinding.holdThresholdTicks + 1,
+          Math.floor((holdSpec.minTicks + holdSpec.maxTicks) / 2),
+        );
+        await page.waitForTimeout((midTicks * 1000) / 20);
+        await releaseSlot(page, primaryBinding.slot);
+        await waitForIdle(page);
       },
     },
     {
-      name: 'slash_after_equip_sword',
+      name: 'prim_block_absorb',
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        await waitForAuthorityMainHand(page, 'sword_1h');
-        await waitForQaCapabilities(page, { melee: true, noSpells: true });
-        await slashAndExpectNoFireball(page);
+        await pressSlot(page, blockCase.binding.slot);
+        await waitForActionPhase(page, Phase.Held);
+        await page.waitForTimeout(300);
+        await releaseSlot(page, blockCase.binding.slot);
+        await waitForIdle(page);
       },
     },
     {
-      name: 'unequip_main_hand',
+      name: 'prim_roll_through_attack',
+      group: 'matrix',
+      // Not stationary: roll's whole point is displacement (shared/actions.json's
+      // displace_self effect on this def).
+      run: async ({ page }) => {
+        await pressSlot(page, rollCase.binding.slot);
+        await releaseSlot(page, rollCase.binding.slot);
+        await waitForIdle(page);
+      },
+    },
+    {
+      name: 'prim_potion',
       group: 'matrix',
       expect: stationary,
       run: async ({ page }) => {
-        await clickInventoryControl(page, '[data-qa-unequip="main_hand"]');
-        await page.locator('[data-qa-unequip="main_hand"]').waitFor({
-          state: 'hidden',
-          timeout: 8_000,
-        });
-        await waitForAuthorityMainHand(page, null);
-        await waitForQaCapabilities(page, { notMelee: true, noSpells: true });
-        // Empty hands: casting must not produce a fireball.
-        await reengagePointerLock(page);
-        const before = await readFireballCount(page);
-        await tapKey(page, 'Digit1');
-        for (let i = 0; i < 3; i += 1) {
-          await click(page);
-          await page.waitForTimeout(300);
-        }
-        const after = await readFireballCount(page);
-        if (after > before) {
-          throw new Error(
-            `Empty main_hand still cast fireball; fireballProjectiles ${before} -> ${after}`,
-          );
-        }
+        await pressSlot(page, potionCase.binding.slot);
+        await releaseSlot(page, potionCase.binding.slot);
+        await waitForIdle(page);
+      },
+    },
+    {
+      name: 'prim_projectile_ability',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        await pressSlot(page, projectileCase.binding.slot);
+        await releaseSlot(page, projectileCase.binding.slot);
+        await waitForIdle(page);
+      },
+    },
+    {
+      name: 'prim_aoe_ability',
+      group: 'matrix',
+      expect: stationary,
+      run: async ({ page }) => {
+        await pressSlot(page, aoeCase.binding.slot);
+        await releaseSlot(page, aoeCase.binding.slot);
+        await waitForIdle(page);
       },
     },
   ];
 }
-
-/** Preset ids that seed (or can equip into) cast grants — used by handwritten combat phases. */
-export function classesWithSpell(
-  spell: WizardSpell,
-  configs: CapabilityConfigs = CHARACTER_CONFIGS,
-): CharacterClass[] {
-  return classesWith(configs, (config) => config.capabilities.spells.includes(spell));
-}
-
-export function classesWithMelee(
-  configs: CapabilityConfigs = CHARACTER_CONFIGS,
-): CharacterClass[] {
-  return classesWith(configs, (config) => config.capabilities.melee);
-}
-
-export function classesWithBlock(
-  configs: CapabilityConfigs = CHARACTER_CONFIGS,
-): CharacterClass[] {
-  return classesWith(configs, (config) => config.capabilities.block);
-}
-

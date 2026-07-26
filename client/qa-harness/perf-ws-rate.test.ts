@@ -6,12 +6,8 @@ const frame = (t: number, phase: string): TraceRecord => ({
   t,
   phase,
   simPosition: null,
-  renderPosition: null,
-  visualOffset: null,
-  offsetLength: null,
-  cameraPosition: null,
-  localServerTick: null,
-  localCorrectionError: null,
+  joined: true,
+  remoteCount: 0,
   channels: null,
 });
 
@@ -31,7 +27,7 @@ const makeRun = (frames: TraceRecord[], wsMessages: WsMessageRecord[]): RunData 
     resources: [],
   };
   return {
-    meta: { version: 2, characterClass: 'wizard', label: 'test', startedAt: '', clientUrl: '' },
+    meta: { version: 2, characterClass: 'solo', label: 'test', startedAt: '', clientUrl: '' },
     frames,
     events: [],
     perf,

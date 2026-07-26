@@ -3,7 +3,7 @@ import {
   JUMP_FORCE,
   PLAYER_SPEED,
   SPRINT_MULTIPLIER,
-} from '../src/locomotion.ts';
+} from '../src/sim/locomotion.ts';
 
 export const EXPECTED_WALK_SPEED = PLAYER_SPEED;
 export const EXPECTED_SPRINT_MULTIPLIER = SPRINT_MULTIPLIER;

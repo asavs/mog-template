@@ -1,20 +1,20 @@
 import type { CDPSession, Page } from 'playwright';
 import type { PhaseExpectation } from './invariants';
-import type { CharacterClass } from './trace-types';
+import type { BotLabel } from './trace-types';
 
 export type PhaseGroup = 'movement' | 'network' | 'combat' | 'matrix';
 
 export type PhaseContext = {
   page: Page;
   cdp: CDPSession;
-  characterClass: CharacterClass;
+  /** Run label only — v2 has no character classes, every joined player has every capability
+   * (shared/actions.json's SLOT_BINDINGS are universal). */
+  botLabel: BotLabel;
 };
 
 export type PhaseDef = {
   name: string;
   group: PhaseGroup;
-  /** Restrict to specific classes; omit for all. */
-  classes?: CharacterClass[];
   expect?: PhaseExpectation;
   run: (ctx: PhaseContext) => Promise<void>;
 };

@@ -1,20 +1,32 @@
 export type Vec3 = { x: number; y: number; z: number };
 
+/**
+ * Wave 3F (v2 rewrite): the pre-rewrite client published a rich `window.__playerDebug`
+ * (simPosition/renderPosition/visualOffset/localCorrectionError/cameraPosition) for
+ * client-side-prediction visual-fidelity checks. The v2 client exposes only
+ * `window.__mogGame` (`{localPosition, remoteCount, joined, identityHex, store}` — see
+ * `client/src/game/App.tsx`) — a live row-level store, not a per-frame reconciliation trace.
+ * There is no reconciliation/offset telemetry to capture anymore, so those fields are gone
+ * (a real reduction in what this harness can prove about CSP smoothing — see
+ * `docs/character-pipeline.md`'s wave notes if that fidelity is ever restored). `simPosition`
+ * is kept (sourced from `__mogGame.localPosition`) since it is still the backbone of the
+ * movement invariants (`invariants.ts` / `trace-stats.ts`). `channels` is repointed at
+ * generic numeric snapshots read off `__mogGame.store` for the local identity each frame
+ * (health, action phase, resource amounts) — same "harness never hardcodes channel names"
+ * contract as before, new source table.
+ */
 export type TraceRecord = {
   t: number;
   phase: string;
   simPosition: Vec3 | null;
-  renderPosition: Vec3 | null;
-  visualOffset: Vec3 | null;
-  offsetLength: number | null;
-  cameraPosition: Vec3 | null;
-  localServerTick: string | null;
-  localCorrectionError: number | null;
+  joined: boolean;
+  remoteCount: number;
   /**
-   * Generic game-state channels sampled from window.__gameDebug (see
-   * client/src/hooks/useQaGameDebug.ts). Keys are whatever the client
-   * publishes — the harness never hardcodes channel names. Booleans are
-   * recorded as 0/1; null means the page exposed no channels that frame.
+   * Generic per-identity store snapshot, keyed by `<table>_<field>` (e.g. `health_current`,
+   * `actionState_phase`, `resource_potion_charge`). Derived once per frame from
+   * `window.__mogGame.store` for the local identity — the harness never hardcodes which keys
+   * exist; see `installCollectors` in page-driver.ts. Booleans are recorded as 0/1; null means
+   * the page wasn't joined yet that frame.
    */
   channels: Record<string, number> | null;
 };
@@ -30,8 +42,12 @@ export type InputEvent = {
   detail: string;
 };
 
-/** Loadout preset id used when joining (catalog-driven; not a closed enum). */
-export type CharacterClass = string;
+/** Bot label used in filenames/logs. v2 has no character classes — every joined player has
+ * every capability (shared/actions.json's SLOT_BINDINGS are universal), so this is now just
+ * a run label, not a loadout selector. Kept as a named type (not inlined `string`) so the
+ * many call sites that threaded a "class" through stay self-documenting about what they now
+ * hold. */
+export type BotLabel = string;
 
 // ---------------------------------------------------------------------------
 // Performance instrumentation (harness-injected; the game is not modified).
@@ -91,11 +107,11 @@ export type ResourceEntry = {
  * join flow. Only present on cold-load runs.
  */
 export type LoadLandmarks = {
-  /** page.goto issued → join dialog (#username) visible. */
+  /** page.goto issued → join dialog (name field) visible. */
   timeToJoinScreenMs: number;
-  /** "Join Game" clicked → window.__playerDebug present. */
+  /** "join" clicked → window.__mogGame.joined is true. */
   timeToPlayableMs: number;
-  /** "Join Game" clicked → render loop demonstrably ticking (first frames). */
+  /** "join" clicked → render loop demonstrably ticking (first frames). */
   timeToFirstFramesMs: number;
   /** page.goto issued → render loop ticking (end-to-end). */
   totalMs: number;
@@ -136,7 +152,10 @@ export type VideoArtifact = {
 
 export type RunMeta = {
   version: 2;
-  characterClass: string;
+  /** Bot label (see BotLabel) — kept as `characterClass` field name across the harness's
+   * existing report/trace-io/baseline machinery to avoid an unrelated rename sweep; v2 has no
+   * character classes, this is just which bot produced the run. */
+  characterClass: BotLabel;
   label: string;
   startedAt: string;
   clientUrl: string;

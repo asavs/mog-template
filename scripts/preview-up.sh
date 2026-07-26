@@ -68,7 +68,13 @@ INSTANCE="mog-pr-${PR_NUMBER}"
 # FAIL-OPEN: if `node` itself is unavailable (e.g. a CI step-ordering gap),
 # skip the check — preflight must never be the thing that breaks a deploy.
 if command -v node >/dev/null 2>&1; then
-  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" --tool preview-up >&2
+  # FAIL-OPEN (per the comment above): a gap surfaced here must warn, not abort.
+  # preflight.mjs exits 1 on any unmet fail-severity requirement (see its own
+  # --help), and under this script's `set -e` that would otherwise kill the
+  # deploy right here instead of continuing to the (possibly-still-working)
+  # gcloud steps below — exactly the "preflight breaks the deploy" outcome the
+  # comment above says must never happen. `|| true` makes that literal.
+  node "$REPO_ROOT/tools/env-requirements/preflight.mjs" --tool preview-up >&2 || true
 else
   echo "[preview-up] preflight skipped (node unavailable)" >&2
 fi

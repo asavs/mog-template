@@ -11,8 +11,6 @@
 import type { PhaseSummary, TraceSummary } from './trace-stats';
 
 export type ToleranceConfig = {
-  /** How many standard deviations of the baseline's own spread count as noise. */
-  stddevMultiplier: number;
   /** Position drift tolerance, as a fraction of the distance actually traveled in that phase. */
   positionTolerancePct: number;
   /** Minimum position tolerance in world units, for phases with little/no movement. */
@@ -21,23 +19,13 @@ export type ToleranceConfig = {
   jumpMultiplier: number;
   /** Minimum jump tolerance in world units. */
   jumpFloor: number;
-  /**
-   * Minimum absolute headroom added to error/offset bands, for phases where
-   * baseline stddev is ~0 (e.g. stationary phases like cast/attack/idle).
-   * Those phases still show small residual correction-error noise between
-   * runs (observed ~0.03 on otherwise-identical code) even with no movement,
-   * so the floor needs to clear that, not just guard against literal zero.
-   */
-  errFloor: number;
 };
 
 export const DEFAULT_TOLERANCE: ToleranceConfig = {
-  stddevMultiplier: Number(process.env.QA_TOLERANCE_STDDEV_MULTIPLIER ?? 3),
   positionTolerancePct: 0.25,
   positionFloor: 0.1,
   jumpMultiplier: 2,
   jumpFloor: 0.5,
-  errFloor: 0.05,
 };
 
 export type ComparisonFailure = {
@@ -57,15 +45,9 @@ function checkPhase(phase: string, base: PhaseSummary, cand: PhaseSummary, t: To
     failures.push({ phase, metric: 'netDisplacement', baseline: base.netDisplacement, candidate: cand.netDisplacement, allowed: posAllowed });
   }
 
-  const corrAllowed = base.meanCorrErr + t.stddevMultiplier * base.stddevCorrErr + t.errFloor;
-  if (cand.meanCorrErr > corrAllowed) {
-    failures.push({ phase, metric: 'meanCorrectionError', baseline: base.meanCorrErr, candidate: cand.meanCorrErr, allowed: corrAllowed });
-  }
-
-  const offsetAllowed = base.meanOffset + t.stddevMultiplier * base.stddevOffset + t.errFloor;
-  if (cand.meanOffset > offsetAllowed) {
-    failures.push({ phase, metric: 'meanOffset', baseline: base.meanOffset, candidate: cand.meanOffset, allowed: offsetAllowed });
-  }
+  // No correction-error/offset comparison here: v2 exposes no client-side reconciliation
+  // telemetry to compare (see trace-types.ts's TraceRecord doc) — position drift and
+  // frame-jump checks below are what's left of this baseline's regression coverage.
 
   const jumpAllowed = Math.max(t.jumpFloor, t.jumpMultiplier * base.maxFrameDelta);
   if (cand.maxFrameDelta > jumpAllowed) {

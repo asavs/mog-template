@@ -1,9 +1,6 @@
 {
   "cold-load": {
-    "wizard": {
-      "timeToPlayableMs": 20000
-    },
-    "paladin": {
+    "a": {
       "timeToPlayableMs": 20000
     },
     "startup": {
@@ -14,17 +11,11 @@
     "steady_baseline": {
       "worstFrameDeltaMs": 400
     },
-    "fireball_1": {
+    "primary_1": {
       "worstFrameDeltaMs": 100
     },
-    "fireball_2": {
+    "primary_2": {
       "worstFrameDeltaMs": 100
-    },
-    "lightning_1": {
-      "worstFrameDeltaMs": 5000
-    },
-    "lightning_2": {
-      "worstFrameDeltaMs": 5000
     }
   },
   "player-join": {
