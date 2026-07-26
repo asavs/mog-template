@@ -23,6 +23,25 @@
  * the resulting sim state and exposed on `FrameRenderState.localLocomotion`
  * — presentation (`game/App.tsx`) reads it to pick a `motion.loco_*` key
  * without re-deriving grounded/moving/sprint state of its own.
+ *
+ * `visualCorrectionOffset` is the fix for a real-latency teleport bug: every
+ * reconcile (`reconcileFromStore`) used to snap `runtime.local.position` —
+ * which IS the rendered position — straight to the freshly-replayed
+ * authoritative result. At low/local latency the replay result barely
+ * differs from what was already on screen, so the snap is invisible. Under
+ * real latency, more ticks are in flight and the replay result diverges
+ * further from the last frame's render, so the same unsmoothed snap reads as
+ * a teleport (#216's 8+ unit single-frame jump). The fix salvaged from the
+ * pre-rewrite `components/localPlayerFrame.ts` (see `git show
+ * 9f9fc5c:client/src/components/localPlayerFrame.ts`): keep the corrected
+ * physics position (`runtime.local`) authoritative for the NEXT predicted
+ * tick, but render `runtime.local.position + visualCorrectionOffset`, where
+ * the offset starts at (old render position - new corrected position) and
+ * decays toward zero over `VISUAL_CORRECTION_DECAY_RATE`. A correction
+ * bigger than `VISUAL_CORRECTION_SNAP_METERS` (e.g. roll's ~4-unit
+ * `displace_self`) skips the glide and snaps instantly instead — a
+ * multi-unit dash should not visibly slide, only genuine prediction error
+ * should.
  */
 
 import * as THREE from 'three';
@@ -50,6 +69,24 @@ const MAX_TICKS_PER_FRAME = 5; // a stalled tab catches up over several frames, 
 const MAX_PREDICTED_TICKS = 128; // ~6.4s of buffered ticks at 20Hz — generous slack for a slow ack
 const CAMERA_DISTANCE = 5;
 const CAMERA_HEIGHT = 1.6;
+// Tuning carried over unchanged from the pre-rewrite file (git show
+// 9f9fc5c:client/src/components/localPlayerFrame.ts) — already proven live.
+const VISUAL_CORRECTION_DECAY_RATE = 12; // 1/s exponential decay toward zero offset
+const VISUAL_CORRECTION_SNAP_METERS = 3.0; // corrections bigger than this snap instantly instead
+
+type Vec3Like = { x: number; y: number; z: number };
+
+function zeroVec3(): Vec3Like {
+  return { x: 0, y: 0, z: 0 };
+}
+
+function addVec3(a: Vec3Like, b: Vec3Like): Vec3Like {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+function subVec3(a: Vec3Like, b: Vec3Like): Vec3Like {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
 
 /** One shared, stateless ground/collision resolver — the same rows `sim/ground.ts` bakes from `shared/arena.json`. */
 const ARENA_GROUND: Ground = createArenaGround();
@@ -163,6 +200,13 @@ export interface FrameRuntimeState {
   accumulatorSeconds: number;
   renderTickClock: RenderTickClock;
   snapshotBuffers: Map<string, TransformSnapshot[]>;
+  /**
+   * Rendered position minus `local.position` — see module doc. Decays toward zero every frame
+   * (`decayVisualCorrectionOffset`); a reconcile that produces a huge correction (a real dash
+   * like roll, not prediction error) resets it straight to zero instead, so the render position
+   * jumps immediately, same as before this offset existed.
+   */
+  visualCorrectionOffset: Vec3Like;
 }
 
 export function createFrameRuntimeState(): FrameRuntimeState {
@@ -177,6 +221,34 @@ export function createFrameRuntimeState(): FrameRuntimeState {
     accumulatorSeconds: 0,
     renderTickClock: new RenderTickClock(),
     snapshotBuffers: new Map(),
+    visualCorrectionOffset: zeroVec3(),
+  };
+}
+
+/**
+ * Sets `runtime.visualCorrectionOffset` so the render position keeps gliding from wherever it
+ * currently is (`local.position + visualCorrectionOffset`, i.e. the OLD local + the OLD,
+ * not-yet-fully-decayed offset — a second correction arriving mid-glide continues smoothly
+ * rather than resetting) toward `correctedPosition`, UNLESS the jump is bigger than
+ * `VISUAL_CORRECTION_SNAP_METERS`, in which case it snaps immediately (offset zeroed) — a real
+ * displacement (roll's ~4-unit `displace_self`) should be instant, not a slow slide.
+ *
+ * Call this BEFORE overwriting `runtime.local` — it reads the pre-correction position.
+ */
+function applyVisualCorrection(runtime: FrameRuntimeState, correctedPosition: Vec3Like): void {
+  const previousRenderPosition = addVec3(runtime.local.position, runtime.visualCorrectionOffset);
+  const offset = subVec3(previousRenderPosition, correctedPosition);
+  const offsetLength = Math.hypot(offset.x, offset.y, offset.z);
+  runtime.visualCorrectionOffset = offsetLength > VISUAL_CORRECTION_SNAP_METERS ? zeroVec3() : offset;
+}
+
+/** Called once per r3f frame (not per predicted tick) — see module doc. */
+function decayVisualCorrectionOffset(runtime: FrameRuntimeState, dtSeconds: number): void {
+  const alpha = 1 - Math.exp(-VISUAL_CORRECTION_DECAY_RATE * dtSeconds);
+  runtime.visualCorrectionOffset = {
+    x: runtime.visualCorrectionOffset.x * (1 - alpha),
+    y: runtime.visualCorrectionOffset.y * (1 - alpha),
+    z: runtime.visualCorrectionOffset.z * (1 - alpha),
   };
 }
 
@@ -219,12 +291,14 @@ export interface FrameRenderState {
 export function stepFrame(runtime: FrameRuntimeState, ctx: StepFrameContext): FrameRenderState {
   reconcileFromStore(runtime, ctx);
   predictPendingTicks(runtime, ctx);
+  // Once per FRAME (not per tick, however many ran above) — matches the pre-rewrite tuning.
+  decayVisualCorrectionOffset(runtime, ctx.dtSeconds);
   const remotes = sampleRemotes(runtime, ctx);
 
   const localPosition = new THREE.Vector3(
-    runtime.local.position.x,
-    runtime.local.position.y,
-    runtime.local.position.z,
+    runtime.local.position.x + runtime.visualCorrectionOffset.x,
+    runtime.local.position.y + runtime.visualCorrectionOffset.y,
+    runtime.local.position.z + runtime.visualCorrectionOffset.z,
   );
   const camera = computeOrbitCamera(localPosition, ctx.rotationY, ctx.pitch);
 
@@ -254,6 +328,7 @@ function reconcileFromStore(runtime: FrameRuntimeState, ctx: StepFrameContext): 
       sprintActive: false,
     };
     runtime.predicted = [];
+    runtime.visualCorrectionOffset = zeroVec3();
     runtime.initializedFromServer = true;
     runtime.lastServerTick = transform.serverTick;
     return;
@@ -277,6 +352,7 @@ function reconcileFromStore(runtime: FrameRuntimeState, ctx: StepFrameContext): 
     transform.position,
     lastProcessedClientTick,
   );
+  applyVisualCorrection(runtime, sim.position);
   runtime.local = sim;
   runtime.predicted = remaining;
   runtime.lastProcessedClientTick = lastProcessedClientTick;
