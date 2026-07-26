@@ -241,7 +241,21 @@ function trimAssetUrl(sheet: TrimSheet, suffix: 'BaseColor' | 'Normal' | 'ORM'):
  * to keep the geometry contract checkable without a DOM, and that has to stay
  * true after this file grew textures.
  */
+/**
+ * `applyArenaTrim` has exactly one live caller today (`Arena`'s own
+ * `useMemo`, which only ever runs once per mount) plus one dormant one
+ * (`buildArenaScene`, exported but not yet called from anywhere) — so this
+ * cache is not fixing an observed leak, it is closing off the one a second
+ * caller (or a future remount) would otherwise hit for free: three.js
+ * textures are not garbage-collected, and nothing here ever calls
+ * `.dispose()`, so a second `loadTrimSheets` would double the VRAM these
+ * three sheets hold rather than share it. Module-level rather than a `Map`
+ * keyed by `t` — every real caller passes the same `THREE` module.
+ */
+let cachedTrimSheets: Record<TrimSheet, TrimTextures> | null = null;
+
 function loadTrimSheets(t: typeof THREE): Record<TrimSheet, TrimTextures> {
+  if (cachedTrimSheets) return cachedTrimSheets;
   const loader = new t.TextureLoader();
   const sheets = {} as Record<TrimSheet, TrimTextures>;
   for (const sheet of Object.keys(TRIM_SHEET_FILES) as TrimSheet[]) {
@@ -256,6 +270,7 @@ function loadTrimSheets(t: typeof THREE): Record<TrimSheet, TrimTextures> {
     }
     sheets[sheet] = { map, normalMap, orm };
   }
+  cachedTrimSheets = sheets;
   return sheets;
 }
 

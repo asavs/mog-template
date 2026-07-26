@@ -167,6 +167,16 @@ export function SandboxStage({
   const activeChainSpecRef = useRef<ChainSpec | null>(null);
   const lastChainResultRef = useRef<ChainAdvanceResult | 'started' | null>(null);
   const lastReportedChainMotionRef = useRef<string | null | undefined>(undefined);
+  /**
+   * What `onChainState` last actually reported, separate from
+   * `lastChainResultRef` (what the most recent `startChain`/`advanceChain`
+   * call returned). `'ignored'` and `'queued'` change the latter without
+   * moving the audible layer at all — an ignored click never plays anything,
+   * and a queued one only plays once its window opens, later, on its own —
+   * so gating the report on motion alone drops exactly the two outcomes the
+   * panel exists to surface. Comparing both catches every case.
+   */
+  const lastReportedChainResultRef = useRef<ChainAdvanceResult | 'started' | null | undefined>(undefined);
 
   // Kept current in an effect rather than during render: a ref written while
   // rendering is a mutation React may discard or replay. Initialised from the
@@ -375,6 +385,7 @@ export function SandboxStage({
     activeChainSpecRef.current = started ? spec : null;
     lastChainResultRef.current = started ? 'started' : 'inactive';
     lastReportedChainMotionRef.current = undefined;
+    lastReportedChainResultRef.current = undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body, mode, chain?.startToken]);
 
@@ -429,13 +440,21 @@ export function SandboxStage({
     // The "visible cancel-window feedback" a chain audition promises: report
     // whenever what is actually audible changes, not only on the click that
     // requested it — a QUEUED advance fires later, on its own, once the window
-    // the request was waiting for actually opens.
+    // the request was waiting for actually opens. Also report on a RESULT
+    // change with no motion change: 'ignored' and 'queued' are both exactly
+    // that (an ignored click plays nothing at all; a queued one plays nothing
+    // until later) — motion alone would drop both from the panel.
     if (onChainState && chain && activeChainSpecRef.current) {
       const state = controller?.getState();
       const activeMotion = state?.overlayMotion ?? state?.overrideMotion ?? null;
-      if (activeMotion !== lastReportedChainMotionRef.current) {
+      const result = lastChainResultRef.current;
+      if (
+        activeMotion !== lastReportedChainMotionRef.current
+        || result !== lastReportedChainResultRef.current
+      ) {
         lastReportedChainMotionRef.current = activeMotion;
-        onChainState({ activeMotion, lastResult: lastChainResultRef.current });
+        lastReportedChainResultRef.current = result;
+        onChainState({ activeMotion, lastResult: result });
       }
     }
   });
