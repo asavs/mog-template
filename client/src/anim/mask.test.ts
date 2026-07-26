@@ -6,6 +6,7 @@ import {
   OVERLAY_BANDS,
   UPPER_BODY_BONE_NAMES,
   bandOfBoneName,
+  freezeClipAt,
   maskClipToBands,
   maskClipToOverlay,
 } from './mask';
@@ -13,6 +14,68 @@ import {
 function vectorTrack(name: string): THREE.VectorKeyframeTrack {
   return new THREE.VectorKeyframeTrack(name, [0, 1], [0, 0, 0, 1, 0, 0]);
 }
+
+describe('freezing a clip at a moment', () => {
+  /** Travels 0 -> 10 on x over two seconds, so any sample is identifiable. */
+  const ramp = () => new THREE.AnimationClip('ramp', 2, [
+    new THREE.VectorKeyframeTrack(
+      `${MOG_BONES.leftLowerArm}.position`,
+      [0, 2],
+      [0, 0, 0, 10, 0, 0],
+    ),
+  ]);
+
+  it('holds the last frame, which is the pose a recovery ends on', () => {
+    // The whole reason this exists: `Punch_Hook_Rec` ends with the hands up,
+    // and the END is the frame worth keeping. Sampling anywhere else would give
+    // a pose mid-recovery, which is not a guard.
+    const frozen = freezeClipAt(ramp(), 'end');
+    expect(frozen.tracks).toHaveLength(1);
+    expect([...frozen.tracks[0].values]).toEqual([10, 0, 0, 10, 0, 0]);
+  });
+
+  it('holds an interior moment by interpolating rather than snapping to a key', () => {
+    const frozen = freezeClipAt(ramp(), 0.5);
+    expect([...frozen.tracks[0].values].slice(0, 3)).toEqual([2.5, 0, 0]);
+  });
+
+  it('produces a clip that loops to no effect', () => {
+    const frozen = freezeClipAt(ramp(), 'end');
+    const [first, second] = [
+      [...frozen.tracks[0].values].slice(0, 3),
+      [...frozen.tracks[0].values].slice(3),
+    ];
+    expect(first).toEqual(second);
+    expect(frozen.duration).toBeGreaterThan(0);
+  });
+
+  it('clamps a moment past either end of the clip', () => {
+    expect([...freezeClipAt(ramp(), 99).tracks[0].values].slice(0, 3)).toEqual([10, 0, 0]);
+    expect([...freezeClipAt(ramp(), -5).tracks[0].values].slice(0, 3)).toEqual([0, 0, 0]);
+  });
+
+  it('slerps a rotation rather than reading the nearest key', () => {
+    // Vector tracks would pass a naive implementation. A quaternion sampled by
+    // nearest-key returns an end value at the halfway point; slerped it does not.
+    const half = Math.SQRT1_2;
+    const spin = new THREE.AnimationClip('spin', 2, [
+      new THREE.QuaternionKeyframeTrack(
+        `${MOG_BONES.leftLowerArm}.quaternion`,
+        [0, 2],
+        [0, 0, 0, 1, 0, 0, half, half],
+      ),
+    ]);
+    const midpoint = [...freezeClipAt(spin, 1).tracks[0].values].slice(0, 4);
+    expect(midpoint[2]).toBeGreaterThan(0);
+    expect(midpoint[2]).toBeLessThan(half);
+  });
+
+  it('returns the same clip for the same moment, so one pose is one action', () => {
+    const source = ramp();
+    expect(freezeClipAt(source, 'end')).toBe(freezeClipAt(source, 'end'));
+    expect(freezeClipAt(source, 0.5)).not.toBe(freezeClipAt(source, 'end'));
+  });
+});
 
 describe('animation bone bands', () => {
   it('assigns every canonical bone to exactly one band', () => {

@@ -7,6 +7,16 @@ after them.
 Companion to `docs/animation-audition.md` (what the clips are) and `docs/motion-vocabulary.md`
 (the naming and layering rules).
 
+The judging happens in two rooms, both Vite entries beside the game:
+
+- `npm run sandbox` — the clip browser. One clip at a time, any body, any scene. Answers
+  *what is this animation*.
+- `npm run drill` — a room per character running a fixed routine a step at a time. Answers
+  *does this set of animations hold together*, which no single clip can be asked.
+
+`client/src/drill/drills.ts` is where the routines are written, and it is the file this plan
+is most directly about.
+
 ---
 
 ## The one rule
@@ -18,8 +28,8 @@ grants nothing on its own. Every capability comes from an item held or a skill t
 moment a player drops the wand and picks up a sword, they swing it — with no code anywhere
 asking what they picked at creation.
 
-This is worth stating at the top because the alternative is what the repository just spent two
-commits removing. The old paladin *was* a capability container: its cast was an overhead sword
+This is worth stating at the top because the alternative is what de-classing removed. The old
+paladin *was* a capability container: its cast was an overhead sword
 slam, so equipping a wand on that body played a fireball as a holy slam. The motion vocabulary
 exists to prevent exactly that, and `act_slam_2h` — the neutral name coined so that gesture
 could survive de-classing — turned out to have no clip, no caller, and no reason to exist.
@@ -34,8 +44,8 @@ to them.
 
 | # | Step | State |
 |---|---|---|
-| 1 | Animations in | Both libraries staged, 79 clips auditioned, 15 bound. Two mechanisms outstanding: the phased action and the chain. |
-| 2 | Props and sets | 29 props, 23 scenery, one GLB, four scenes. Largely done; a garden is the notable gap. |
+| 1 | Animations in | Both libraries staged, 79 clips auditioned, 15 bound. Two routines run. Two mechanisms outstanding: the phased action and the chain. |
+| 2 | Props and sets | 7 held props, 23 scenery, one GLB, six sets. Placement and grip are editable in the room and export as source. A garden is the notable gap. |
 | 3 | Base male + female | Not started. `base-characters` is unpacked locally with `Base Characters` and `Hairstyles`. |
 | 4 | Modular clothing | Not started. `outfits-fantasy` unpacked, 52 parts. `avatar/assembleAvatar.ts` already does modular assembly for the legacy presets — foundation or replacement, not yet decided. |
 | 5 | Creation loop | Not started. Needs 3 and 4 for the real thing; see below for what does not. |
@@ -49,6 +59,15 @@ batch:
 - **The chain** — an ordered run of attacks where continuing the input advances and releasing
   drops into a recovery. Two chains ship in the library: sword `A/B/C` with `_A_Rec`/`_B_Rec`,
   and unarmed `Jab`/`Cross`/`Hook` with `Hook_Rec`.
+
+  A drill step can set `cancelAfter`, which opens the running action's recovery window on a
+  timer so the next step cuts in rather than queues. That goes through
+  `enterAbilityRecovery` — the same door gameplay would use — so it demonstrates that the
+  joins are reachable and shows what they look like. It is not the mechanism. The drill holds
+  the stopwatch and the times are written per step by hand; nothing in the content or
+  controller layer knows that `Jab` has a successor. Building the chain means moving that
+  knowledge inward: the ordered run becomes data, and advancing becomes a response to input
+  rather than to a clock.
 
 ---
 
@@ -73,11 +92,26 @@ demo can run on `body.humanoid` today and inherit the real bodies at step 3 for 
 structurally the creation screen. Step 5 replaces the mannequin and adds the customisation
 controls; the selection and preview machinery is the same object.
 
-The honest cost: it is built in the sandbox, and the sandbox is not the game. The content
-seam — `BODY_KEYS.humanoid`, `clipBindings.json`, the carved `dropin/` GLBs, the band-masked
-controller — is referenced by exactly one non-test file, `SandboxStage.tsx`. The actual game
-still loads `models/paladin/paladin.fbx` through the legacy `catalog.ts`. So the demo is real
-and the game is elsewhere until that migration happens.
+### Where this stands
+
+The drill room is that machinery, built for judging rather than for choosing. A `Drill` is
+`id`, `label`, `note`, `sceneId`, `stance`, and an ordered list of steps; the room picks one,
+loads its scene, wears its stance, fills the hands from its slots, and runs the steps on a
+timer with manual stepping and scrubbing over the top. Two exist — sword-and-board in the
+drill yard, unarmed in the sparring pit — and each brings its own room, because a weapon rack
+standing in the corner of an unarmed routine quietly asks why the fighter is empty-handed.
+
+That is the preset table and the motion cycler from the list below, arrived at from the other
+direction. The open question is whether it stays two things or becomes one: a routine is
+ordered for inspection, worst joins deliberately exposed, and a preview is ordered to flatter.
+Those may be two orderings of one table or two tables that share a shape. It is not decided,
+and the decision wants making before either grows further.
+
+The honest cost, unchanged: this is not the game. The content seam — `BODY_KEYS.humanoid`,
+`clipBindings.json`, the carved `dropin/` GLBs, the band-masked controller — is referenced
+only by the sandbox and drill entries. The actual game still loads
+`models/paladin/paladin.fbx` through the legacy `catalog.ts`. So the rooms are real and the
+game is elsewhere until that migration happens.
 
 ---
 
@@ -94,7 +128,8 @@ only column that is work.
 | Signature | `Sword_Regular_A` → `B` → `C`, with `_A_Rec` / `_B_Rec` |
 | Supporting | `Sword_Block`, `Idle_Shield_Break`, `Shield_OneShot`, `Shield_Dash`, `Sword_Dash` |
 | Props | sword, shield, axe |
-| Scene | exists — the dummy is placed 2.3 out so a swing has somewhere to travel |
+| Scene | `drill-yard` — the dummy is placed 2.3 out so a swing has somewhere to travel |
+| Routine | `warrior-sword-shield` — guard, move, strike, the combo string, defend, go down, get up |
 | Needs | the chain |
 
 ### Wizard — `alchemist's study`
@@ -135,7 +170,8 @@ only column that is work.
 | Signature | `Roll`, `Slide_Start`/`Loop`/`Exit`, `ClimbUp_1m` |
 | Supporting | `Crouch_Idle_Loop`, `Crouch_Fwd_Loop`, `Punch_Jab`/`Cross`/`Hook` |
 | Props | sword as a dagger stand-in |
-| Scene | exists |
+| Scene | `drill-yard`; the unarmed half of its vocabulary is judged in `sparring-pit` |
+| Routine | `fighter-unarmed` covers the punches, the crouch loops and `Roll`. Nothing covers the slide or the climb. |
 | Needs | crouch as a movement mode; dodge; the phased action for the slide |
 
 ### Wanderer — `tavern corner`
@@ -156,12 +192,32 @@ built from props already imported. That is the argument for starting now.
 ## What the demo needs that does not exist
 
 1. **A preset table** — id, label, scene, stance, and an ordered list of motions to cycle.
-   Data, not code, and it should live next to the loadout authority rather than in the UI.
-2. **A garden scene**, for the herbalist.
+   *Exists as `Drill`, in the wrong place.* It sits in `client/src/drill/`, which is the UI,
+   and the intent was for it to live next to the loadout authority — `shared/avatar-loadout.json`,
+   which already carries a `presets` block for the legacy bodies. Two tables describing a
+   starting bundle, in two layers, is the shape the one rule exists to prevent.
+2. **A garden scene**, for the herbalist. Still missing, and still the only preset blocked on
+   a set rather than on a mechanism.
 3. **A motion cycler** — play this list of clips in order, looping, so a preset previews as a
-   short performance rather than a single pose. The controller can already sequence; nothing
-   drives it on a timer.
+   short performance rather than a single pose. *Exists as the drill's step runner*, with
+   auto-advance, manual stepping, replay, speed, and a per-step width override. It advances on
+   a dwell rather than looping, which is the difference between a routine and a preview.
 4. **A wand prop.** Not in the Fantasy Props kit. The staff is still procedural too.
+5. ~~**A fighting guard.**~~ *Solved without new content.* No clip in either library is a
+   guard, but `Punch_Hook_Rec` ENDS in one: measured against `Idle_Loop`, its last frame has
+   both forearms 92 and 100 degrees off idle while the legs, head and neck have already
+   returned to it. `stance.unarmed` binds that clip and holds it at `'end'`.
+
+   The mechanism is worth more than the stance. `freezeClipAt` takes one moment of a clip as a
+   constant pose, so **any clip that passes through a pose worth holding is now a candidate
+   stance** — which is a better answer than sourcing a clip per stance from a library that does
+   not have them. Two rules came out of doing it:
+
+   - Claim only the bands the pose holds. Unarmed takes `armL` and `armR` and leaves `core` to
+     locomotion, so the chest and head keep breathing under a fixed guard. Taking `core` as
+     well would give a mannequin — worth knowing, because sword and shield both take it.
+   - A stance key may now name a clip that is not itself a stance. `motion.stance_unarmed`
+     resolves to a punch recovery, and the `hold` is what makes it a pose.
 
 Deliberately *not* required: the base characters, the outfits, any server change, or the game
 migrating off the legacy avatar path.
@@ -170,8 +226,10 @@ migrating off the legacy avatar path.
 
 ## Suggested order
 
-1. The preset table and the picker, on the mannequin, reusing the four existing scenes. Smith
-   and Wanderer work immediately; the others preview their stance and whatever is bound.
+1. The preset table and the picker, on the mannequin, reusing the existing sets. *Largely
+   standing, as the drill room.* What remains is the placement decision above — whether the
+   table moves to `shared/` and the routines become one ordering of it — and routines for the
+   presets that have none. Smith and Wanderer need no mechanism and are unwritten.
 2. The garden scene. Herbalist joins.
 3. The chain. Warrior joins, and eleven clips bind.
 4. The phased action. Wizard and Scout join, and eleven more bind.

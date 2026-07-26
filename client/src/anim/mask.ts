@@ -199,6 +199,67 @@ export function maskClipToOverlay(
   return maskClipToBands(source, OVERLAY_BANDS[width]);
 }
 
+/**
+ * Long enough to be a clip, short enough to cost nothing. Every keyframe holds
+ * the same value, so the number only has to be above zero.
+ */
+const HOLD_SECONDS = 1;
+
+/**
+ * One moment of a clip, held.
+ *
+ * A stance needs a pose that loops, and the library ships very few — but it
+ * ships plenty of clips that PASS THROUGH a pose worth holding. `Punch_Hook_Rec`
+ * ends with the hands up and the body already back under itself, which is a
+ * boxing guard however the animator filed it; nothing in either library is one
+ * outright.
+ *
+ * So rather than sourcing a clip per stance, take the frame. The result is a
+ * two-keyframe constant clip, which loops to no effect and blends like any
+ * other. A stance built this way should claim only the bands the pose actually
+ * holds — freeze the arms and the chest still breathes with whatever is
+ * underneath, which is the difference between a guard and a mannequin.
+ */
+export function freezeClipAt(
+  source: THREE.AnimationClip,
+  atSeconds: number | 'end',
+): THREE.AnimationClip {
+  const time = atSeconds === 'end'
+    ? source.duration
+    : Math.max(0, Math.min(source.duration, atSeconds));
+  const cacheKey = `hold@${atSeconds === 'end' ? 'end' : time.toFixed(4)}`;
+
+  let variants = clipCache.get(source);
+  if (!variants) {
+    variants = new Map();
+    clipCache.set(source, variants);
+  }
+  const cached = variants.get(cacheKey);
+  if (cached) return cached;
+
+  const tracks = source.tracks.map(track => {
+    // `QuaternionKeyframeTrack` overrides this factory to slerp, so a rotation
+    // is sampled correctly rather than read off the nearest key. `evaluate`
+    // returns a buffer it reuses — copy before the next track overwrites it.
+    const sampled = Array.from(
+      track.InterpolantFactoryMethodLinear().evaluate(time) as ArrayLike<number>,
+    );
+    const frozen = track.clone();
+    frozen.times = new Float32Array([0, HOLD_SECONDS]);
+    frozen.values = new Float32Array([...sampled, ...sampled]);
+    return frozen;
+  });
+
+  const derived = new THREE.AnimationClip(
+    `${source.name}__mog_${cacheKey}`,
+    HOLD_SECONDS,
+    tracks,
+    THREE.NormalAnimationBlendMode,
+  );
+  variants.set(cacheKey, derived);
+  return derived;
+}
+
 export function isUpperBodyBoneName(name: string): boolean {
   return UPPER_BODY_BONE_NAMES.has(name);
 }

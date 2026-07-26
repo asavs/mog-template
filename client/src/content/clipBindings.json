@@ -19,6 +19,7 @@
     "motion.act_drink": { "library": "ual2", "clip": "Consume" },
     "motion.stance_shield": { "library": "ual2", "clip": "Idle_Shield_Loop" },
     "motion.stance_staff": { "library": "ual1", "clip": "Idle_Torch_Loop" },
-    "motion.stance_sword": { "library": "ual1", "clip": "Sword_Idle" }
+    "motion.stance_sword": { "library": "ual1", "clip": "Sword_Idle" },
+    "motion.stance_unarmed": { "library": "ual2", "clip": "Punch_Hook_Rec", "holdNote": "Held at its last frame by the stance, not played. Measured against Idle_Loop, the clip ends with both forearms 92 and 100 degrees off idle while the legs, head and neck have returned to it — hands up, body standing. Nothing in either library is a fighting guard outright." }
   }
 }

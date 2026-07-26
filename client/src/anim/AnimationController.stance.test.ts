@@ -320,4 +320,33 @@ describe('composed stances', () => {
     expect(rig.leftArm.position.x).toBeCloseTo(90, 1);
     expect(rig.rightArm.position.x).toBeCloseTo(-40, 1);
   });
+
+  it('holds a stance at one frame when the pose is a moment rather than a loop', () => {
+    // Unarmed has no guard clip, so its stance is a punch recovery held at its
+    // last frame. Threading `hold` from the stance data down to the clip is the
+    // step that can silently not happen: the pose still resolves, it just plays
+    // through and the hands come back down.
+    const rig = armRig();
+    // Ramps 0 -> 80, so playing it and holding its end are far apart.
+    const arm = (bone: string) =>
+      new THREE.VectorKeyframeTrack(`${bone}.position`, [0, 2], [0, 0, 0, 80, 0, 0]);
+    const recovery = new THREE.AnimationClip('punch_rec', 2, [
+      arm(MOG_BONES.leftUpperArm),
+      arm(MOG_BONES.rightUpperArm),
+    ]);
+    const controller = new AnimationController(rig.root, resolverFor([gait, recovery]));
+
+    controller.setLocomotion('walk_forward');
+    expect(controller.setStance([
+      { motion: 'punch_rec', bands: ['armL', 'armR'], hold: 'end' },
+    ])).toBe(true);
+    settle(controller, 0.6);
+    expect(rig.leftArm.position.x).toBeCloseTo(80, 1);
+
+    // And it stays. A stance playing through would be back near the foot of the
+    // ramp by now, which is the guard dropping on its own.
+    settle(controller, 2.5);
+    expect(rig.leftArm.position.x).toBeCloseTo(80, 1);
+    expect(rig.rightArm.position.x).toBeCloseTo(80, 1);
+  });
 });

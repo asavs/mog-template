@@ -39,6 +39,15 @@ export type StanceSlot = {
 export type StancePose = {
   motion: MotionKey;
   bands: readonly AnimationBand[];
+  /**
+   * Hold one moment of the clip rather than playing it. `'end'` is its last
+   * frame.
+   *
+   * For a pose the library ships whole this is wrong — a held idle breathes,
+   * and freezing it would throw that away. It is for the poses the library only
+   * passes THROUGH, where the alternative is not having the stance at all.
+   */
+  hold?: number | 'end';
 };
 
 export type Stance = {
@@ -53,7 +62,13 @@ export const STANCES: Record<StanceKey, Stance> = {
   [STANCE_KEYS.unarmed]: {
     key: STANCE_KEYS.unarmed,
     label: 'unarmed',
-    poses: [],
+    // The arms only, and deliberately. `Punch_Hook_Rec` ends with both forearms
+    // ~90 degrees off idle while the legs, head and neck are already back at it,
+    // so the last frame is a guard rather than a recovery. Freezing the arms and
+    // leaving `core` to locomotion is what keeps it alive: the chest and head
+    // still breathe with the idle and counter-rotate with the walk, while the
+    // hands stay up. Taking `core` too would give a mannequin.
+    poses: [{ motion: MOTION_STANCE.unarmed, bands: ['armL', 'armR'], hold: 'end' }],
     slots: [],
   },
   [STANCE_KEYS.staff]: {

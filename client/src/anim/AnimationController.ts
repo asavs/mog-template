@@ -8,6 +8,7 @@ import {
 } from './config';
 import {
   ALL_BANDS,
+  freezeClipAt,
   maskClipToBands,
   maskClipToOverlay,
   OVERLAY_BANDS,
@@ -28,6 +29,14 @@ export type MotionResolver = (key: string) => THREE.AnimationClip | null;
 export type StancePart = {
   motion: string;
   bands: readonly AnimationBand[];
+  /**
+   * Hold one moment of the clip instead of playing it.
+   *
+   * A stance wants a looping pose and the library ships few, but several clips
+   * pass through one. `'end'` takes the last frame — a recovery that finishes
+   * with the hands up is a guard, whatever it is called. See `freezeClipAt`.
+   */
+  hold?: number | 'end';
 };
 
 export type AbilityPlaybackOptions = {
@@ -146,6 +155,21 @@ export class AnimationController {
     THREE.AnimationAction,
     { from: number; to: number; elapsed: number; duration: number }
   >();
+  /**
+   * A second identity for a clip that chains into itself.
+   *
+   * `mixer.clipAction` is memoised per clip, so re-firing the clip that is
+   * already running hands back the action still playing it. Arming it calls
+   * `reset()`, which yanks it to frame 0 — the outgoing pose is skipped rather
+   * than blended, because an action cannot crossfade with itself. A double jab
+   * is the ordinary case: the first jab's recovery vanishes and the body cuts.
+   *
+   * Cloning the clip gives the incoming fire its own action, so the two ends of
+   * a self-chain blend like any other pair. Two identities are enough and they
+   * alternate on their own — the third fire finds the alternate running and
+   * reaches back for the original, by which time it faded out long ago.
+   */
+  private readonly alternates = new Map<THREE.AnimationClip, THREE.AnimationClip>();
 
   constructor(
     root: THREE.Object3D,
@@ -229,14 +253,17 @@ export class AnimationController {
         : stance;
 
     const resolved = requested
-      .map(part => ({ part, clip: this.stanceClip(part.motion, part.bands) }))
+      .map(part => ({ part, clip: this.stanceClip(part.motion, part.bands, part.hold) }))
       .filter((entry): entry is { part: StancePart; clip: THREE.AnimationClip } => entry.clip !== null);
 
-    // Identity covers the bands as well as the clips: the same two poses swapped
-    // between arms is a different stance, and re-setting it must rebuild.
+    // Identity covers the bands and the held moment as well as the clips: the
+    // same two poses swapped between arms is a different stance, and so is the
+    // same clip held at a different frame. Re-setting either must rebuild.
     const nextKey = resolved.length === 0
       ? null
-      : resolved.map(({ part }) => `${part.motion}@${[...part.bands].join('+')}`).join('|');
+      : resolved
+        .map(({ part }) => `${part.motion}@${[...part.bands].join('+')}#${part.hold ?? 'play'}`)
+        .join('|');
     if ((this.stance?.key ?? null) === nextKey) return false;
 
     if (this.stance) {
@@ -273,10 +300,15 @@ export class AnimationController {
     const masked = this.overlayClip(source, width);
     if (!masked) return false;
 
+    // Masked clips are cached per source and width, so re-firing the running
+    // clip lands on its own action here too. See `alternates`.
+    const running = this.overlay?.action.getClip();
+    const clip = running === masked.clip ? this.alternateOf(masked.clip) : masked.clip;
+
     this.releaseFullBodyAbilityForOverlay(rule.enterBlendSeconds);
     if (this.overlay) this.fadeAndStop(this.overlay.action, rule.exitBlendSeconds);
 
-    const action = this.mixer.clipAction(masked.clip);
+    const action = this.mixer.clipAction(clip);
     this.playAction(action, rule);
     this.overlay = { key, action, ruleName: 'ability', width: masked.width };
     this.abilityInRecovery = false;
@@ -496,11 +528,16 @@ export class AnimationController {
     const source = this.resolveMotion(key);
     if (!source) return false;
 
+    // Chaining a clip into itself needs a second identity to blend against.
+    // See `alternates`.
+    const running = this.override?.action.getClip();
+    const clip = running === source ? this.alternateOf(source) : source;
+
     if (this.override) {
       this.fadeAndStop(this.override.action, rule.enterBlendSeconds);
     }
 
-    const action = this.mixer.clipAction(source);
+    const action = this.mixer.clipAction(clip);
     this.playAction(action, rule);
     this.override = { key, action, ruleName, width: 'torso' };
     this.abilityInRecovery = false;
@@ -592,6 +629,15 @@ export class AnimationController {
    * the torso and fight the gait a little than to have the player press a button
    * and see their character do nothing.
    */
+  /** The clone a self-chaining clip blends against. See `alternates`. */
+  private alternateOf(clip: THREE.AnimationClip): THREE.AnimationClip {
+    const existing = this.alternates.get(clip);
+    if (existing) return existing;
+    const alternate = clip.clone();
+    this.alternates.set(clip, alternate);
+    return alternate;
+  }
+
   private overlayClip(
     source: THREE.AnimationClip,
     width: OverlayWidth,
@@ -606,12 +652,18 @@ export class AnimationController {
     return null;
   }
 
-  private stanceClip(key: string, bands: readonly AnimationBand[]): THREE.AnimationClip | null {
+  private stanceClip(
+    key: string,
+    bands: readonly AnimationBand[],
+    hold?: number | 'end',
+  ): THREE.AnimationClip | null {
     const source = this.resolveMotion(key);
     if (!source) return null;
     // A stance never widens — it is a background pose, and one that reached into
     // the lower spine would fight every gait it is worn over.
-    const clip = maskClipToBands(source, bands);
+    const masked = maskClipToBands(source, bands);
+    // Masked first, so freezing samples only the tracks the pose keeps.
+    const clip = hold === undefined ? masked : freezeClipAt(masked, hold);
     return clip.tracks.length > 0 ? clip : null;
   }
 

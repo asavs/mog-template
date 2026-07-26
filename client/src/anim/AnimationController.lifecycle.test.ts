@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MOG_BONES } from '../avatar/rig';
 import { AnimationController } from './AnimationController';
 import { MOTION_RULES } from './config';
-import { ALL_BANDS, maskClipToBands } from './mask';
+import { ALL_BANDS, maskClipToBands, maskClipToOverlay } from './mask';
 
 /** One track per vertical band — see `mask.ts`. The arms stay empty. */
 function testClip(name: string, duration = 1): THREE.AnimationClip {
@@ -78,6 +78,54 @@ describe('AnimationController lifecycle', () => {
       overlayMotion: 'cast',
       overrideMotion: null,
     });
+  });
+
+  it('blends a clip chained into itself instead of resetting the action underneath it', () => {
+    // `mixer.clipAction` is memoised per clip, so re-firing the clip already
+    // running would hand back its own action, and arming it calls `reset()`.
+    // The outgoing pose is then skipped rather than blended — which on a double
+    // jab looks like the first jab's recovery never happening. The second fire
+    // has to get an action of its own to fade against.
+    const jab = testClip('jab');
+    const controller = new AnimationController(root(), key => (key === 'jab' ? jab : null));
+
+    expect(controller.playAbility('jab', { upperBodyOnly: false })).toBe(true);
+    const first = controller.mixer.existingAction(jab);
+    expect(first).toBeTruthy();
+
+    controller.update(0.4);
+    const reached = first!.time;
+    expect(reached).toBeGreaterThan(0);
+
+    controller.enterAbilityRecovery();
+    expect(controller.playAbility('jab', { upperBodyOnly: false })).toBe(true);
+
+    // The outgoing jab keeps its place and fades out from there. Reset to zero
+    // means it is being reused as the incoming one, and the join is a hard cut.
+    expect(first!.time).toBeCloseTo(reached);
+    expect(controller.getState()).toMatchObject({ overrideMotion: 'jab' });
+  });
+
+  it('blends a self-chained overlay too, where the masked clip is cached', () => {
+    // `maskClipToOverlay` caches per source and width, so the overlay path
+    // lands on the same action for the same clip exactly as the full-body one
+    // does. Fixing only the full-body path would leave every narrow ability
+    // hard-cutting when it chains into itself.
+    const jab = testClip('jab');
+    const controller = new AnimationController(root(), key => (key === 'jab' ? jab : null));
+
+    expect(controller.playAbility('jab')).toBe(true);
+    controller.update(0.3);
+
+    const masked = maskClipToOverlay(jab, 'torso');
+    const first = controller.mixer.existingAction(masked);
+    expect(first).toBeTruthy();
+    const reached = first!.time;
+    expect(reached).toBeGreaterThan(0);
+
+    controller.enterAbilityRecovery();
+    expect(controller.playAbility('jab')).toBe(true);
+    expect(first!.time).toBeCloseTo(reached);
   });
 
   it('advances a changed base motion silently while a full-body override owns the pose', () => {

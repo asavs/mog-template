@@ -85,6 +85,15 @@ export const MOTION_STANCE = {
   shield: 'motion.stance_shield',
   /** Blade held ready, bladed stance. Right arm. */
   sword: 'motion.stance_sword',
+  /**
+   * Hands up, unarmed. Both arms.
+   *
+   * The only stance key whose clip is not a stance: it binds a punch recovery
+   * and is held at its last frame, because no clip in either library is a
+   * fighting guard and that one ENDS in a passable one. See the stance's `hold`
+   * and `freezeClipAt`.
+   */
+  unarmed: 'motion.stance_unarmed',
 } as const;
 
 /** Involuntary responses to being acted upon. */

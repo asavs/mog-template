@@ -15,6 +15,9 @@
  * Positions are world units with the body at the origin facing +Z. Scenery is
  * authored origin-at-base by the kit, so y is the floor unless something is
  * meant to sit on top of something else.
+ *
+ * `docs/character-pipeline.md` lists which sets each preset wants. A garden is
+ * the one it asks for that is not here.
  */
 
 import { PROP_KEYS, SCENERY_KEYS } from '../content';
