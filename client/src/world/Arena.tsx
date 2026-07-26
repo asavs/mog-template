@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { useEffect, useMemo, useRef } from 'react';
 import { resolveProp } from '../content';
-import { buildArena } from './arenaArchitecture';
+import { applyArenaTrim, buildArena } from './arenaArchitecture';
 import { ARENA_DRESSING, type WorldPlacement } from './dressing';
 
 /** Warm ember colour for brazier / fire-bowl point lights. */
@@ -109,6 +109,7 @@ export async function buildArenaScene(): Promise<THREE.Scene> {
   scene.name = 'arena.scene';
 
   const architecture = buildArena();
+  applyArenaTrim(architecture);
   scene.add(architecture);
   scene.add(createHorizonGround());
 
@@ -136,7 +137,11 @@ export async function buildArenaScene(): Promise<THREE.Scene> {
 export function Arena() {
   const groupRef = useRef<THREE.Group>(null);
 
-  const architecture = useMemo(() => buildArena(), []);
+  const architecture = useMemo(() => {
+    const group = buildArena();
+    applyArenaTrim(group);
+    return group;
+  }, []);
   const horizonGround = useMemo(() => createHorizonGround(), []);
   const emberPoints = (architecture.userData.emberPoints ?? []) as EmberPoint[];
   // Cap at 8; architecture always emits 6 — length is fixed for the component lifetime.

@@ -156,6 +156,187 @@ const MAT_PREFIX: Record<MatKey, string> = {
 
 type Materials = Record<MatKey, THREE.MeshStandardMaterial>;
 
+/* ===========================================================================
+ * 2b. Trim sheets — Fantasy Props kit, staged into public/props/trim/.
+ *
+ * Each sheet is a hand-modeling trim atlas (a grid of DISTINCT edge/molding
+ * pieces — a barrel lid here, a hinge there), not a seamless material meant to
+ * tile as a whole. Feeding the full 2048² atlas through `projectTrimUVs`'s
+ * world-space tiling would cycle through every prop icon it contains, which
+ * is the "smeared noise" failure mode this whole module exists to avoid.
+ *
+ * So each material class instead samples ONE hand-picked, confirmed-tileable
+ * rectangle inside its sheet — verified by rendering it 4×4 and checking for
+ * seams before it went in this table — and `remapUVsToRegion` bakes the
+ * repeat into the vertex UVs themselves rather than relying on the texture's
+ * own (non-repeating) layout. Coordinates are pixel rects over the staged
+ * 2048×2048 PNGs, converted to 0..1 by `region()`.
+ * ======================================================================== */
+
+const TRIM_SIZE = 2048;
+
+/** `region()` takes pixel rects so the numbers below match what was judged
+ * on-screen (a crop tool tiled at that rect) rather than pre-divided fractions. */
+function region(x: number, y: number, w: number, h: number): TrimRegion {
+  return { u0: x / TRIM_SIZE, v0: y / TRIM_SIZE, uw: w / TRIM_SIZE, vh: h / TRIM_SIZE };
+}
+
+type TrimRegion = { u0: number; v0: number; uw: number; vh: number };
+type TrimSheet = 'props' | 'metal' | 'cloth';
+
+const TRIM_SHEET_FILES: Record<TrimSheet, string> = {
+  props: 'T_Trim_Props',
+  metal: 'T_Trim_Metal',
+  cloth: 'T_Trim_Cloth',
+};
+
+type TrimClassAssignment = {
+  sheet: TrimSheet;
+  region: TrimRegion;
+  /**
+   * Replaces the palette's flat `color` once a map is attached. The picked
+   * rectangles read as pale, low-contrast plaster/metal on their own sheet —
+   * multiplying by the ORIGINAL (much darker) palette color under this
+   * scene's dim, warm, ember-dominated lighting crushed that contrast back
+   * out to near-flat. A lighter tint here lets the map's own variation
+   * survive that multiply instead of fighting it.
+   */
+  tint: number;
+  /** Exaggerates the bump response so surface relief still reads under low,
+   * warm point-light-only illumination, where base-color contrast alone
+   * mostly disappears. */
+  normalScale: number;
+};
+
+/**
+ * Which sheet and which rectangle of it each material class samples.
+ * `stoneDark` and `ember` are deliberately absent — they stay flat palette
+ * colors, same as before. Wood samples the Props sheet: a bamboo/plank strip
+ * along its top edge read better than anything in the Metal sheet for a
+ * charred-timber read (judged on screen, see the commit message).
+ */
+const TRIM_ASSIGNMENT: Partial<Record<MatKey, TrimClassAssignment>> = {
+  stone: { sheet: 'props', region: region(20, 910, 600, 400), tint: 0x8d9099, normalScale: 1.8 },
+  wood: { sheet: 'props', region: region(50, 10, 400, 160), tint: 0x6a5738, normalScale: 1.6 },
+  metal: { sheet: 'metal', region: region(100, 60, 500, 350), tint: 0x84827a, normalScale: 1.8 },
+  cloth: { sheet: 'cloth', region: region(1300, 560, 500, 320), tint: 0x6b1f26, normalScale: 1 },
+};
+
+type TrimTextures = { map: THREE.Texture; normalMap: THREE.Texture; orm: THREE.Texture };
+
+function trimAssetUrl(sheet: TrimSheet, suffix: 'BaseColor' | 'Normal' | 'ORM'): string {
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+  return `${base}/props/trim/${TRIM_SHEET_FILES[sheet]}_${suffix}.png`;
+}
+
+/**
+ * Load the three sheets used by `TRIM_ASSIGNMENT`. `flipY = false` on every
+ * one of them so a UV computed directly from top-left pixel coordinates (as
+ * `region()` above does) lands on the pixels it was judged against, instead
+ * of three.js's default bottom-up flip silently mirroring the pick.
+ *
+ * Uses `document`/`Image` under the hood (`THREE.TextureLoader`), so this —
+ * and everything downstream of it — must never be reached from `buildArena()`
+ * itself. `arena.test.ts` builds the architecture in plain Node specifically
+ * to keep the geometry contract checkable without a DOM, and that has to stay
+ * true after this file grew textures.
+ */
+function loadTrimSheets(t: typeof THREE): Record<TrimSheet, TrimTextures> {
+  const loader = new t.TextureLoader();
+  const sheets = {} as Record<TrimSheet, TrimTextures>;
+  for (const sheet of Object.keys(TRIM_SHEET_FILES) as TrimSheet[]) {
+    const map = loader.load(trimAssetUrl(sheet, 'BaseColor'));
+    const normalMap = loader.load(trimAssetUrl(sheet, 'Normal'));
+    const orm = loader.load(trimAssetUrl(sheet, 'ORM'));
+    map.colorSpace = t.SRGBColorSpace; // BaseColor is authored color; Normal/ORM stay linear (default).
+    for (const tex of [map, normalMap, orm]) {
+      tex.flipY = false;
+      tex.wrapS = tex.wrapT = t.RepeatWrapping;
+      tex.anisotropy = 8;
+    }
+    sheets[sheet] = { map, normalMap, orm };
+  }
+  return sheets;
+}
+
+/**
+ * Bake a rectangle of a trim sheet into a geometry's existing UVs by
+ * fractioning the world-space tiling coordinate `projectTrimUVs` already
+ * produced, then remapping that 0..1 fraction into the rectangle. This is
+ * what turns "one world unit = one step through the WHOLE atlas" into "one
+ * world unit = one step through the CHOSEN tileable patch of it" — three.js's
+ * hardware texture wrap can only repeat the full [0,1] texture, not an
+ * arbitrary sub-rect, so the repeat has to be baked into the data instead.
+ *
+ * Pure arithmetic on an attribute array, same as `projectTrimUVs` — no DOM,
+ * safe to run unconditionally inside `Emitter.finish()`.
+ */
+function frac(x: number): number {
+  return x - Math.floor(x);
+}
+
+function remapUVsToRegion(geo: THREE.BufferGeometry, r: TrimRegion): void {
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, r.u0 + frac(uv.getX(i)) * r.uw, r.v0 + frac(uv.getY(i)) * r.vh);
+  }
+  uv.needsUpdate = true;
+}
+
+/** Reverse of `MAT_PREFIX`+material `name`, for finding a class's material on a built group. */
+const MATERIAL_NAME_TO_KEY: Record<string, MatKey> = {
+  stone: 'stone',
+  'stone.dark': 'stoneDark',
+  'metal.oxidised': 'metal',
+  'wood.charred': 'wood',
+  'cloth.oxblood': 'cloth',
+  ember: 'ember',
+};
+
+/**
+ * Attach the trim sheets to an already-built arena's materials. Split out
+ * from `buildArena()`/`createMaterials()` for the same DOM reason as
+ * `loadTrimSheets` above — call this from the browser (or a headless page
+ * that has `document`, e.g. `buildArenaScene`), never from `arena.test.ts`'s
+ * plain-Node build.
+ *
+ * Finds each material by the name `createMaterials` already gives it rather
+ * than threading a `Materials` handle through `buildArena`'s return value —
+ * `buildArena()` returns a bare `THREE.Group` on purpose (see its own doc),
+ * and every mesh already carries a name that says what it is.
+ */
+export function applyArenaTrim(architecture: THREE.Group, t: typeof THREE = THREE): void {
+  const sheets = loadTrimSheets(t);
+  const seen = new Set<THREE.Material>();
+  architecture.traverse(object => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    if (!material || seen.has(material)) return;
+    seen.add(material);
+
+    const key = MATERIAL_NAME_TO_KEY[material.name];
+    const assignment = key ? TRIM_ASSIGNMENT[key] : undefined;
+    if (!assignment) return;
+
+    const sheet = sheets[assignment.sheet];
+    material.map = sheet.map;
+    material.normalMap = sheet.normalMap;
+    material.normalScale.set(assignment.normalScale, assignment.normalScale);
+    material.color.setHex(assignment.tint);
+    // Packed OcclusionRoughnessMetallic: three.js's shaders already know to
+    // read R for AO, G for roughness, B for metalness off one texture — see
+    // the aomap/roughnessmap/metalnessmap shader chunks. The scalar roughness
+    // / metalness the palette already set become pure multipliers once a map
+    // is attached, so they are left as authored rather than reset to 1: the
+    // map modulates the palette's own read instead of replacing it outright.
+    material.aoMap = sheet.orm;
+    material.roughnessMap = sheet.orm;
+    material.metalnessMap = sheet.orm;
+    material.needsUpdate = true;
+  });
+}
+
 function createMaterials(t: typeof THREE): Materials {
   return {
     stone: new t.MeshStandardMaterial({
@@ -491,6 +672,8 @@ class Emitter {
     for (const bucket of this.buckets.values()) {
       const geo = mergeGeometries(this.t, bucket.geos);
       projectTrimUVs(this.t, geo, UV_PER_UNIT);
+      const trim = TRIM_ASSIGNMENT[bucket.mat];
+      if (trim) remapUVsToRegion(geo, trim.region);
       geo.computeBoundingSphere();
       const mesh = new this.t.Mesh(geo, materials[bucket.mat]);
       mesh.name = `${MAT_PREFIX[bucket.mat]}/${bucket.group}`;
