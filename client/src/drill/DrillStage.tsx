@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { AnimationController } from '../anim';
-import type { ChainSpec } from '../anim/AnimationController';
+import { DrillChainTracker } from './chainTracker';
 import {
   ALL_MOTION_KEYS,
   BODY_KEYS,
@@ -98,27 +98,8 @@ export function DrillStage({
   const controllerRef = useRef<AnimationController | null>(null);
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
   const elapsedRef = useRef(0);
-  /**
-   * The exact `ChainSpec` object identity the controller's `this.chain` is
-   * currently running — `advanceChain` must be called against the SAME
-   * object `startChain` was given, per its own contract. A step out of
-   * sequence starts a fresh chain scoped to its remainder (see the fallback
-   * below), so what is actually running is not always `step.chain.spec`;
-   * this ref is the source of truth for which one it is, updated on every
-   * `startChain` and left alone across `advanceChain`.
-   */
-  const activeChainSpecRef = useRef<ChainSpec | null>(null);
-  /**
-   * The drill step's OWN `chain.index` (not the controller's — that one
-   * counts from 0 within whatever spec was actually started, which after a
-   * fallback is a sliced remainder) that `activeChainSpecRef` is positioned
-   * at. `advanceChain` always advances by exactly one, trusting the caller to
-   * only ask when that one step really is next — it has no way to tell "the
-   * step after this one" from "some step three links further on" apart, so a
-   * skip (index 0 played, then a click lands directly on index 2) must be
-   * caught here before calling it, not after.
-   */
-  const activeChainIndexRef = useRef<number | null>(null);
+  /** What chain is running, and where in it — see `chainTracker.ts`. */
+  const chainTrackerRef = useRef(new DrillChainTracker());
 
   const callbacks = useRef({ onStatus, onReport, onElapsed, onEquipped });
   useEffect(() => {
@@ -254,57 +235,14 @@ export function DrillStage({
         movement: width === 'arms' ? 0.8 : 0,
       };
 
-    let played: boolean;
-    if (!step.chain) {
-      // Gameplay opens this window itself as its own ability's timing allows;
-      // the drill has no such clock (the stopwatch that used to do it here was
-      // replaced by the real chain machinery below), so it opens the window by
-      // hand before every direct play — a no-op unless something is actually
-      // still running on the layer this step needs.
-      activeChainSpecRef.current = null;
-      activeChainIndexRef.current = null;
-      controller.enterAbilityRecovery();
-      played = controller.playAbility(step.action, options);
-    } else if (step.chain.index === 0) {
-      controller.enterAbilityRecovery();
-      played = controller.startChain(step.chain.spec, options);
-      activeChainSpecRef.current = played ? step.chain.spec : null;
-      activeChainIndexRef.current = played ? 0 : null;
-    } else {
-      // `advanceChain` must be called against the SAME spec object
-      // `startChain` was given — see the ref's own doc comment. That is not
-      // always `step.chain.spec`: a previous out-of-sequence step may have
-      // started a sliced remainder instead, and it is THAT object the
-      // controller is actually tracking. It is also only safe to call at all
-      // when this step is EXACTLY the one after wherever that spec actually
-      // is — `advanceChain` always steps by one, trusting the caller, so a
-      // skip (index 0 played, this step is index 2) must fall to the
-      // remainder branch below rather than silently landing on index 1
-      // while reporting index 2's binding info as if it had played.
-      const activeSpec = activeChainSpecRef.current;
-      const sequential = activeSpec !== null && activeChainIndexRef.current === step.chain.index - 1;
-      const result = sequential ? controller.advanceChain(activeSpec!, options) : 'inactive';
-      if (result === 'advanced' || result === 'queued') {
-        played = true;
-        activeChainIndexRef.current = step.chain.index;
-      } else {
-        // The chain this step continues is not the one actually running —
-        // stepping here directly from the list, or scrubbing, rather than
-        // arriving in sequence from its opener. Start a fresh chain scoped to
-        // the remainder, so any step is watchable on its own rather than
-        // silently refusing — and remember ITS identity, so the next step in
-        // sequence resynchronises onto it instead of falling back again.
-        const remainder: ChainSpec = {
-          steps: step.chain.spec.steps.slice(step.chain.index),
-          cancelWindow: step.chain.spec.cancelWindow,
-          outsideWindow: step.chain.spec.outsideWindow,
-        };
-        controller.enterAbilityRecovery();
-        played = controller.startChain(remainder, options);
-        activeChainSpecRef.current = played ? remainder : null;
-        activeChainIndexRef.current = played ? step.chain.index : null;
-      }
-    }
+    // Gameplay opens the recovery window itself, on its own ability's timing;
+    // the drill has no such clock (the stopwatch that used to do it here was
+    // replaced by the real chain machinery), and every decision about
+    // whether this step is a fresh opener, a sequential continuation, or an
+    // out-of-sequence fallback belongs to the tracker now — see
+    // `chainTracker.ts` for the four review rounds' worth of edge cases it
+    // exists to get right in one tested place.
+    const played = chainTrackerRef.current.playStep(controller, step.action, step.chain ?? null, options);
     callbacks.current.onStatus(played ? 'ok' : 'refused');
 
     const binding = inspectClipBinding(clip, body.root);
