@@ -97,8 +97,6 @@ export function DrillStage({
   const controllerRef = useRef<AnimationController | null>(null);
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
   const elapsedRef = useRef(0);
-  /** Whether this step's recovery window has been opened yet. */
-  const cancelledRef = useRef(false);
 
   const callbacks = useRef({ onStatus, onReport, onElapsed, onEquipped });
   useEffect(() => {
@@ -206,7 +204,6 @@ export function DrillStage({
     if (!body || !controller || !step) return;
 
     elapsedRef.current = 0;
-    cancelledRef.current = false;
     controller.setLocomotion(step.gait);
 
     if (!step.action) {
@@ -226,14 +223,40 @@ export function DrillStage({
       return;
     }
 
-    const played = width === 'full'
-      ? controller.playAbility(step.action, { upperBodyOnly: false })
-      : controller.playAbility(step.action, {
+    const options = width === 'full'
+      ? { upperBodyOnly: false }
+      : {
         upperBodyOnly: true,
         // Above zero narrows the claim to the arms, leaving the lower spine to
         // the gait. See the width note in `drills.ts`.
         movement: width === 'arms' ? 0.8 : 0,
-      });
+      };
+
+    let played: boolean;
+    if (!step.chain) {
+      played = controller.playAbility(step.action, options);
+    } else if (step.chain.index === 0) {
+      played = controller.startChain(step.chain.spec, options);
+    } else {
+      const result = controller.advanceChain(step.chain.spec, options);
+      if (result === 'advanced' || result === 'queued') {
+        played = true;
+      } else {
+        // The chain this step continues is not the one actually running —
+        // stepping here directly from the list, or scrubbing, rather than
+        // arriving in sequence from its opener. Start a fresh chain scoped to
+        // the remainder, so any step is watchable on its own rather than
+        // silently refusing.
+        played = controller.startChain(
+          {
+            steps: step.chain.spec.steps.slice(step.chain.index),
+            cancelWindow: step.chain.spec.cancelWindow,
+            outsideWindow: step.chain.spec.outsideWindow,
+          },
+          options,
+        );
+      }
+    }
     callbacks.current.onStatus(played ? 'ok' : 'refused');
 
     const binding = inspectClipBinding(clip, body.root);
@@ -255,18 +278,6 @@ export function DrillStage({
 
     if (!playing || !step) return;
     elapsedRef.current += delta;
-
-    // Open the recovery window on time, so the NEXT step can cut in rather than
-    // queue behind this one. Gameplay is meant to own ability timing, so the
-    // drill goes through the same door the game would.
-    if (
-      step.cancelAfter !== undefined
-      && !cancelledRef.current
-      && elapsedRef.current >= step.cancelAfter / Math.max(speed, 0.05)
-    ) {
-      cancelledRef.current = true;
-      controller.enterAbilityRecovery();
-    }
 
     // Slowing playback has to stretch the dwell too, or half the routine cuts
     // away mid-clip the moment you slow it down to look at something.

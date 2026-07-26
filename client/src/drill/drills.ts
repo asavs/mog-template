@@ -31,6 +31,7 @@
  */
 
 import { STANCE_KEYS, type StanceKey } from '../content';
+import type { ChainSpec } from '../anim/AnimationController';
 
 /** How much of the body an action claims. See the note above. */
 export type DrillWidth = 'full' | 'torso' | 'arms';
@@ -59,16 +60,25 @@ export type DrillStep = {
    */
   tail?: number;
   /**
-   * Seconds into the action when its recovery window opens, letting the NEXT
-   * step interrupt instead of waiting.
+   * This step is a link in a chain rather than a standalone action.
+   *
+   * `spec` is shared identity, not just shape — `AnimationController.startChain`
+   * / `advanceChain` key off the SAME object, so every step of one combo must
+   * point at the same `ChainSpec` constant. `index` is this step's place in
+   * `spec.steps`: `0` opens the chain (`startChain`), anything higher asks it
+   * to continue (`advanceChain`) — the controller decides whether that lands as
+   * a crossfade now or waits for its own cancel window, from where playback
+   * actually is in the clip. `spec.outsideWindow: 'queue'` is what makes that
+   * safe to call the moment this step becomes current, rather than at a time
+   * this file has to guess.
    *
    * This is what a combination is: not two clips played back to back, but a
-   * second cutting into the first before it has finished recovering. The
-   * controller already gates on exactly this — gameplay is meant to own ability
-   * timing — so a drill goes through the same door the game would, and what you
-   * see here is what the game would do.
+   * second cutting into the first before it has finished recovering — now
+   * driven by the same mechanism gameplay would use, not a stopwatch in this
+   * file. `action` still names the clip for this link, the same as any other
+   * step, so display and dwell lookups do not need to know chains exist.
    */
-  cancelAfter?: number;
+  chain?: { spec: ChainSpec; index: number };
 };
 
 export type Drill = {
@@ -100,6 +110,52 @@ const JOG = 'motion.loco_run_f';
  */
 const WEAVE = 'Crouch_Idle_Loop';
 const SLIP = 'Crouch_Fwd_Loop';
+
+/**
+ * Chains: an ordered attack run as data, run for real through
+ * `AnimationController.startChain` / `advanceChain` rather than the hand-timed
+ * `cancelAfter` stopwatch this file used to hold. A step opens one with
+ * `chain: { spec, index: 0 }` and every link after it asks to advance with
+ * `chain: { spec, index: N }` — the controller, not this file, decides whether
+ * that request lands as a crossfade or waits, from the clip's own playback
+ * progress.
+ *
+ * `outsideWindow: 'queue'` is what removes the guesswork a stopwatch needed:
+ * a step is free to ask to advance the moment it becomes current, and the
+ * request sits until the window it belongs to actually opens.
+ */
+
+/** Sword: `Sword_Regular_A` → `B` → `C`, the chain the library ships. */
+const SWORD_CHAIN: ChainSpec = {
+  steps: ['Sword_Regular_A', 'Sword_Regular_B', 'Sword_Regular_C'],
+  cancelWindow: { fromFraction: 0.5, toFraction: 1 },
+  outsideWindow: 'queue',
+};
+
+/** Unarmed's proven one-two(-three): jab, cross, hook. */
+const PUNCH_CHAIN: ChainSpec = {
+  steps: ['Punch_Jab', 'Punch_Cross', 'Punch_Hook'],
+  cancelWindow: { fromFraction: 0.4, toFraction: 0.9 },
+  outsideWindow: 'queue',
+};
+
+/**
+ * EXPERIMENT: the same three links, cut tighter than `PUNCH_CHAIN` — its
+ * window opens earlier in each clip. Too early and the jab reads as a twitch;
+ * see 'quick jab' in the shadowbox round, which is what this exists to try.
+ */
+const PUNCH_CHAIN_QUICK: ChainSpec = {
+  steps: ['Punch_Jab', 'Punch_Cross', 'Punch_Hook'],
+  cancelWindow: { fromFraction: 0.3, toFraction: 0.8 },
+  outsideWindow: 'queue',
+};
+
+/** The double: the same clip fired twice before the cross. The self-chain case. */
+const PUNCH_CHAIN_DOUBLE: ChainSpec = {
+  steps: ['Punch_Jab', 'Punch_Jab', 'Punch_Cross'],
+  cancelWindow: { fromFraction: 0.4, toFraction: 0.9 },
+  outsideWindow: 'queue',
+};
 
 /**
  * Sword and board.
@@ -190,9 +246,36 @@ const SWORD_AND_BOARD: Drill = {
       action: 'Sword_Regular_C',
       width: 'full',
     },
+
+    {
+      label: 'combo, chained: opener',
+      note: 'The same three links as above, now run live through startChain — the controller decides when the cut lands rather than a stopwatch in this file.',
+      gait: IDLE,
+      action: 'Sword_Regular_A',
+      width: 'full',
+      chain: { spec: SWORD_CHAIN, index: 0 },
+      seconds: 0.3,
+    },
+    {
+      label: 'combo, chained: link 2',
+      gait: IDLE,
+      action: 'Sword_Regular_B',
+      width: 'full',
+      chain: { spec: SWORD_CHAIN, index: 1 },
+      seconds: 0.35,
+    },
+    {
+      label: 'combo, chained: finisher',
+      note: 'Cut in live from B, rather than played alone. This is the join a warrior would actually see — compare it against the pre-baked string below.',
+      gait: IDLE,
+      action: 'Sword_Regular_C',
+      width: 'full',
+      chain: { spec: SWORD_CHAIN, index: 2 },
+    },
+
     {
       label: 'the whole string, pre-baked',
-      note: 'A+B+C as one clip. Compare its joins against the three links above.',
+      note: 'A+B+C as one clip. Compare its joins against the individual links above, and against the live chain just before it.',
       gait: IDLE,
       action: 'Sword_Regular_Combo',
       width: 'full',
@@ -286,7 +369,9 @@ const SWORD_AND_BOARD: Drill = {
  * fist has neither, and a jab on its own reads as a twitch. So this routine
  * throws each punch alone first — which is the only way to see what it is — and
  * then throws the same punches as a one-two and a one-two-three, cancelling
- * each into the next through the controller's real recovery window.
+ * each into the next through the controller's own chain: `startChain` opens
+ * it, `advanceChain` asks it to continue, and the controller decides whether
+ * that request lands now or waits for the window.
  *
  * The joins hold. `Punch_Hook` drops the body 0.29 and `Punch_Hook_Rec` raises
  * it back, which was expected to make a hook cut into from the cross read as
@@ -371,11 +456,11 @@ const UNARMED: Drill = {
 
     {
       label: 'one–two: jab',
-      note: 'Cancelled at 0.45 s so the cross can cut in. Watch the join, not the punch.',
+      note: 'Opens the real chain. The cross cuts in once the window opens, not at a time this file picked — watch the join, not the punch.',
       gait: IDLE,
       action: 'Punch_Jab',
       width: 'full',
-      cancelAfter: 0.45,
+      chain: { spec: PUNCH_CHAIN, index: 0 },
       seconds: 0.5,
     },
     {
@@ -383,6 +468,7 @@ const UNARMED: Drill = {
       gait: IDLE,
       action: 'Punch_Cross',
       width: 'full',
+      chain: { spec: PUNCH_CHAIN, index: 1 },
       tail: 0.5,
     },
 
@@ -391,7 +477,7 @@ const UNARMED: Drill = {
       gait: IDLE,
       action: 'Punch_Jab',
       width: 'full',
-      cancelAfter: 0.4,
+      chain: { spec: PUNCH_CHAIN, index: 0 },
       seconds: 0.45,
     },
     {
@@ -399,15 +485,16 @@ const UNARMED: Drill = {
       gait: IDLE,
       action: 'Punch_Cross',
       width: 'full',
-      cancelAfter: 0.5,
+      chain: { spec: PUNCH_CHAIN, index: 1 },
       seconds: 0.55,
     },
     {
       label: 'one–two–three: hook',
-      note: 'The finisher, cut into from the cross. If any join in the routine is going to look wrong it is this one.',
+      note: 'The finisher, cut in live from the cross. If any join in the routine is going to look wrong it is this one.',
       gait: IDLE,
       action: 'Punch_Hook',
       width: 'full',
+      chain: { spec: PUNCH_CHAIN, index: 2 },
       tail: 0,
     },
     {
@@ -481,7 +568,7 @@ const UNARMED: Drill = {
  *
  * This one asks the other question: given that each punch is fine, does a
  * fighter made of them look like a fighter? So nothing is inspected. Every
- * one-shot either cancels into the next or ends with `tail: 0`, and the round
+ * one-shot either chains into the next or ends with `tail: 0`, and the round
  * is built out of footwork rather than pauses.
  *
  * The gait under a punch is a CROUCH rather than idle. At `full` width the gait
@@ -494,8 +581,9 @@ const UNARMED: Drill = {
  * without a crouch underneath it doing half the work.
  *
  * Timings are the ones `fighter-unarmed` established rather than new guesses,
- * except two labelled experiments: a jab thrown at `torso` while walking, and a
- * combination cut ~0.05 tighter than the proven one.
+ * except two labelled experiments: a jab thrown at `torso` while walking, and
+ * `PUNCH_CHAIN_QUICK`, a combination whose cancel window opens tighter than the
+ * proven `PUNCH_CHAIN`.
  */
 const SHADOWBOX: Drill = {
   id: 'fighter-shadowbox',
@@ -522,16 +610,16 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Jab',
       width: 'full',
-      cancelAfter: 0.4,
+      chain: { spec: PUNCH_CHAIN_DOUBLE, index: 0 },
       seconds: 0.45,
     },
     {
       label: 'the double',
-      note: 'The same clip fired twice in a row. It should retrigger cleanly out of recovery; if it refuses, that is worth knowing.',
+      note: 'The same clip fired twice in a row, through the chain a double really is — the self-chain case. It should retrigger cleanly out of recovery; if it refuses, that is worth knowing.',
       gait: WEAVE,
       action: 'Punch_Jab',
       width: 'full',
-      cancelAfter: 0.4,
+      chain: { spec: PUNCH_CHAIN_DOUBLE, index: 1 },
       seconds: 0.45,
     },
     {
@@ -539,6 +627,7 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Cross',
       width: 'full',
+      chain: { spec: PUNCH_CHAIN_DOUBLE, index: 2 },
       tail: 0,
     },
     {
@@ -552,7 +641,7 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Jab',
       width: 'full',
-      cancelAfter: 0.4,
+      chain: { spec: PUNCH_CHAIN, index: 0 },
       seconds: 0.45,
     },
     {
@@ -560,7 +649,7 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Cross',
       width: 'full',
-      cancelAfter: 0.5,
+      chain: { spec: PUNCH_CHAIN, index: 1 },
       seconds: 0.55,
     },
     {
@@ -568,6 +657,7 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Hook',
       width: 'full',
+      chain: { spec: PUNCH_CHAIN, index: 2 },
       tail: 0,
     },
     {
@@ -621,11 +711,11 @@ const SHADOWBOX: Drill = {
 
     {
       label: 'quick jab',
-      note: 'EXPERIMENT: cut 0.05 tighter than the proven combination. Too early and the jab reads as a twitch.',
+      note: 'EXPERIMENT: PUNCH_CHAIN_QUICK, whose cancel window opens tighter than the proven PUNCH_CHAIN. Too early and the jab reads as a twitch.',
       gait: WEAVE,
       action: 'Punch_Jab',
       width: 'full',
-      cancelAfter: 0.35,
+      chain: { spec: PUNCH_CHAIN_QUICK, index: 0 },
       seconds: 0.4,
     },
     {
@@ -633,7 +723,7 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Cross',
       width: 'full',
-      cancelAfter: 0.45,
+      chain: { spec: PUNCH_CHAIN_QUICK, index: 1 },
       seconds: 0.5,
     },
     {
@@ -641,6 +731,7 @@ const SHADOWBOX: Drill = {
       gait: WEAVE,
       action: 'Punch_Hook',
       width: 'full',
+      chain: { spec: PUNCH_CHAIN_QUICK, index: 2 },
       tail: 0,
     },
     {
