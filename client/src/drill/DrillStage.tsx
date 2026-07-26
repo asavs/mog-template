@@ -108,6 +108,17 @@ export function DrillStage({
    * `startChain` and left alone across `advanceChain`.
    */
   const activeChainSpecRef = useRef<ChainSpec | null>(null);
+  /**
+   * The drill step's OWN `chain.index` (not the controller's — that one
+   * counts from 0 within whatever spec was actually started, which after a
+   * fallback is a sliced remainder) that `activeChainSpecRef` is positioned
+   * at. `advanceChain` always advances by exactly one, trusting the caller to
+   * only ask when that one step really is next — it has no way to tell "the
+   * step after this one" from "some step three links further on" apart, so a
+   * skip (index 0 played, then a click lands directly on index 2) must be
+   * caught here before calling it, not after.
+   */
+  const activeChainIndexRef = useRef<number | null>(null);
 
   const callbacks = useRef({ onStatus, onReport, onElapsed, onEquipped });
   useEffect(() => {
@@ -251,22 +262,31 @@ export function DrillStage({
       // hand before every direct play — a no-op unless something is actually
       // still running on the layer this step needs.
       activeChainSpecRef.current = null;
+      activeChainIndexRef.current = null;
       controller.enterAbilityRecovery();
       played = controller.playAbility(step.action, options);
     } else if (step.chain.index === 0) {
       controller.enterAbilityRecovery();
       played = controller.startChain(step.chain.spec, options);
       activeChainSpecRef.current = played ? step.chain.spec : null;
+      activeChainIndexRef.current = played ? 0 : null;
     } else {
       // `advanceChain` must be called against the SAME spec object
       // `startChain` was given — see the ref's own doc comment. That is not
       // always `step.chain.spec`: a previous out-of-sequence step may have
       // started a sliced remainder instead, and it is THAT object the
-      // controller is actually tracking.
+      // controller is actually tracking. It is also only safe to call at all
+      // when this step is EXACTLY the one after wherever that spec actually
+      // is — `advanceChain` always steps by one, trusting the caller, so a
+      // skip (index 0 played, this step is index 2) must fall to the
+      // remainder branch below rather than silently landing on index 1
+      // while reporting index 2's binding info as if it had played.
       const activeSpec = activeChainSpecRef.current;
-      const result = activeSpec ? controller.advanceChain(activeSpec, options) : 'inactive';
+      const sequential = activeSpec !== null && activeChainIndexRef.current === step.chain.index - 1;
+      const result = sequential ? controller.advanceChain(activeSpec!, options) : 'inactive';
       if (result === 'advanced' || result === 'queued') {
         played = true;
+        activeChainIndexRef.current = step.chain.index;
       } else {
         // The chain this step continues is not the one actually running —
         // stepping here directly from the list, or scrubbing, rather than
@@ -282,6 +302,7 @@ export function DrillStage({
         controller.enterAbilityRecovery();
         played = controller.startChain(remainder, options);
         activeChainSpecRef.current = played ? remainder : null;
+        activeChainIndexRef.current = played ? step.chain.index : null;
       }
     }
     callbacks.current.onStatus(played ? 'ok' : 'refused');

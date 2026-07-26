@@ -678,7 +678,15 @@ export function Sandbox() {
               >
                 advance
               </button>
-              <button type="button" onClick={() => setChainPicks([])}>clear</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setChainPicks([]);
+                  setChainState(null);
+                }}
+              >
+                clear
+              </button>
             </div>
             {chainState && (
               <p className={chainState.lastResult === 'ignored' || chainState.lastResult === 'inactive' ? 'warn' : 'hint'}>
