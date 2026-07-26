@@ -33,7 +33,7 @@ preflight fits the deploy flow in [`dev-pipeline.md`](dev-pipeline.md).
 | tool | `ci-runner` | `preview-vm` | `windows-native` | `wsl` |
 |------|---|---|---|---|
 | `preview-down` | ✓ | ✗ missing: `gcloud-cli`, `gcloud-auth` | ✓ | ✓ |
-| `preview-up` | ✓ | ✗ missing: `gcloud-cli`, `gcloud-auth`, `lfs-real-assets` | ⚠ warns: `openssh-not-plink` | ✓ |
+| `preview-up` | ✓ | ✗ missing: `gcloud-cli`, `gcloud-auth` | ⚠ warns: `openssh-not-plink` | ✓ |
 | `qa-harness-local` | ✓ | ✗ missing: `headed-display` | ✓ | ✓ |
 | `qa-harness-pr` | ✓ | ✗ missing: `gh-cli`, `gh-auth` | ✓ | ✗ missing: `gh-cli`, `gh-auth` |
 

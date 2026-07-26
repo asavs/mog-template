@@ -28,7 +28,7 @@
 import * as THREE from 'three';
 import { PROP_KEYS, type PropKey } from './keys';
 
-/** Attachment points on the canonical rig. Bone ids from `avatar/rig.ts`. */
+/** Attachment points on the canonical rig. Bone ids from `rig.ts`. */
 export const SOCKETS = {
   rightHand: 'rightHand',
   leftHand: 'leftHand',

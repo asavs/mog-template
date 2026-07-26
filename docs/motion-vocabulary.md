@@ -2,8 +2,8 @@
 
 The reference set of character motions, what each must communicate, and the rules for
 authoring new ones. Engineers implement playback from this; animators (and procedural
-placeholder generators) author to it. Companion to `client/src/avatar/ART_DROP_IN.md`
-(rig and asset pipeline) and `docs/combat-action-state.md` (server action phases).
+placeholder generators) author to it. Companion to `client/src/content/ART_DROP_IN.md`
+(rig and asset pipeline) and `docs/action-pipeline.md` (server action phases).
 
 ## 1. The principle
 
