@@ -1,0 +1,4505 @@
+{
+  "meta": {
+    "generatedBy": "server",
+    "regenerate": "cargo test -p server --manifest-path server/spacetimedb/Cargo.toml -- --ignored generate_movement_trace_fixture --nocapture",
+    "tickRate": 20.0,
+    "deltaSeconds": 0.05,
+    "playerCollisionRadius": 0.45,
+    "startPosition": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "startRotationY": 0.0
+  },
+  "frames": [
+    {
+      "tick": 0,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.3
+      ]
+    },
+    {
+      "tick": 1,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.6
+      ]
+    },
+    {
+      "tick": 2,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.90000004
+      ]
+    },
+    {
+      "tick": 3,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.2
+      ]
+    },
+    {
+      "tick": 4,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.5
+      ]
+    },
+    {
+      "tick": 5,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.8
+      ]
+    },
+    {
+      "tick": 6,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -2.1
+      ]
+    },
+    {
+      "tick": 7,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -2.3999999
+      ]
+    },
+    {
+      "tick": 8,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -2.1
+      ]
+    },
+    {
+      "tick": 9,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.8
+      ]
+    },
+    {
+      "tick": 10,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.5
+      ]
+    },
+    {
+      "tick": 11,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.2
+      ]
+    },
+    {
+      "tick": 12,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.90000004
+      ]
+    },
+    {
+      "tick": 13,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.6
+      ]
+    },
+    {
+      "tick": 14,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.3
+      ]
+    },
+    {
+      "tick": 15,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 16,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.3
+      ]
+    },
+    {
+      "tick": 17,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.6
+      ]
+    },
+    {
+      "tick": 18,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.90000004
+      ]
+    },
+    {
+      "tick": 19,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        1.2
+      ]
+    },
+    {
+      "tick": 20,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        1.5
+      ]
+    },
+    {
+      "tick": 21,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        1.8
+      ]
+    },
+    {
+      "tick": 22,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        2.1
+      ]
+    },
+    {
+      "tick": 23,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        2.3999999
+      ]
+    },
+    {
+      "tick": 24,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        2.1
+      ]
+    },
+    {
+      "tick": 25,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        1.8
+      ]
+    },
+    {
+      "tick": 26,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        1.5
+      ]
+    },
+    {
+      "tick": 27,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        1.2
+      ]
+    },
+    {
+      "tick": 28,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.90000004
+      ]
+    },
+    {
+      "tick": 29,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.6
+      ]
+    },
+    {
+      "tick": 30,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.3
+      ]
+    },
+    {
+      "tick": 31,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 32,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.3,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 33,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 34,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.90000004,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 35,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.2,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 36,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 37,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.8,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 38,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        2.1,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 39,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        2.3999999,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 40,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        2.1,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 41,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.8,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 42,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 43,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.2,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 44,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.90000004,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 45,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 46,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.3,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 47,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 48,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -0.3,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 49,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 50,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -0.90000004,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 51,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -1.2,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 52,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -1.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 53,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -1.8,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 54,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -2.1,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 55,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -2.3999999,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 56,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -2.1,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 57,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -1.8,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 58,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -1.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 59,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -1.2,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 60,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -0.90000004,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 61,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 62,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        -0.3,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 63,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "tick": 64,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -0.53999996
+      ]
+    },
+    {
+      "tick": 65,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.0799999
+      ]
+    },
+    {
+      "tick": 66,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -1.6199999
+      ]
+    },
+    {
+      "tick": 67,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -2.1599998
+      ]
+    },
+    {
+      "tick": 68,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -2.6999998
+      ]
+    },
+    {
+      "tick": 69,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -3.2399998
+      ]
+    },
+    {
+      "tick": 70,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -3.7799997
+      ]
+    },
+    {
+      "tick": 71,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -4.3199997
+      ]
+    },
+    {
+      "tick": 72,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -4.8599997
+      ]
+    },
+    {
+      "tick": 73,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -5.3999996
+      ]
+    },
+    {
+      "tick": 74,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -5.9399996
+      ]
+    },
+    {
+      "tick": 75,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -6.4799995
+      ]
+    },
+    {
+      "tick": 76,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -7.0199995
+      ]
+    },
+    {
+      "tick": 77,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -7.5599995
+      ]
+    },
+    {
+      "tick": 78,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 79,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 80,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 81,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": true
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.51,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 82,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.948,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 83,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.314,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 84,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.608,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 85,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.83,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 86,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.98,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 87,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        2.058,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 88,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        2.0640001,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 89,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.9980001,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 90,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.8600001,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 91,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.6500001,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 92,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.368,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 93,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.014,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 94,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.58800006,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 95,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.09000009,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 96,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 97,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 98,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 99,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 100,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 101,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.099999
+      ]
+    },
+    {
+      "tick": 102,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.4
+      ]
+    },
+    {
+      "tick": 103,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -8.7
+      ]
+    },
+    {
+      "tick": 104,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -9.0
+      ]
+    },
+    {
+      "tick": 105,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -9.3
+      ]
+    },
+    {
+      "tick": 106,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -9.6
+      ]
+    },
+    {
+      "tick": 107,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -9.900001
+      ]
+    },
+    {
+      "tick": 108,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -10.200001
+      ]
+    },
+    {
+      "tick": 109,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -10.500001
+      ]
+    },
+    {
+      "tick": 110,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -10.800001
+      ]
+    },
+    {
+      "tick": 111,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -11.100001
+      ]
+    },
+    {
+      "tick": 112,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -11.400002
+      ]
+    },
+    {
+      "tick": 113,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -11.700002
+      ]
+    },
+    {
+      "tick": 114,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -12.000002
+      ]
+    },
+    {
+      "tick": 115,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -12.300002
+      ]
+    },
+    {
+      "tick": 116,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -12.600002
+      ]
+    },
+    {
+      "tick": 117,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -12.9000025
+      ]
+    },
+    {
+      "tick": 118,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -13.200003
+      ]
+    },
+    {
+      "tick": 119,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -13.500003
+      ]
+    },
+    {
+      "tick": 120,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -13.800003
+      ]
+    },
+    {
+      "tick": 121,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -14.100003
+      ]
+    },
+    {
+      "tick": 122,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -14.400003
+      ]
+    },
+    {
+      "tick": 123,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -14.700004
+      ]
+    },
+    {
+      "tick": 124,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -15.000004
+      ]
+    },
+    {
+      "tick": 125,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -15.300004
+      ]
+    },
+    {
+      "tick": 126,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -15.600004
+      ]
+    },
+    {
+      "tick": 127,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -15.900004
+      ]
+    },
+    {
+      "tick": 128,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -16.200005
+      ]
+    },
+    {
+      "tick": 129,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -16.500004
+      ]
+    },
+    {
+      "tick": 130,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -16.800003
+      ]
+    },
+    {
+      "tick": 131,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -17.100002
+      ]
+    },
+    {
+      "tick": 132,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -17.400002
+      ]
+    },
+    {
+      "tick": 133,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -17.7
+      ]
+    },
+    {
+      "tick": 134,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -18.0
+      ]
+    },
+    {
+      "tick": 135,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -18.3
+      ]
+    },
+    {
+      "tick": 136,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -18.599998
+      ]
+    },
+    {
+      "tick": 137,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -18.899998
+      ]
+    },
+    {
+      "tick": 138,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.199997
+      ]
+    },
+    {
+      "tick": 139,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.499996
+      ]
+    },
+    {
+      "tick": 140,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 141,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 142,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 143,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 144,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 145,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 146,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 147,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 148,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": true
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.51,
+        -19.55
+      ]
+    },
+    {
+      "tick": 149,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        0.948,
+        -19.55
+      ]
+    },
+    {
+      "tick": 150,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.314,
+        -19.55
+      ]
+    },
+    {
+      "tick": 151,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.608,
+        -19.55
+      ]
+    },
+    {
+      "tick": 152,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.83,
+        -19.55
+      ]
+    },
+    {
+      "tick": 153,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.98,
+        -19.55
+      ]
+    },
+    {
+      "tick": 154,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        2.058,
+        -19.55
+      ]
+    },
+    {
+      "tick": 155,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        2.0640001,
+        -19.55
+      ]
+    },
+    {
+      "tick": 156,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.9980001,
+        -19.55
+      ]
+    },
+    {
+      "tick": 157,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.8600001,
+        -19.55
+      ]
+    },
+    {
+      "tick": 158,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.6500001,
+        -19.55
+      ]
+    },
+    {
+      "tick": 159,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.368,
+        -19.55
+      ]
+    },
+    {
+      "tick": 160,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.0,
+        1.014,
+        -19.55
+      ]
+    },
+    {
+      "tick": 161,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.3,
+        0.58800006,
+        -19.55
+      ]
+    },
+    {
+      "tick": 162,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.6,
+        0.09000009,
+        -19.55
+      ]
+    },
+    {
+      "tick": 163,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        0.90000004,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 164,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.44,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 165,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        1.98,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 166,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        2.52,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 167,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        3.06,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 168,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        3.6,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 169,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        4.14,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 170,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        4.68,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 171,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        5.22,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 172,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        5.7599998,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 173,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        6.2999997,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 174,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        6.8399997,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 175,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        7.3799996,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 176,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        7.9199996,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 177,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.459999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 178,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.999999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 179,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        9.539999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 180,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.079999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 181,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.619999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 182,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.159999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 183,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.699999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 184,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.239999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 185,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.779999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 186,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        13.319999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 187,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        13.859999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 188,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.399999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 189,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.939999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 190,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        15.479999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 191,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        16.019999,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 192,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        16.559998,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 193,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.099998,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 194,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.64,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 195,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.18,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 196,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": true,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.720001,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 197,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.932133,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 198,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.144264,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 199,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.356396,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 200,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.55,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 201,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.55,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 202,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.55,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 203,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.55,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 204,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": false,
+        "right": true,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.55,
+        0.0,
+        -19.55
+      ]
+    },
+    {
+      "tick": 205,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.337868,
+        0.0,
+        -19.337868
+      ]
+    },
+    {
+      "tick": 206,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        19.125736,
+        0.0,
+        -19.125736
+      ]
+    },
+    {
+      "tick": 207,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.913605,
+        0.0,
+        -18.913605
+      ]
+    },
+    {
+      "tick": 208,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.701473,
+        0.0,
+        -18.701473
+      ]
+    },
+    {
+      "tick": 209,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.489342,
+        0.0,
+        -18.489342
+      ]
+    },
+    {
+      "tick": 210,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.27721,
+        0.0,
+        -18.27721
+      ]
+    },
+    {
+      "tick": 211,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        18.065079,
+        0.0,
+        -18.065079
+      ]
+    },
+    {
+      "tick": 212,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.852947,
+        0.0,
+        -17.852947
+      ]
+    },
+    {
+      "tick": 213,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.640816,
+        0.0,
+        -17.640816
+      ]
+    },
+    {
+      "tick": 214,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.428684,
+        0.0,
+        -17.428684
+      ]
+    },
+    {
+      "tick": 215,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.216553,
+        0.0,
+        -17.216553
+      ]
+    },
+    {
+      "tick": 216,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        17.004421,
+        0.0,
+        -17.004421
+      ]
+    },
+    {
+      "tick": 217,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        16.79229,
+        0.0,
+        -16.79229
+      ]
+    },
+    {
+      "tick": 218,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        16.580158,
+        0.0,
+        -16.580158
+      ]
+    },
+    {
+      "tick": 219,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        16.368027,
+        0.0,
+        -16.368027
+      ]
+    },
+    {
+      "tick": 220,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        16.155895,
+        0.0,
+        -16.155895
+      ]
+    },
+    {
+      "tick": 221,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        15.943763,
+        0.0,
+        -15.943763
+      ]
+    },
+    {
+      "tick": 222,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        15.73163,
+        0.0,
+        -15.73163
+      ]
+    },
+    {
+      "tick": 223,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        15.519498,
+        0.0,
+        -15.519498
+      ]
+    },
+    {
+      "tick": 224,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        15.307365,
+        0.0,
+        -15.307365
+      ]
+    },
+    {
+      "tick": 225,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        15.095233,
+        0.0,
+        -15.095233
+      ]
+    },
+    {
+      "tick": 226,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.8831005,
+        0.0,
+        -14.8831005
+      ]
+    },
+    {
+      "tick": 227,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.670968,
+        0.0,
+        -14.670968
+      ]
+    },
+    {
+      "tick": 228,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.458836,
+        0.0,
+        -14.458836
+      ]
+    },
+    {
+      "tick": 229,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.246703,
+        0.0,
+        -14.246703
+      ]
+    },
+    {
+      "tick": 230,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        14.034571,
+        0.0,
+        -14.034571
+      ]
+    },
+    {
+      "tick": 231,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        13.822438,
+        0.0,
+        -13.822438
+      ]
+    },
+    {
+      "tick": 232,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        13.610306,
+        0.0,
+        -13.610306
+      ]
+    },
+    {
+      "tick": 233,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        13.398173,
+        0.0,
+        -13.398173
+      ]
+    },
+    {
+      "tick": 234,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        13.186041,
+        0.0,
+        -13.186041
+      ]
+    },
+    {
+      "tick": 235,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.973908,
+        0.0,
+        -12.973908
+      ]
+    },
+    {
+      "tick": 236,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.761776,
+        0.0,
+        -12.761776
+      ]
+    },
+    {
+      "tick": 237,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.5496435,
+        0.0,
+        -12.5496435
+      ]
+    },
+    {
+      "tick": 238,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.337511,
+        0.0,
+        -12.337511
+      ]
+    },
+    {
+      "tick": 239,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        12.125379,
+        0.0,
+        -12.125379
+      ]
+    },
+    {
+      "tick": 240,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.913246,
+        0.0,
+        -11.913246
+      ]
+    },
+    {
+      "tick": 241,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.701114,
+        0.0,
+        -11.701114
+      ]
+    },
+    {
+      "tick": 242,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.488981,
+        0.0,
+        -11.488981
+      ]
+    },
+    {
+      "tick": 243,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.276849,
+        0.0,
+        -11.276849
+      ]
+    },
+    {
+      "tick": 244,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        11.064716,
+        0.0,
+        -11.064716
+      ]
+    },
+    {
+      "tick": 245,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.954594,
+        0.0,
+        -10.954594
+      ]
+    },
+    {
+      "tick": 246,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.954594,
+        0.0,
+        -10.954594
+      ]
+    },
+    {
+      "tick": 247,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.954594,
+        0.0,
+        -10.954594
+      ]
+    },
+    {
+      "tick": 248,
+      "input": {
+        "forward": false,
+        "backward": true,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.954594,
+        0.0,
+        -10.954594
+      ]
+    },
+    {
+      "tick": 249,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.742461,
+        0.0,
+        -11.166726
+      ]
+    },
+    {
+      "tick": 250,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.530329,
+        0.0,
+        -11.378859
+      ]
+    },
+    {
+      "tick": 251,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.318196,
+        0.0,
+        -11.590991
+      ]
+    },
+    {
+      "tick": 252,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        10.106064,
+        0.0,
+        -11.803123
+      ]
+    },
+    {
+      "tick": 253,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        9.893931,
+        0.0,
+        -12.015256
+      ]
+    },
+    {
+      "tick": 254,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        9.681799,
+        0.0,
+        -12.227388
+      ]
+    },
+    {
+      "tick": 255,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        9.4696665,
+        0.0,
+        -12.439521
+      ]
+    },
+    {
+      "tick": 256,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        9.257534,
+        0.0,
+        -12.651653
+      ]
+    },
+    {
+      "tick": 257,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        9.045402,
+        0.0,
+        -12.863786
+      ]
+    },
+    {
+      "tick": 258,
+      "input": {
+        "forward": true,
+        "backward": false,
+        "left": true,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.833269,
+        0.0,
+        -13.075918
+      ]
+    },
+    {
+      "tick": 259,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.833269,
+        0.0,
+        -13.075918
+      ]
+    },
+    {
+      "tick": 260,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.833269,
+        0.0,
+        -13.075918
+      ]
+    },
+    {
+      "tick": 261,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.833269,
+        0.0,
+        -13.075918
+      ]
+    },
+    {
+      "tick": 262,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.833269,
+        0.0,
+        -13.075918
+      ]
+    },
+    {
+      "tick": 263,
+      "input": {
+        "forward": false,
+        "backward": false,
+        "left": false,
+        "right": false,
+        "sprint": false,
+        "jump": false
+      },
+      "rotationY": 0.0,
+      "expected": [
+        8.833269,
+        0.0,
+        -13.075918
+      ]
+    }
+  ]
+}

@@ -18,7 +18,9 @@
     "env:check": "node ../tools/env-requirements/preflight.mjs",
     "env:fingerprint": "node ../tools/env-requirements/preflight.mjs --fingerprint",
     "gen:actions": "node ../tools/gen-actions/gen.mjs",
-    "gen:actions:check": "node ../tools/gen-actions/gen.mjs --check"
+    "gen:actions:check": "node ../tools/gen-actions/gen.mjs --check",
+    "gen:arena": "node ../tools/gen-arena/gen.mjs",
+    "gen:arena:check": "node ../tools/gen-arena/gen.mjs --check"
   },
   "dependencies": {
     "@dimforge/rapier3d-deterministic-compat": "^0.19.3",
