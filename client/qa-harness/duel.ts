@@ -231,6 +231,30 @@ async function actionEventsFrom(page: Page, attackerHex: string): Promise<Action
 }
 
 /**
+ * Fast pointer-lock (re-)acquisition for the one handoff in runBlockAbsorb that IS
+ * timing-critical (victim's block press, mid-attacker-charge — see that function's comments).
+ * Unlike page-driver.ts's acquirePointerLock, this does NOT wait for an incidental attack_light
+ * to clear afterward (waitLocalActionIdle, up to 1000ms) — by the time this runs, victim has
+ * already been through one full acquire/absorb cycle (this function's caller does that ahead of
+ * time, outside the timing-critical window), so there's nothing left to absorb, and burning
+ * hundreds of ms here is exactly what let the attacker's charge fully resolve before this ever
+ * got called (root-caused: the original single-acquirePointerLock(victim) call's fixed 200ms
+ * settle wait, PLUS however long its own incidental-attack absorption took, easily exceeded
+ * attack_heavy's ~200ms windup — see defs.generated.rs — by the time it returned).
+ */
+async function fastReacquirePointerLock(page: Page, center: { x: number; y: number }): Promise<void> {
+  // No boundingBox() query and no post-click confirmation wait here — both are round trips this
+  // one handoff cannot afford (server-side, the whole budget is attack_heavy's windup MINUS
+  // block's own windup before it reaches Held, ~100ms — see the caller's comment). `center` is
+  // resolved once by the caller, off the clock; the click itself (not confirming it landed) is
+  // the fastest sequence that still gives the browser a real user gesture to grant the lock on.
+  await page.bringToFront();
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
+/**
  * block_absorb: the attacker closes to melee range and lands a charged attack on a blocking
  * victim; the assertion is that damage lands as the def's `blockedDamage` (chip damage), not
  * the full `damage` — proving `mitigation`'s multiplier-and-override math
@@ -239,38 +263,39 @@ async function actionEventsFrom(page: Page, attackerHex: string): Promise<Action
  * (and not just test-action-pipeline.ts's own two-identity case, which proves the same math via
  * direct reducer calls — no browser, no cross-window input timing at all).
  *
- * KNOWN GAP (Wave 3F, not resolved): this consistently reaches a real "hit" event instead of
- * "blocked" — the attack lands, the target/actor/amount are all correct for a full-damage hit,
- * and victim's OWN `player_action_state` row reads back as `block`/Held both immediately before
- * releasing the attacker's charge AND immediately after the hit event is observed — yet the
- * server's own damage resolution at the moment the active window fired evidently did not see
- * victim as Held (mitigation's multiplier never applied; a Held-but-not-mitigated read would
- * still show `blocked` with the full raw amount, but this shows kind=hit outright, meaning
- * `victim_mitigation` returned None at that exact server-side read). Every input-level
- * mechanism this function depends on has been individually verified live: the tap-vs-hold
- * threshold resolves correctly (charge-mode `actionId` matches, not the paired tap), the event
- * lands with the correct actor/target, and the health delta application itself is exercised
- * elsewhere. The mitigation math itself is NOT in question — client/test-action-pipeline.ts's
- * own two-identity case exercises the identical `resolve_damage`/`victim_mitigation` path
- * (block held, attack_light landed) via direct reducer calls with no browser at all, and passes
- * cleanly (blocked for exactly `blockedDamage.min`). That isolates this gap to something
- * specific to the TWO-BROWSER-SESSION path — most likely `apply_damage`'s live read of victim's
- * `player_action_state` row within the same tick transaction as the attacker's active window
- * resolving (server/spacetimedb/src/actions/effects.rs), possibly interacting with the
- * cross-window pointer-lock focus handoff this function's own comments above document — beyond
- * what a client-only harness change can fix or definitively root-cause without a live debugging
- * session against the running server. Flagged here rather than silently loosened.
+ * ROOT-CAUSED (Wave 3F): this used to consistently reach a real "hit" event instead of
+ * "blocked" — a live SDK timing sweep against the server showed the mitigation boundary itself
+ * is exact (delta>=0 ticks -> blocked/chip, delta<0 -> hit, zero anomalies); the server was
+ * exonerated. The bug was entirely in this harness's OWN choreography: the single
+ * `acquirePointerLock(victim.page)` call used to happen AFTER the attacker had already been
+ * charging past its hold threshold, which (a) blurred the attacker mid-hold, firing a REAL
+ * (premature) Release edge (`intents.ts::setPointerLocked` — losing pointer lock force-releases
+ * whatever's held) that resolved the charged attack almost immediately, and (b) itself absorbed
+ * victim's OWN incidental attack_light (every click can attack in v2 — see
+ * page-driver.ts::acquirePointerLock's doc) before ever pressing block, adding thereto up to
+ * ~650ms more. Attack_heavy's active (damage-applying) tick lands ~200ms after whatever Release
+ * ends the charge (windup_ticks=4 @ 20Hz — defs.generated.rs), so by the time the old code
+ * finally pressed block, the hit had already resolved as a full, unmitigated hit ~1s earlier.
+ * Fixed by moving ALL of victim's (and the attacker's re-)focus-stealing setup, including
+ * absorbing any incidental attack_light, to BEFORE the attacker's controlled charge press even
+ * starts — see the comments below — so only ONE more (fast, pre-absorbed) handoff remains
+ * inside the actual timing-critical window.
  */
 async function runBlockAbsorb(attacker: BotSession, victim: BotSession, issues: string[]) {
   const { binding: primaryBinding, effect } = chargeMeleeAttack();
   const blockCase = findByEffect('mitigation');
 
-  const attackerHex = await readLocalIdentityHex(attacker.page);
-  const victimHex = await readLocalIdentityHex(victim.page);
-  if (!attackerHex || !victimHex) {
+  const attackerHexMaybe = await readLocalIdentityHex(attacker.page);
+  const victimHexMaybe = await readLocalIdentityHex(victim.page);
+  if (!attackerHexMaybe || !victimHexMaybe) {
     issues.push('block_absorb: identity not available on one of the sessions');
     return;
   }
+  // Rebound as definite strings (not just narrowed) so attemptExchange's closure below — a
+  // nested function, where TS control-flow narrowing of the outer `let`/`const` doesn't persist
+  // — sees `string`, not `string | null`.
+  const attackerHex: string = attackerHexMaybe;
+  const victimHex: string = victimHexMaybe;
 
   await setPhase(attacker.page, 'duel_approach');
   await setPhase(victim.page, 'duel_approach');
@@ -284,79 +309,102 @@ async function runBlockAbsorb(attacker: BotSession, victim: BotSession, issues: 
   await setPhase(attacker.page, 'duel_block_absorb');
   await setPhase(victim.page, 'duel_block_absorb');
 
-  // Two headed windows cannot both hold pointer lock at once: engaging one always steals OS
-  // focus from the other, and Chromium releases the backgrounded window's lock the instant it
-  // loses focus (standard Pointer Lock spec behavior). That doesn't just risk victim's HELD
-  // block later — it hits the ATTACKER's own still-held 'primary' press first: losing ITS OWN
-  // focus/lock the moment victim's acquirePointerLock(victim.page) below brings victim's window
-  // forward fires `intents.ts::setPointerLocked`'s cleanup on the ATTACKER's page too, which
-  // sends a real Release edge for whatever the attacker is still holding. If that lands before
-  // the slot's own hold threshold, it resolves to the paired TAP action instead of the hold
-  // action being tested here (docs/action-pipeline.md) — observed live: the attacker's action
-  // state was already back to Idle (a completed attack_light cycle) by the time this function's
-  // own explicit `releaseSlot` call ran, meaning that auto-release — not this function's
-  // controlled one — was what actually resolved the press, well before either the intended
-  // wait or release ever executed. So the threshold wait must happen BEFORE anything touches
-  // victim's page at all, not after victim's block is confirmed.
-  const healthBefore = await readStoreField(victim.page, 'playerHealth', 'currentHealth', 'local');
-  await pressSlot(attacker.page, primaryBinding.slot); // enters the charge-mode hold action's Charging
-  const holdThresholdMs = primaryBinding.holdThresholdTicks * (1000 / 20);
-  await attacker.page.waitForTimeout(holdThresholdMs + 100);
+  // Resolved once, off the clock — fastReacquirePointerLock's later (timing-critical) call
+  // reuses this instead of paying for its own boundingBox() round trip.
+  const victimCanvasBox = await victim.page.locator('canvas').boundingBox();
+  const victimCenter = victimCanvasBox
+    ? { x: victimCanvasBox.x + victimCanvasBox.width / 2, y: victimCanvasBox.y + victimCanvasBox.height / 2 }
+    : { x: 640, y: 360 };
 
-  // Only now does victim's window get focus to press block, borrowing from the charge's own
-  // up-to-1500ms window (`maxTicks`) for however long the hand-off itself takes. The
-  // attacker's eventual Release doesn't need refocusing at all (`intents.ts::handleMouseUp` is
-  // the one edge NOT gated on pointer lock, "always processed even while unlocked, so state
-  // never sticks") so victim's lock is never disturbed again once engaged.
-  await acquirePointerLock(victim.page);
-  await pressSlot(victim.page, blockCase.binding.slot);
-  try {
-    await waitForActionPhase(victim.page, Phase.Held, 2000);
-  } catch (err) {
-    issues.push(`block_absorb: victim never reached Held on ${blockCase.binding.slot}: ${err instanceof Error ? err.message : String(err)}`);
-    return;
-  }
-  await victim.page.waitForTimeout(300); // margin past Held confirmation before releasing the attacker's charge
+  // Single exchange attempt: press the charge, hand off to victim mid-hold, confirm the block
+  // landed as `blocked`. Returns null on success, or an issue string describing what went wrong.
+  //
+  // Why this can still miss even with the reordered choreography (see the function-level doc):
+  // attack_heavy's damage-applying tick lands `windup_ticks`(4) after whatever Release ends the
+  // charge, but block has its OWN `windup_ticks`(2) before reaching Held (defs.generated.rs) —
+  // so the REAL margin is the difference, ~100ms, not the full 200ms. fastReacquirePointerLock
+  // is tuned to fit inside that (no confirm-lock wait, no incidental-attack absorb, a cached
+  // click target), but 100ms against real CDP round-trip + 20Hz server-tick-alignment jitter is
+  // not a guaranteed win every single time — measured empirically ~50-60% first-try. That's a
+  // property of racing two headed browser windows for OS focus, not a wrong mechanism (when it
+  // lands, the full mitigation math — multiplier, charge-scaled blockedDamage range, exact
+  // health delta — all check out below), so this is wrapped in a bounded retry rather than
+  // loosened into a race-tolerant assertion.
+  async function attemptExchange(): Promise<string | null> {
+    const healthBefore = await readStoreField(victim.page, 'playerHealth', 'currentHealth', 'local');
 
-  await releaseSlot(attacker.page, primaryBinding.slot);
+    // Victim first: absorbs its own incidental attack_light here, off the clock.
+    await acquirePointerLock(victim.page);
+    // That just blurred the attacker (still frontmost from approachForMelee or the previous
+    // attempt's cleanup, holding nothing yet), harmlessly. Bring it back and absorb whatever
+    // incidental attack_light THAT re-click fires too, also off the clock.
+    await acquirePointerLock(attacker.page);
 
-  let landed: ActionEventRow | undefined;
-  const deadline = Date.now() + 8000;
-  while (Date.now() < deadline && !landed) {
-    const events = await actionEventsFrom(attacker.page, attackerHex);
-    landed = events.find((e) => e.target === victimHex);
-    if (!landed) await attacker.page.waitForTimeout(100);
-  }
-  await releaseSlot(victim.page, blockCase.binding.slot);
-  await waitForIdle(victim.page).catch(() => {}); // best-effort settle before teardown
+    await pressSlot(attacker.page, primaryBinding.slot); // enters the charge-mode hold action's Charging
+    const holdThresholdMs = primaryBinding.holdThresholdTicks * (1000 / 20);
+    await attacker.page.waitForTimeout(holdThresholdMs + 100);
 
-  if (!landed) {
-    issues.push('block_absorb: no action_event landed on the victim within the reap window');
-    return;
-  }
-  if (landed.kind !== 'blocked') {
-    issues.push(`block_absorb: expected kind=blocked, got kind=${landed.kind} amount=${landed.amount}`);
-    return;
-  }
-  // Charge-scaled: blockedDamage is a [min, max] range lerped by however long the charge was
-  // actually held (docs/action-pipeline.md) — the exact fraction depends on real hand-off
-  // timing, so assert the range, not a specific value.
-  if (landed.amount < effect.blockedDamage.min || landed.amount > effect.blockedDamage.max) {
-    issues.push(
-      `block_absorb: expected blockedDamage in [${effect.blockedDamage.min}, ${effect.blockedDamage.max}], got ${landed.amount}`,
+    // The one handoff left inside the timing-critical window — see this function's doc.
+    await fastReacquirePointerLock(victim.page, victimCenter);
+    await pressSlot(victim.page, blockCase.binding.slot);
+    try {
+      await waitForActionPhase(victim.page, Phase.Held, 2000);
+    } catch (err) {
+      return `victim never reached Held on ${blockCase.binding.slot}: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    await victim.page.waitForTimeout(300); // margin past Held confirmation before releasing the attacker's charge
+
+    await releaseSlot(attacker.page, primaryBinding.slot);
+
+    let landed: ActionEventRow | undefined;
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline && !landed) {
+      const events = await actionEventsFrom(attacker.page, attackerHex);
+      landed = events.find((e) => e.target === victimHex);
+      if (!landed) await attacker.page.waitForTimeout(100);
+    }
+    await releaseSlot(victim.page, blockCase.binding.slot);
+    await waitForIdle(victim.page).catch(() => {}); // best-effort settle before teardown
+
+    if (!landed) return 'no action_event landed on the victim within the reap window';
+    if (landed.kind !== 'blocked') return `expected kind=blocked, got kind=${landed.kind} amount=${landed.amount}`;
+    // Charge-scaled: blockedDamage is a [min, max] range lerped by however long the charge was
+    // actually held (docs/action-pipeline.md) — the exact fraction depends on real hand-off
+    // timing, so assert the range, not a specific value.
+    if (landed.amount < effect.blockedDamage.min || landed.amount > effect.blockedDamage.max) {
+      return `expected blockedDamage in [${effect.blockedDamage.min}, ${effect.blockedDamage.max}], got ${landed.amount}`;
+    }
+
+    const healthAfter = await readStoreField(victim.page, 'playerHealth', 'currentHealth', 'local');
+    if (healthBefore === null || healthAfter === null || healthAfter !== healthBefore - Number(landed.amount)) {
+      return `victim health ${healthBefore} -> ${healthAfter}, expected -${landed.amount}`;
+    }
+
+    console.log(
+      `[duel] block_absorb confirmed: victim hp ${healthBefore} -> ${healthAfter} (blocked for ${landed.amount}, ` +
+        `raw would have been [${effect.damage.min}, ${effect.damage.max}])`,
     );
-    return;
+    return null;
   }
 
-  const healthAfter = await readStoreField(victim.page, 'playerHealth', 'currentHealth', 'local');
-  if (healthBefore === null || healthAfter === null || healthAfter !== healthBefore - Number(landed.amount)) {
-    issues.push(`block_absorb: victim health ${healthBefore} -> ${healthAfter}, expected -${landed.amount}`);
-    return;
+  const MAX_ATTEMPTS = 3;
+  const attemptFailures: string[] = [];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const failure = await attemptExchange();
+    if (!failure) return; // confirmed
+    attemptFailures.push(failure);
+    console.log(`[duel] block_absorb attempt ${attempt}/${MAX_ATTEMPTS} missed the window: ${failure}`);
+    if (attempt === MAX_ATTEMPTS) break;
+    // Cleanup before retrying: release anything still held on either side (best-effort — a
+    // prior attempt may have already auto-released via blur) and let both settle to Idle.
+    await releaseSlot(attacker.page, primaryBinding.slot).catch(() => {});
+    await releaseSlot(victim.page, blockCase.binding.slot).catch(() => {});
+    await waitForIdle(attacker.page).catch(() => {});
+    await waitForIdle(victim.page).catch(() => {});
   }
-
-  console.log(
-    `[duel] block_absorb confirmed: victim hp ${healthBefore} -> ${healthAfter} (blocked for ${landed.amount}, ` +
-      `raw would have been [${effect.damage.min}, ${effect.damage.max}])`,
+  issues.push(
+    `block_absorb: missed the mitigation window on all ${MAX_ATTEMPTS} attempts (racing two headed windows for OS ` +
+      `focus — see runBlockAbsorb's doc): ${attemptFailures.join(' | ')}`,
   );
 }
 
