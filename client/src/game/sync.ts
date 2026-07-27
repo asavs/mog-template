@@ -1,7 +1,7 @@
 /**
- * One generic table→store subscription mechanism for all 12 tables, in place
+ * One generic table→store subscription mechanism for all 13 tables, in place
  * of the old per-table switch (the pre-rewrite `useGameTableSync` was a
- * 602-line hand-written case per table). Adding a 13th table is a row in
+ * 602-line hand-written case per table). Adding a 14th table is a row in
  * `TABLE_REGISTRY`, never a new function.
  *
  * Each row ties a table name to (a) the row's string key and (b) how to reach
@@ -33,6 +33,7 @@ import type {
   PlayerSlotBinding,
   PlayerTransform,
   Projectile,
+  TickStats,
 } from '../generated/types';
 
 /** The runtime shape SpacetimeDB table handles expose — kept local so this module only depends on `../generated`. */
@@ -45,7 +46,7 @@ interface TableHandle<Row> {
   removeOnDelete(callback: (ctx: EventContext, row: Row) => void): void;
 }
 
-/** Row type per table, by store key. The single place that lists all 12 tables' shapes. */
+/** Row type per table, by store key. The single place that lists all 13 tables' shapes. */
 interface RowMap {
   player: PlayerData;
   playerTransform: PlayerTransform;
@@ -59,6 +60,7 @@ interface RowMap {
   actionEvent: ActionEvent;
   config: Config;
   gameTickSchedule: GameTickSchedule;
+  tickStats: TickStats;
 }
 
 export type TableName = keyof RowMap;
@@ -83,6 +85,7 @@ export function createGameStore(): GameStore {
     actionEvent: new Map(),
     config: new Map(),
     gameTickSchedule: new Map(),
+    tickStats: new Map(),
     ready: false,
   };
 }
@@ -136,7 +139,7 @@ function defineTable<K extends TableName>(
   };
 }
 
-// The 12-row table registry. Everything downstream (attachGameStore) is generic over this list.
+// The 13-row table registry. Everything downstream (attachGameStore) is generic over this list.
 // The third argument reaches `connection.db`'s snake_case accessor (the SDK does not camelCase
 // table names the way it does reducer names); the first argument is this module's own store key.
 const TABLE_REGISTRY: readonly RegisteredTable[] = [
@@ -152,6 +155,7 @@ const TABLE_REGISTRY: readonly RegisteredTable[] = [
   defineTable('actionEvent', row => String(row.id), db => db.action_event),
   defineTable('config', row => String(row.version), db => db.config),
   defineTable('gameTickSchedule', row => String(row.scheduledId), db => db.game_tick_schedule),
+  defineTable('tickStats', row => String(row.id), db => db.tick_stats),
 ];
 
 export interface AttachedGameStore {

@@ -48,6 +48,7 @@ function fakeConnection() {
     actionEvent: new FakeTable<unknown>(),
     config: new FakeTable<unknown>(),
     gameTickSchedule: new FakeTable<unknown>(),
+    tickStats: new FakeTable<unknown>(),
   };
   // The real SDK exposes `connection.db` with snake_case accessors (see sync.ts's comment on
   // TABLE_REGISTRY); this fixture's own `tables` object stays camelCase for readability below.
@@ -64,6 +65,7 @@ function fakeConnection() {
     action_event: tables.actionEvent,
     config: tables.config,
     game_tick_schedule: tables.gameTickSchedule,
+    tick_stats: tables.tickStats,
   };
   const connection = { db } as unknown as DbConnection;
   return { connection, tables };

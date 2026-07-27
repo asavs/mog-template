@@ -7,6 +7,7 @@ mod collision;
 mod common;
 mod locomotion;
 mod net;
+mod perf;
 mod player;
 mod player_logic;
 mod tables;
@@ -37,6 +38,7 @@ pub fn init(ctx: &ReducerContext) {
         ctx.db.tick_state().insert(TickState {
             version: 1,
             server_tick: 0,
+            last_tick_at_us: 0,
         });
     }
 

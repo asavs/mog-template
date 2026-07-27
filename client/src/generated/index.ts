@@ -54,6 +54,7 @@ import PlayerResourceRow from "./player_resource_table";
 import PlayerSlotBindingRow from "./player_slot_binding_table";
 import PlayerTransformRow from "./player_transform_table";
 import ProjectileRow from "./projectile_table";
+import TickStatsRow from "./tick_stats_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -206,6 +207,17 @@ const tablesSchema = __schema({
       { name: 'projectile_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ProjectileRow),
+  tick_stats: __table({
+    name: 'tick_stats',
+    indexes: [
+      { accessor: 'id', name: 'tick_stats_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'tick_stats_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TickStatsRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
