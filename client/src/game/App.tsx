@@ -32,7 +32,7 @@ import { sharedNetcodeMetrics, type NetcodeSnapshot } from '../perf/metrics';
 import { shouldEnableQaGameDebug } from '../qaGate';
 import { Arena } from '../world/Arena';
 import { EffectsView } from './EffectsView';
-import { createFrameRuntimeState, stepFrame } from './frame';
+import { createFrameRuntimeState, stepFrame, type FrameDiagnostics } from './frame';
 import { Hud } from './Hud';
 import { PlayerBody } from './PlayerBody';
 import { attachGameStore, createGameStore, type GameStore } from './sync';
@@ -78,6 +78,14 @@ declare global {
        * mutated in place, never reallocated — so a sampler may hold a reference to it.
        */
       netcode: NetcodeSnapshot;
+      /**
+       * Per-frame CSP reconcile state (`frame.ts`'s `FrameDiagnostics`) — what the
+       * `input_churn` detector (`qa-harness/input-churn.ts`) asserts the MECHANISM against,
+       * not just the rendered symptom. Deliberately separate from `netcode` above: that one
+       * is smoothed for a human reading the F3 HUD, this one is the raw per-frame truth an
+       * assertion needs. Rebuilt each frame, so a sampler must copy it, not hold it.
+       */
+      reconcile: FrameDiagnostics;
     };
   }
 }
@@ -90,9 +98,19 @@ interface SceneProps {
   pitchRef: React.MutableRefObject<number>;
   /** Bumps on every (re)connect — see the reset effect below. */
   connectionEpoch: number;
+  /** Written by `frame.ts`, read by `useInput` — see `StepFrameContext.clientTickRef`. */
+  clientTickRef: React.MutableRefObject<number>;
 }
 
-function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef, connectionEpoch }: SceneProps) {
+function Scene({
+  store,
+  identityHex,
+  movementRef,
+  rotationYRef,
+  pitchRef,
+  connectionEpoch,
+  clientTickRef,
+}: SceneProps) {
   const runtimeRef = useRef(createFrameRuntimeState());
   const localGroupRef = useRef<THREE.Group>(null);
   const remoteGroupsRef = useRef(new Map<string, THREE.Group>());
@@ -123,13 +141,28 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef, connec
    * doubt: `createFrameRuntimeState` defaults its `metrics` parameter to the
    * module-level `sharedNetcodeMetrics`, the same object `mountPerfHud` holds,
    * so a fresh runtime re-attaches to it rather than orphaning the overlay.
+   *
+   * `clientTickRef` is rewound with it, and must be: the ref is a published
+   * mirror of `runtime.clientTickCounter` (`predictPendingTicks` assigns it
+   * once per sim tick), so replacing the runtime without it leaves the two
+   * disagreeing until the next tick republishes. Any `update_player_input`
+   * landing in that gap — a key edge, or the 50ms held-movement heartbeat —
+   * stamps a pre-drop tick number onto a post-reset number line, and the
+   * server writes whatever it is straight into the ack it echoes back
+   * (`net.rs`: `last_processed_client_tick = input.client_tick`, no
+   * watermark), so the next `reconcileLocalPrediction` filters away every
+   * predicted tick and replays none. Self-correcting within a send plus a
+   * round trip — the server keeps no max, so the following input pulls the
+   * ack back down — but a snap-with-no-replay is exactly the rubberbanding
+   * this PR exists to remove, and the gap is free to close.
    */
   const lastEpochRef = useRef(connectionEpoch);
   useEffect(() => {
     if (connectionEpoch === lastEpochRef.current) return;
     lastEpochRef.current = connectionEpoch;
     runtimeRef.current = createFrameRuntimeState();
-  }, [connectionEpoch]);
+    clientTickRef.current = 0;
+  }, [connectionEpoch, clientTickRef]);
 
   useFrame((state, delta) => {
     const actionState = identityHex ? store.playerActionState.get(identityHex) : undefined;
@@ -144,6 +177,7 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef, connec
       pitch: pitchRef.current,
       movementFraction: gates.movementFraction,
       canRotate: gates.canRotate,
+      clientTickRef,
     });
 
     if (localGroupRef.current) {
@@ -178,6 +212,7 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef, connec
         identityHex,
         store,
         netcode: metrics.snapshot,
+        reconcile: render.diagnostics,
       };
     }
   });
@@ -383,6 +418,13 @@ export function App() {
     sharedNetcodeMetrics.recordInputSent(sequence);
   }, []);
 
+  // One client-tick number line for the whole local player: `frame.ts`'s predictor advances
+  // it, `useInput` stamps outgoing input with it, the server echoes it back as
+  // `lastProcessedClientTick`, and the predictor slices its buffer against the echo. Owned
+  // here because it is the one thing prediction and input must agree on, and this is their
+  // only common ancestor. See `frame.ts`'s `StepFrameContext.clientTickRef`.
+  const clientTickRef = useRef(0);
+
   // `connected` gates alongside `joined`: input is frozen — dropped, not queued —
   // while the socket is down. A movement intent from before the drop describes a
   // world state the server has already moved past, so replaying it on reconnect
@@ -390,7 +432,12 @@ export function App() {
   // fresh from whatever keys are actually held once we are back. It also keeps
   // the netcode metrics honest: an input that was never sent must not open a
   // round trip that can never close.
-  const input = useInput({ connRef, active: joined && connected, onInputSent: handleInputSent });
+  const input = useInput({
+    connRef,
+    active: joined && connected,
+    clientTickRef,
+    onInputSent: handleInputSent,
+  });
 
   // The perf overlay is a debug surface, so it rides the same `?qa` / VITE_QA_MODE gate as
   // `window.__mogGame` and stays absent from a normal production session. It mounts hidden;
@@ -424,9 +471,18 @@ export function App() {
         rotationYRef={input.rotationYRef}
         pitchRef={input.pitchRef}
         connectionEpoch={connectionEpoch}
+        clientTickRef={clientTickRef}
       />
     ),
-    [store, identityHex, input.movementRef, input.rotationYRef, input.pitchRef, connectionEpoch],
+    [
+      store,
+      identityHex,
+      input.movementRef,
+      input.rotationYRef,
+      input.pitchRef,
+      connectionEpoch,
+      clientTickRef,
+    ],
   );
 
   return (

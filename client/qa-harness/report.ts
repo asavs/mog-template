@@ -17,6 +17,7 @@ import { readRun } from './trace-io';
 import { summarizeByPhase, type TraceSummary } from './trace-stats';
 import type { ComparisonFailure } from './compare-baseline';
 import type { InvariantFailure } from './invariants';
+import type { ChurnFailure } from './input-churn';
 import { perfReportSection } from './perf-report';
 import { firstFrameInPhase, formatVideoAt, formatVideoOffset, hasVideo, videoOffsetSeconds } from './video-time';
 
@@ -26,6 +27,8 @@ export type ReportOptions = {
   /** Baseline comparison result; undefined = comparison did not run. */
   comparison?: ComparisonFailure[];
   invariantFailures?: InvariantFailure[];
+  /** Rubberband detector failures (`input-churn.ts`), rendered as their own section. */
+  churnFailures?: ChurnFailure[];
 };
 
 // ---------------------------------------------------------------------------
@@ -350,13 +353,14 @@ function summaryTable(
 // Whole document
 
 export function generateReport(candidate: RunData, opts: ReportOptions = {}): string {
-  const { reference, structuralIssues = [], comparison, invariantFailures = [] } = opts;
+  const { reference, structuralIssues = [], comparison, invariantFailures = [], churnFailures = [] } = opts;
   const candSummary = summarizeByPhase(candidate.frames);
   const refSummary = reference ? summarizeByPhase(reference.frames) : undefined;
 
   const failingPhases = new Set<string>([
     ...(comparison ?? []).map((f) => f.phase),
     ...invariantFailures.map((f) => f.phase),
+    ...churnFailures.map((f) => f.phase),
     ...structuralIssues.map((s) => s.split('@')[0]),
   ]);
 
@@ -391,6 +395,15 @@ export function generateReport(candidate: RunData, opts: ReportOptions = {}): st
   const invariantBlock = invariantFailures.length > 0
     ? `<section><h2>Invariant failures</h2><table><thead><tr><th>phase</th><th>metric</th><th>detail</th><th class="num">expected</th><th class="num">actual</th><th class="num">allowed</th></tr></thead><tbody>${invariantFailures
         .map((f) => `<tr class="row-fail"><td>${esc(f.phase)}</td><td>${esc(f.metric)}</td><td>${esc(f.detail)}</td><td class="num">${fmt(f.expected, 4)}</td><td class="num">${fmt(f.actual, 4)}</td><td class="num">${fmt(f.allowed, 4)}</td></tr>`)
+        .join('')}</tbody></table></section>`
+    : '';
+
+  const churnBlock = churnFailures.length > 0
+    ? `<section><h2>Rubberbanding (input_churn)</h2><table><thead><tr><th>phase</th>${showVideo ? '<th>video</th>' : ''}<th>check</th><th>detail</th><th class="num">actual</th><th class="num">allowed</th></tr></thead><tbody>${churnFailures
+        .map((f) => {
+          const videoCell = showVideo ? `<td>${esc(formatVideoAt(candidate, f.atMs))}</td>` : '';
+          return `<tr class="row-fail"><td>${esc(f.phase)}</td>${videoCell}<td>${esc(f.check)}</td><td>${esc(f.detail)}</td><td class="num">${fmt(f.actual, 4)}</td><td class="num">${fmt(f.allowed, 4)}</td></tr>`;
+        })
         .join('')}</tbody></table></section>`
     : '';
   // No correction-error/offset charts: v2 exposes no client-side reconciliation telemetry to
@@ -462,6 +475,7 @@ export function generateReport(candidate: RunData, opts: ReportOptions = {}): st
   </header>
   ${videoBlock}
   ${issuesBlock}
+  ${churnBlock}
   ${invariantBlock}
   ${comparisonBlock}
   <section><h2>Per-phase summary${refSummary ? ' — reference values in gray' : ''}</h2>${summaryTable(candidate, candSummary, refSummary, failingPhases)}</section>

@@ -2,7 +2,7 @@ import type { CDPSession, Page } from 'playwright';
 import type { PhaseExpectation } from './invariants';
 import type { BotLabel } from './trace-types';
 
-export type PhaseGroup = 'movement' | 'network' | 'combat' | 'matrix';
+export type PhaseGroup = 'movement' | 'network' | 'combat' | 'matrix' | 'churn';
 
 export type PhaseContext = {
   page: Page;
