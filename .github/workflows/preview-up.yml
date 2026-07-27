@@ -60,6 +60,11 @@ jobs:
       # --- knobs (repo Variables) ---
       MACHINE_TYPE: ${{ vars.MACHINE_TYPE || 'e2-micro' }}
       PREVIEW_MAX_CONCURRENT: ${{ vars.PREVIEW_MAX_CONCURRENT || '3' }}
+      # RTT is part of what a feel-test measures, so the zone is not a free
+      # choice: us-central1-a is the project's historical region and the one the
+      # human feel-tester is closest to. A repo-variable override had pointed
+      # previews at us-east4-a, measured at ~70ms RTT. The `vars.ZONE` override
+      # stays available — re-measure before using it.
       ZONE: ${{ vars.ZONE || 'us-central1-a' }}
       # Same name used for spacetime publish and VITE_STDB_DB_NAME in Build client.
       PREVIEW_DB_NAME: ${{ vars.PREVIEW_DB_NAME || 'mog-game-v1' }}
