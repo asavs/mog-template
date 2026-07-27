@@ -116,6 +116,14 @@ export type PointLightState = {
   color: THREE.Color;
   /** Peak intensity at spawn; a renderer fades it against `remainingSeconds`/`totalSeconds`. */
   intensity: number;
+  /**
+   * Identity hex of the actor this pulse should keep tracking every frame (`Effects.update`
+   * re-reads their live position via `actorObjects`), or `null` for a pulse anchored to a fixed
+   * point in space (an impact/miss location) that should stay put once spawned. Every spawn site
+   * on the shared `lights` pool MUST set this explicitly, same discipline as `.color` above — a
+   * slot re-borrowed from a following pulse would otherwise keep chasing the old actor forever.
+   */
+  followActor: string | null;
 };
 
 export type MeleeFlashState = {
@@ -139,6 +147,7 @@ export function createPointLightPool(size: number = NUM_EFFECT_LIGHTS): EffectPo
     position: new THREE.Vector3(),
     color: new THREE.Color('white'),
     intensity: 0,
+    followActor: null,
   }));
 }
 
@@ -175,6 +184,14 @@ export type EffectActionEventRow = {
   actionId: string;
   kind: string;
   position: { x: number; y: number; z: number } | null;
+  /**
+   * Identity hex of whoever fired this event — needed to anchor an
+   * actor-following visual (melee flash, heal glow) on the caster's own
+   * LIVE position rather than the row's `position` snapshot. See
+   * `Effects.registerActor`'s doc for why the row snapshot alone is not
+   * where the caster visually is by the time this event is read.
+   */
+  actor: string;
 };
 
 /** The minimal shape this module needs from a `projectile` row. */
@@ -225,6 +242,28 @@ export class Effects {
    */
   private readonly lastLocalEffectEdge = new Map<string, string>();
 
+  /**
+   * Live three.js object per player (`identityHex`), registered by
+   * `PlayerBody` on mount / removed on unmount — the SAME `Object3D` its
+   * parent group is positioned with each frame (`localGroupRef`'s CSP-predicted
+   * position for the local player, a remote's interpolated snapshot position
+   * for anyone else — see `game/frame.ts`'s `stepFrame`).
+   *
+   * `action_event.position` is a snapshot of `player_transform.position` at
+   * the tick the server fired the event — authoritative for gameplay, but
+   * NOT what is on screen: local prediction, the visual-correction glide,
+   * and remote interpolation all deliberately render a different position
+   * than the raw transform row, every single frame, by design. An effect
+   * anchored straight to the row therefore visibly lags or detaches from
+   * the caster's own rendered body — this registry is how an actor-anchored
+   * visual (melee flash, heal glow) reads "wherever the caster is actually
+   * drawn" instead, via `Object3D.getWorldPosition` (walks the parent chain,
+   * so it already accounts for whatever position the owning group was set
+   * to this frame). A kind that legitimately IS about a fixed point in space
+   * (an impact/miss location, an aoe target point) keeps reading the row.
+   */
+  private readonly actorObjects = new Map<string, THREE.Object3D>();
+
   constructor(budgets: EffectBudgets = {}) {
     this.lights = createPointLightPool(budgets.lights ?? NUM_EFFECT_LIGHTS);
     this.meleeFlashes = createMeleeFlashPool(budgets.meleeFlashes ?? NUM_MELEE_FLASHES);
@@ -232,12 +271,48 @@ export class Effects {
     this.projectiles = createProjectilePool(budgets.projectiles ?? NUM_PROJECTILES);
   }
 
+  /** Called from `PlayerBody`'s mount effect — see `actorObjects`' doc. */
+  registerActor(identityHex: string, object: THREE.Object3D): void {
+    this.actorObjects.set(identityHex, object);
+  }
+
+  /** Called from `PlayerBody`'s unmount cleanup, paired with `registerActor`. */
+  unregisterActor(identityHex: string): void {
+    this.actorObjects.delete(identityHex);
+  }
+
+  /**
+   * Writes `identityHex`'s current on-screen position into `target`, or
+   * `fallback` (an `action_event` row's own snapshot) if that actor has no
+   * registered object — e.g. the row survived a tick past `PlayerBody`
+   * unmounting, or a future caller before wave2-shell mounts any bodies at
+   * all. Never allocates: callers own `target`.
+   */
+  private anchorToActor(target: THREE.Vector3, identityHex: string, fallback: { x: number; y: number; z: number }): void {
+    const object = this.actorObjects.get(identityHex);
+    if (object) {
+      object.getWorldPosition(target);
+      return;
+    }
+    target.set(fallback.x, fallback.y, fallback.z);
+  }
+
   update(deltaSeconds: number): void {
+    this.refreshFollowingLights();
     this.lights.update(deltaSeconds);
     this.meleeFlashes.update(deltaSeconds);
     this.aoeRings.update(deltaSeconds);
     // Projectiles are row-presence-driven (`syncProjectiles`), not timed —
     // their entries spawn with `Infinity` and `update` leaves them alone.
+  }
+
+  /** Re-anchors every live `followActor` light to that actor's CURRENT position, once per frame. */
+  private refreshFollowingLights(): void {
+    for (const entry of this.lights.entries) {
+      if (entry.key === null || entry.resource.followActor === null) continue;
+      const object = this.actorObjects.get(entry.resource.followActor);
+      if (object) object.getWorldPosition(entry.resource.position);
+    }
   }
 
   /**
@@ -256,11 +331,20 @@ export class Effects {
     for (const effect of def.effects) {
       switch (effect.kind) {
         case 'melee_arc': {
+          // Always the ACTOR's own position, never `event.position` — the row's own
+          // position is the server's damage-resolution point (the TARGET's transform
+          // on a hit, the attacker's on a miss, see `effects.rs::apply_melee_arc`), which
+          // is the right anchor for a damage number but the wrong one for "the swing
+          // came from the person swinging." `anchorToActor` also sidesteps the raw
+          // `player_transform` snapshot's lag behind what's actually on screen — see
+          // `actorObjects`' doc.
           const state = this.meleeFlashes.spawn(event.id, MELEE_FLASH_SECONDS);
-          state.position.set(event.position.x, event.position.y, event.position.z);
+          this.anchorToActor(state.position, event.actor, event.position);
           break;
         }
         case 'aoe_at_target': {
+          // `event.position` IS the meaningful anchor here (the server-computed
+          // target point, not just "where the actor stands") — left as the row.
           const state = this.aoeRings.spawn(event.id, AOE_RING_SECONDS);
           state.position.set(event.position.x, event.position.y, event.position.z);
           state.radius = effect.radius;
@@ -269,21 +353,25 @@ export class Effects {
         case 'projectile': {
           // The projectile mesh itself is reconciled from `projectile` rows
           // (`syncProjectiles`); a release/impact event still gets a brief
-          // point-light pulse, the same as melee's flash.
+          // point-light pulse, the same as melee's flash. Anchored to the row: a
+          // release's muzzle point and an impact's hit point are each a specific,
+          // already-past moment in space, not something to keep following.
           const state = this.lights.spawn(event.id, IMPACT_LIGHT_SECONDS);
           state.position.set(event.position.x, event.position.y, event.position.z);
           state.color.setHex(IMPACT_LIGHT_COLOR);
           state.intensity = 1;
+          state.followActor = null;
           break;
         }
         case 'heal_self': {
-          // potion / mend: a soft green pulse on the actor so "something
-          // happened" reads even though the effect itself (health going up)
-          // has no shape of its own.
+          // potion / mend: a soft green pulse that FOLLOWS the actor for its whole
+          // lifetime (`refreshFollowingLights`), not just a one-shot spawn position —
+          // per spec, "heal/potion glow follows the actor."
           const state = this.lights.spawn(event.id, HEAL_LIGHT_SECONDS);
-          state.position.set(event.position.x, event.position.y, event.position.z);
+          this.anchorToActor(state.position, event.actor, event.position);
           state.color.setHex(HEAL_LIGHT_COLOR);
           state.intensity = 1.4;
+          state.followActor = event.actor;
           break;
         }
         default:
@@ -325,9 +413,11 @@ export class Effects {
    * never get an `action_event` row: `displace_self` (today, only `roll`)
    * fires every server tick through `apply_active_tick`, updating position
    * directly with no accompanying event — from here, all that's visible is
-   * `player_action_state.phase` reaching Active. Driven straight off that row
-   * (`identityHex`'s own `player_transform.position` for where to put it), one
-   * call per player per frame, cheap to call unconditionally the same way
+   * `player_action_state.phase` reaching Active. `position` should be
+   * wherever this player is actually RENDERED this frame (`PlayerBody`
+   * passes its own group's world position — see `actorObjects`' doc for why
+   * that differs from the raw `player_transform` row), one call per player
+   * per frame, cheap to call unconditionally the same way
    * `driveAnimationFromActionState` is.
    *
    * Picked by effect KIND on the def, same discipline as `onActionEvent` —
@@ -352,6 +442,9 @@ export class Effects {
     light.position.set(position.x, position.y, position.z);
     light.color.setHex(ROLL_DASH_LIGHT_COLOR);
     light.intensity = 1.1;
+    // One-shot, not following: `position` is already this frame's live render position
+    // (see the doc above), and the dash is over well within its own short pulse life.
+    light.followActor = null;
   }
 
   /**
