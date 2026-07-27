@@ -141,13 +141,28 @@ function Scene({
    * doubt: `createFrameRuntimeState` defaults its `metrics` parameter to the
    * module-level `sharedNetcodeMetrics`, the same object `mountPerfHud` holds,
    * so a fresh runtime re-attaches to it rather than orphaning the overlay.
+   *
+   * `clientTickRef` is rewound with it, and must be: the ref is a published
+   * mirror of `runtime.clientTickCounter` (`predictPendingTicks` assigns it
+   * once per sim tick), so replacing the runtime without it leaves the two
+   * disagreeing until the next tick republishes. Any `update_player_input`
+   * landing in that gap — a key edge, or the 50ms held-movement heartbeat —
+   * stamps a pre-drop tick number onto a post-reset number line, and the
+   * server writes whatever it is straight into the ack it echoes back
+   * (`net.rs`: `last_processed_client_tick = input.client_tick`, no
+   * watermark), so the next `reconcileLocalPrediction` filters away every
+   * predicted tick and replays none. Self-correcting within a send plus a
+   * round trip — the server keeps no max, so the following input pulls the
+   * ack back down — but a snap-with-no-replay is exactly the rubberbanding
+   * this PR exists to remove, and the gap is free to close.
    */
   const lastEpochRef = useRef(connectionEpoch);
   useEffect(() => {
     if (connectionEpoch === lastEpochRef.current) return;
     lastEpochRef.current = connectionEpoch;
     runtimeRef.current = createFrameRuntimeState();
-  }, [connectionEpoch]);
+    clientTickRef.current = 0;
+  }, [connectionEpoch, clientTickRef]);
 
   useFrame((state, delta) => {
     const actionState = identityHex ? store.playerActionState.get(identityHex) : undefined;
