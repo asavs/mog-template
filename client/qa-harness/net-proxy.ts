@@ -34,6 +34,17 @@ export type NetProfile = {
 export interface NetProxyLane {
   port: number;
   setProfile(profile: NetProfile): void;
+  /**
+   * Kills every socket currently open through the lane, leaving the listener up
+   * so the client's reconnect lands normally.
+   *
+   * `dropAfterMs` cannot express this: it is read at accept time and arms a
+   * per-connection timer, so it kills the *reconnect* on the same schedule as
+   * the original and a recovery can never be observed. Reconnect tests need to
+   * sever an already-established connection at a moment of their choosing —
+   * after the bot has joined and moved — which is exactly this.
+   */
+  dropActiveConnections(): number;
   close(): Promise<void>;
 }
 
@@ -191,6 +202,15 @@ class NetProxyLaneImpl implements NetProxyLane {
 
   private profileNow(): NetProfile {
     return effectiveProfileAt(this.profile, Date.now() - this.profileAppliedAt);
+  }
+
+  dropActiveConnections() {
+    // Snapshot first: `destroy()` synchronously fires 'close', whose cleanup
+    // handler mutates `this.sockets` while we would otherwise be iterating it.
+    const live = [...this.sockets];
+    for (const socket of live) socket.destroy();
+    this.sockets.clear();
+    return live.length;
   }
 
   async close() {

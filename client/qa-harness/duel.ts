@@ -311,7 +311,9 @@ async function runBlockAbsorb(attacker: BotSession, victim: BotSession, issues: 
 
   // Resolved once, off the clock — fastReacquirePointerLock's later (timing-critical) call
   // reuses this instead of paying for its own boundingBox() round trip.
-  const victimCanvasBox = await victim.page.locator('canvas').boundingBox();
+  // `.game-shell canvas`, not a bare `canvas` — the perf overlay adds a second one
+  // under the same `?qa` gate. See acquirePointerLock in page-driver.ts.
+  const victimCanvasBox = await victim.page.locator('.game-shell canvas').boundingBox();
   const victimCenter = victimCanvasBox
     ? { x: victimCanvasBox.x + victimCanvasBox.width / 2, y: victimCanvasBox.y + victimCanvasBox.height / 2 }
     : { x: 640, y: 360 };
