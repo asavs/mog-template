@@ -69,6 +69,14 @@ export interface UseInputOptions {
   active: boolean;
   /** Presentation-only: fires once per hold when a slot crosses the server's holdThresholdTicks. */
   onHoldThresholdCrossed?: (slot: string) => void;
+  /**
+   * Instrumentation-only: fires with the sequence number of an input the instant it goes on
+   * the wire. This hook exists because the send timestamp is knowable nowhere else — the ack
+   * that closes the round trip (`player_input_ack.lastInputSeq`) lands in `game/frame.ts`,
+   * which never sees the moment of sending. Like `onHoldThresholdCrossed`, it must not
+   * influence anything sent; see `perf/metrics.ts` for the consumer.
+   */
+  onInputSent?: (sequence: number) => void;
 }
 
 export interface UseInputResult {
@@ -81,7 +89,12 @@ export interface UseInputResult {
   requestPointerLock: (element: Element) => void;
 }
 
-export function useInput({ connRef, active, onHoldThresholdCrossed }: UseInputOptions): UseInputResult {
+export function useInput({
+  connRef,
+  active,
+  onHoldThresholdCrossed,
+  onInputSent,
+}: UseInputOptions): UseInputResult {
   const intentRef = useRef<IntentState>(createIntentState());
   const movementRef = useRef<MovementState>(createMovementState());
   const rotationYRef = useRef(0);
@@ -99,6 +112,10 @@ export function useInput({ connRef, active, onHoldThresholdCrossed }: UseInputOp
   const onHoldThresholdCrossedRef = useRef(onHoldThresholdCrossed);
   useEffect(() => {
     onHoldThresholdCrossedRef.current = onHoldThresholdCrossed;
+  });
+  const onInputSentRef = useRef(onInputSent);
+  useEffect(() => {
+    onInputSentRef.current = onInputSent;
   });
 
   const sendMovement = useCallback(() => {
@@ -118,6 +135,7 @@ export function useInput({ connRef, active, onHoldThresholdCrossed }: UseInputOp
       clientTick: clientTickRef.current,
     };
     connection.reducers.updatePlayerInput({ input, rotationY: rotationYRef.current });
+    onInputSentRef.current?.(input.sequence);
   }, [connRef]);
 
   const applyIntentResult = useCallback((result: IntentResult) => {

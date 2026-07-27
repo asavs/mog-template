@@ -49,8 +49,33 @@ export const MOUSE_BINDINGS: readonly MouseRow[] = [
   { button: 2, binding: { kind: 'slot', slot: 'block' } }, // RMB
 ] as const;
 
-/** Every KeyboardEvent.code this keymap cares about, for suppressing default browser behavior. */
-export const BOUND_KEY_CODES: ReadonlySet<string> = new Set(KEY_BINDINGS.map(row => row.code));
+/**
+ * Debug overlays get their own table rather than a third `KeyBinding` kind, because they are
+ * not intents: nothing here reaches `update_player_input` or `action_input`, and threading a
+ * non-gameplay kind through `intents.ts` would put a diagnostic concern in the one module that
+ * exists to hold only "what did the player mean". Consumers (see `perf/hud.ts`) resolve their
+ * own key through `debugBindingFor` and listen for themselves. Rebinding stays a row edit.
+ */
+export type DebugToggle = 'perfHud';
+
+export interface DebugRow {
+  code: string;
+  toggle: DebugToggle;
+}
+
+export const DEBUG_BINDINGS: readonly DebugRow[] = [
+  { code: 'F3', toggle: 'perfHud' },
+] as const;
+
+/**
+ * Every KeyboardEvent.code this keymap cares about, for suppressing default browser behavior.
+ * Debug codes are included so the browser's own binding never fires underneath the overlay —
+ * F3 is "find next" in Chrome, which would otherwise open the find bar mid-session.
+ */
+export const BOUND_KEY_CODES: ReadonlySet<string> = new Set([
+  ...KEY_BINDINGS.map(row => row.code),
+  ...DEBUG_BINDINGS.map(row => row.code),
+]);
 
 export function keyBindingFor(code: string): KeyBinding | undefined {
   return KEY_BINDINGS.find(row => row.code === code)?.binding;
@@ -58,4 +83,8 @@ export function keyBindingFor(code: string): KeyBinding | undefined {
 
 export function mouseBindingFor(button: number): MouseRow['binding'] | undefined {
   return MOUSE_BINDINGS.find(row => row.button === button)?.binding;
+}
+
+export function debugBindingFor(code: string): DebugToggle | undefined {
+  return DEBUG_BINDINGS.find(row => row.code === code)?.toggle;
 }

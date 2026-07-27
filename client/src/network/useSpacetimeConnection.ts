@@ -53,6 +53,7 @@ const GAME_SUBSCRIPTIONS = [
   'SELECT * FROM player_slot_binding',
   'SELECT * FROM player_transform',
   'SELECT * FROM projectile',
+  'SELECT * FROM tick_stats',
 ];
 
 /** Extra context the host gets on every subscription-applied, so a recovery is distinguishable from a first join. */

@@ -6,9 +6,14 @@ export type Vec3 = { x: number; y: number; z: number };
  * client-side-prediction visual-fidelity checks. The v2 client exposes only
  * `window.__mogGame` (`{localPosition, remoteCount, joined, identityHex, store}` — see
  * `client/src/game/App.tsx`) — a live row-level store, not a per-frame reconciliation trace.
- * There is no reconciliation/offset telemetry to capture anymore, so those fields are gone
- * (a real reduction in what this harness can prove about CSP smoothing — see
- * `docs/character-pipeline.md`'s wave notes if that fidelity is ever restored). `simPosition`
+ * Those named fields are gone, but the telemetry itself is back: the client publishes
+ * `window.__mogGame.netcode` (pre-smoothing correction magnitude, reconciles/sec, visual-offset
+ * length, input→ack RTT, authoritative arrival intervals + burstiness, fps — see
+ * `client/src/perf/metrics.ts`), and `installCollectors` copies each of its numeric fields into
+ * `channels` under a `netcode_` prefix. CSP smoothing is therefore provable again through the
+ * generic channel path below rather than through named fields here — which is why
+ * `trace-stats.ts` summaries and `report.ts` charts pick it up with no per-metric wiring.
+ * `simPosition`
  * is kept (sourced from `__mogGame.localPosition`) since it is still the backbone of the
  * movement invariants (`invariants.ts` / `trace-stats.ts`). `channels` is repointed at
  * generic numeric snapshots read off `__mogGame.store` for the local identity each frame

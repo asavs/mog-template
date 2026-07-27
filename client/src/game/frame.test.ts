@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { MovementState } from '../input/intents';
+import { NetcodeMetrics } from '../perf/metrics';
 import {
   computeOrbitCamera,
   createFrameRuntimeState,
@@ -376,5 +377,197 @@ describe('stepFrame', () => {
     const runtime = createFrameRuntimeState();
     const render = stepFrame(runtime, ctx(store));
     expect(render.remotes.has('local')).toBe(false);
+  });
+});
+
+/**
+ * Instrumentation is additive by contract: `stepFrame` records netcode-feel channels but no
+ * branch, ordering, or value in the reconcile path may depend on them. The reconcile behavior
+ * itself is guarded by the `stepFrame`/`reconcileLocalPrediction` suites above — these tests
+ * assert the channels observe what actually happened.
+ */
+describe('stepFrame netcode instrumentation', () => {
+  function ctx(store: GameStore, overrides: Partial<StepFrameContext> = {}): StepFrameContext {
+    return {
+      dtSeconds: 1 / 20,
+      store,
+      localIdentityHex: 'local',
+      movement: STILL,
+      rotationY: 0,
+      pitch: 0,
+      movementFraction: 1,
+      canRotate: true,
+      ...overrides,
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function transformRow(position: { x: number; y: number; z: number }, serverTick: bigint): any {
+    return {
+      identity: { toHexString: () => 'local' },
+      position,
+      rotationY: 0,
+      isMoving: false,
+      movementState: { isGrounded: true, wasGrounded: true, isAirborne: false, sprintIntent: false, sprintActive: false },
+      serverTick,
+      updatedAt: {},
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function ackRow(lastInputSeq: number, lastProcessedClientTick: number): any {
+    return {
+      identity: { toHexString: () => 'local' },
+      lastInputSeq,
+      lastProcessedClientTick,
+      serverTick: 0n,
+    };
+  }
+
+  /** A runtime wired to a metrics instance whose clock this test drives by hand. */
+  function harness() {
+    const clock = { now: 0 };
+    const metrics = new NetcodeMetrics({ now: () => clock.now });
+    return { clock, metrics, runtime: createFrameRuntimeState(metrics), store: createGameStore() };
+  }
+
+  it('records the first authoritative row as an arrival baseline, with nothing to reconcile yet', () => {
+    const { clock, metrics, runtime, store } = harness();
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: 0 }, 0n));
+
+    clock.now = 1000;
+    stepFrame(runtime, ctx(store));
+
+    const snapshot = metrics.refreshSnapshot(1000);
+    expect(snapshot.transformArrivalCount).toBe(1);
+    // One arrival is not an interval, and initialization is not a correction.
+    expect(snapshot.tickIntervalMsLast).toBe(0);
+    expect(snapshot.reconcileCount).toBe(0);
+  });
+
+  it('measures the pre-smoothing correction magnitude, not the smoothed render delta', () => {
+    const { clock, metrics, runtime, store } = harness();
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: 0 }, 0n));
+    clock.now = 1000;
+    stepFrame(runtime, ctx(store));
+
+    // Predict forward a few ticks so the client has drifted from the server's last word.
+    for (let index = 0; index < 4; index += 1) {
+      clock.now += 50;
+      stepFrame(runtime, ctx(store, { movement: WALK_FORWARD }));
+    }
+    const predictedPosition = { ...runtime.local.position };
+
+    // The server disagrees hard: it puts us 5 units away on X. Acking well past every predicted
+    // tick leaves nothing to replay, so the reconciled position IS the server position — which
+    // makes the expected correction exactly computable rather than approximated.
+    const serverPosition = { x: 5, y: 0, z: 0 };
+    store.playerTransform.set('local', transformRow(serverPosition, 1n));
+    store.playerInputAck.set('local', ackRow(4, 999));
+    clock.now += 50;
+    stepFrame(runtime, ctx(store, { movement: WALK_FORWARD }));
+
+    const snapshot = metrics.refreshSnapshot(clock.now);
+    expect(snapshot.reconcileCount).toBe(1);
+    expect(snapshot.correctionMagnitudeLast).toBeCloseTo(
+      Math.hypot(
+        serverPosition.x - predictedPosition.x,
+        serverPosition.y - predictedPosition.y,
+        serverPosition.z - predictedPosition.z,
+      ),
+      6,
+    );
+    expect(snapshot.correctionMagnitudeLast).toBeGreaterThan(4);
+
+    // It is measured at the reconcile, BEFORE the same frame predicts forward again — reading
+    // it off the post-frame position would fold in an extra tick of movement.
+    expect(snapshot.correctionMagnitudeLast).not.toBeCloseTo(
+      Math.hypot(
+        runtime.local.position.x - predictedPosition.x,
+        runtime.local.position.y - predictedPosition.y,
+        runtime.local.position.z - predictedPosition.z,
+      ),
+      6,
+    );
+  });
+
+  it('records an arrival interval only when the authoritative row actually changed', () => {
+    const { clock, metrics, runtime, store } = harness();
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: 0 }, 0n));
+    clock.now = 1000;
+    stepFrame(runtime, ctx(store));
+
+    // Same serverTick on later frames: the row was not republished, so nothing arrived.
+    for (let index = 0; index < 5; index += 1) {
+      clock.now += 50;
+      stepFrame(runtime, ctx(store));
+    }
+    expect(metrics.refreshSnapshot(clock.now).transformArrivalCount).toBe(1);
+
+    // A changed row IS an arrival, and the interval spans from the previous one.
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: -1 }, 1n));
+    clock.now += 50;
+    stepFrame(runtime, ctx(store));
+
+    const snapshot = metrics.refreshSnapshot(clock.now);
+    expect(snapshot.transformArrivalCount).toBe(2);
+    expect(snapshot.tickIntervalMsLast).toBe(300);
+  });
+
+  it('closes the input round trip when the ack for a sent sequence arrives', () => {
+    const { clock, metrics, runtime, store } = harness();
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: 0 }, 0n));
+    clock.now = 1000;
+    stepFrame(runtime, ctx(store));
+
+    // What `useInput`'s onInputSent does at the moment the reducer call goes out.
+    metrics.recordInputSent(7, 1000);
+
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: -1 }, 1n));
+    store.playerInputAck.set('local', ackRow(7, 1));
+    clock.now = 1075;
+    stepFrame(runtime, ctx(store));
+
+    const snapshot = metrics.refreshSnapshot(clock.now);
+    expect(snapshot.ackSampleCount).toBe(1);
+    expect(snapshot.ackRttMsLast).toBe(75);
+  });
+
+  it('publishes the smoothing offset still being hidden from the player', () => {
+    const { clock, metrics, runtime, store } = harness();
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: 0 }, 0n));
+    clock.now = 1000;
+    stepFrame(runtime, ctx(store));
+
+    for (let index = 0; index < 4; index += 1) {
+      clock.now += 50;
+      stepFrame(runtime, ctx(store, { movement: WALK_FORWARD }));
+    }
+    // A correction under the snap threshold glides, so some of it is still being hidden.
+    store.playerTransform.set('local', transformRow({ x: 0.5, y: 0, z: -0.5 }, 1n));
+    store.playerInputAck.set('local', ackRow(4, 4));
+    clock.now += 50;
+    const render = stepFrame(runtime, ctx(store, { movement: WALK_FORWARD }));
+
+    const snapshot = metrics.refreshSnapshot(clock.now);
+    expect(snapshot.visualCorrectionOffsetLength).toBeGreaterThan(0);
+    // And the offset it reports is the one actually applied to the rendered position.
+    expect(render.localPosition.x).toBeCloseTo(
+      runtime.local.position.x + runtime.visualCorrectionOffset.x,
+      6,
+    );
+  });
+
+  it('records a frame-time sample every frame, so fps reflects the render loop', () => {
+    const { clock, metrics, runtime, store } = harness();
+    store.playerTransform.set('local', transformRow({ x: 0, y: 0, z: 0 }, 0n));
+
+    for (let index = 0; index < 30; index += 1) {
+      clock.now += 1000 / 60;
+      stepFrame(runtime, ctx(store, { dtSeconds: 1 / 60 }));
+    }
+
+    const snapshot = metrics.refreshSnapshot(clock.now);
+    expect(snapshot.fps).toBeCloseTo(60, 0);
   });
 });

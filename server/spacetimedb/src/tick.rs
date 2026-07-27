@@ -1,6 +1,7 @@
 use crate::actions;
 use crate::common::MovementState;
 use crate::net;
+use crate::perf;
 use crate::player;
 use crate::player_logic;
 use crate::tables::*;
@@ -14,7 +15,10 @@ pub fn game_tick(ctx: &ReducerContext, _tick_info: GameTickSchedule) -> Result<(
         return Err("Only the scheduler can run game_tick".to_string());
     }
 
-    let server_tick = next_server_tick(ctx);
+    let now_at_us = ctx.timestamp.to_micros_since_unix_epoch();
+    let (server_tick, prev_at_us) = advance_tick_state(ctx, now_at_us);
+    // Invocation-to-invocation gap (scheduler cadence), not tick-body duration.
+    perf::record(ctx, server_tick, prev_at_us, now_at_us);
     player::respawn_ready_players(ctx, server_tick);
     actions::state::advance_all(ctx, server_tick);
 
@@ -117,14 +121,18 @@ pub(crate) fn current_server_tick(ctx: &ReducerContext) -> u64 {
         .unwrap_or(0)
 }
 
-pub(crate) fn next_server_tick(ctx: &ReducerContext) -> u64 {
+/// Advance the private tick counter and record wall-clock us for tick_stats.
+/// Returns `(new server_tick, previous last_tick_at_us)` in one tick_state write.
+pub(crate) fn advance_tick_state(ctx: &ReducerContext, now_at_us: i64) -> (u64, i64) {
     if let Some(mut state) = ctx.db.tick_state().version().find(1) {
+        let prev_at_us = state.last_tick_at_us;
         state.server_tick += 1;
+        state.last_tick_at_us = now_at_us;
         let tick = state.server_tick;
         ctx.db.tick_state().version().update(state);
-        tick
+        (tick, prev_at_us)
     } else {
-        0
+        (0, 0)
     }
 }
 
