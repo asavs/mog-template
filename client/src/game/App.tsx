@@ -278,17 +278,53 @@ export function App() {
    * purpose: `handleSubscriptionApplied` reads it from a callback (where state
    * would be stale), and render reads it to tell a *first* join apart from a
    * session being restored. It must survive `joined` being reset to false by
-   * the very drop it exists to recover from, so it is never cleared.
+   * the very drop it exists to recover from, so a disconnect never clears it —
+   * only coming back as a different identity does (see below).
    */
   const hadJoinedRef = useRef(false);
   const [hadJoined, setHadJoined] = useState(false);
+  /** The identity the last applied subscription came back as — see the reset below. */
+  const lastIdentityHexRef = useRef<string | null>(null);
+
+  /**
+   * The single writer for `joined`, so "we are in the world" and "we have been in
+   * the world" can never disagree. Both call sites that can turn `joined` on go
+   * through here; an effect mirroring `joined` into `hadJoined` would be a
+   * cascading render for a value already known at the moment of the change.
+   */
+  const markJoined = useCallback((next: boolean) => {
+    setJoined(next);
+    if (!next) return;
+    hadJoinedRef.current = true;
+    setHadJoined(true);
+  }, []);
 
   const handleSubscriptionApplied = useCallback(
     (connection: DbConnection, id: Identity, { reconnected }: SubscriptionAppliedInfo) => {
       markReadyRef.current();
 
-      const hasPlayerRow = storeRef.current.player.has(id.toHexString());
-      setJoined(hasPlayerRow);
+      const identityHex = id.toHexString();
+      const hasPlayerRow = storeRef.current.player.has(identityHex);
+      markJoined(hasPlayerRow);
+
+      // Coming back as a DIFFERENT identity is not this session returning — it is
+      // a different player. That happens whenever the saved token stops applying:
+      // `forgetSavedConnection` wipes it deliberately, and a server that rejects
+      // it hands back a fresh anonymous identity. Treating those as a restore
+      // would silently auto-rejoin the new identity under the previous player's
+      // cached name and never offer the name field again, so the session flags
+      // reset and the flow falls back to a normal first join.
+      //
+      // Keyed on the identity rather than on `hasSavedCharacter` because the
+      // identity is the thing that actually determines whether the server has a
+      // character to give back.
+      const previousIdentityHex = lastIdentityHexRef.current;
+      lastIdentityHexRef.current = identityHex;
+      if (previousIdentityHex !== null && previousIdentityHex !== identityHex) {
+        hadJoinedRef.current = false;
+        setHadJoined(false);
+        return;
+      }
 
       // A dropped session is cleaned up server-side: `identity_disconnected`
       // folds the live player rows into `logged_out_player` (server/spacetimedb/
@@ -318,12 +354,6 @@ export function App() {
 
   const identityHex = identity?.toHexString() ?? null;
 
-  useEffect(() => {
-    if (!joined) return;
-    hadJoinedRef.current = true;
-    setHadJoined(true);
-  }, [joined]);
-
   /**
    * The socket is back but the character is not yet: the server archived the
    * player row on disconnect, so there is a gap between `connected` and the
@@ -337,7 +367,7 @@ export function App() {
   useEffect(() => {
     if (!connected || joined || !identityHex) return;
     const id = window.setInterval(() => {
-      if (storeRef.current.player.has(identityHex)) setJoined(true);
+      if (storeRef.current.player.has(identityHex)) markJoined(true);
     }, HUD_POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [connected, joined, identityHex]);
