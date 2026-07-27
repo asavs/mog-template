@@ -232,7 +232,10 @@ export async function acquirePointerLock(page: Page) {
   // for melee-capable bots) and freezes camera rotation for the swing duration.
   const alreadyLocked = await page.evaluate(() => document.pointerLockElement === document.body);
   if (alreadyLocked) return true;
-  const canvas = page.locator('canvas');
+  // Scoped to `.game-shell`, not a bare `canvas`: the perf overlay mounts its own
+  // fixed-position canvas on the body under the same `?qa` gate this harness uses,
+  // so a bare selector resolves to two elements and fails Playwright strict mode.
+  const canvas = page.locator('.game-shell canvas');
   const box = await canvas.boundingBox();
   const center = box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : { x: 640, y: 360 };
   // requestPointerLock rejects with "root document is not valid for pointer
