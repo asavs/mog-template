@@ -255,6 +255,53 @@ since real wall-clock frame timing/render timing isn't deterministic. The
 point is to compare shapes/magnitudes across phases, not exact equality.
 
 
+## `input_churn` — the rubberband detector
+
+```powershell
+cd client
+npm run qa:churn                       # 0 / 100 / 200ms sweep — the hard gate
+QA_CHURN_LATENCIES=0,50,100,200,400 npm run qa:churn
+npm run qa:harness                     # churn phases also run here, at loopback latency
+```
+
+The scenario a human could reproduce in seconds and no phase here could: alternate
+direction keys at 80/150/300ms with **overlapping holds** for 10s each, then release
+everything and hold still for 3s. `walk_forward` holds one key for 750ms and
+`direction_change` switches three times in 1.8s — neither is a hand on WASD, and neither
+looks at the moment after the keys come up, which is where the worst of it shows.
+
+Four hard checks, all derived from the sim's own `PLAYER_SPEED` rather than a recorded
+baseline, so they mean the same thing on any machine at any frame rate:
+
+| check | what it catches |
+|---|---|
+| `frame-jump` | rendered position exceeding sim top speed over any >=100ms window — teleports |
+| `settle` / `settle-drift` | still moving after every key came up |
+| `path-inflation` | rendered path longer than top speed could draw — oscillation |
+| `prediction-lead` | corrections that replay **no** predicted ticks (prediction discarded, render snapped onto a stale authoritative position) or dozens (render running seconds ahead of the server) |
+
+`prediction-lead` is the sharp one, and it reads the mechanism instead of the symptom — it
+needs `window.__mogGame.reconcile` (`frame.ts`'s `FrameDiagnostics`; see the trace table
+below). Its zero-replay half only applies at >=25ms injected latency: on a direct loopback
+socket the round trip fits inside one 50ms tick, so a correction genuinely has nothing left
+to replay and the count says nothing about health. **That is why `npm run qa:churn`, not
+`npm run qa:harness`, is the gate for this defect** — the un-proxied run still enforces the
+three position-level checks, which is what it is there for.
+
+Every threshold carries the measured before/after numbers it sits between, in its own doc
+comment in `input-churn.ts`. Read those before moving one.
+
+### Re-checking a threshold without a browser
+
+```powershell
+npx vite-node qa-harness/churn-replay.ts -- qa-harness/runs/<run>.ndjson [...]
+```
+
+Replays the assertions over an archived trace (recovering the injected latency from the run
+label), so a tolerance change can be checked against known-bad and known-good runs in
+seconds instead of a 3-minute headed run — and a CI failure can be re-analysed from its
+uploaded artifact without reproducing the run.
+
 ## Latency proxy and grid mode
 
 The harness can route SpacetimeDB WebSocket traffic through an in-process TCP
@@ -456,16 +503,36 @@ One record per `requestAnimationFrame` tick, tagged with the current `phase`
 `lag_spike_walk_forward`, `cast_fireball`, `attack_slash`, etc. — see
 `run-harness.ts` for the full phase list):
 
+The v1 `window.__playerDebug` this table used to describe does not exist in v2. The live
+sources are `window.__mogGame` (`client/src/game/App.tsx`), both halves behind the same
+`?qa` / `VITE_QA_MODE` gate (`client/src/qaGate.ts`):
+
 | field | source |
 |---|---|
 | `t` | `performance.now()` at collection time |
 | `phase` | label set by the harness before each input action |
-| `simPosition` | `window.__playerDebug.simPosition` |
-| `renderPosition` | `window.__playerDebug.renderPosition` |
-| `visualOffset` / `offsetLength` | `window.__playerDebug.visualOffset` / `.offsetLength` |
-| `cameraPosition` | `window.__playerDebug.cameraPosition` |
-| `localServerTick` | `window.__playerDebug.localServerTick` (stringified, it's a u64) |
-| `localCorrectionError` | `window.__playerDebug.localCorrectionError` (added to the debug object specifically for this harness — mirrors `metricsRef.current.localCorrectionError`) |
+| `simPosition` | `__mogGame.localPosition` — the RENDERED position (`local.position + visualCorrectionOffset`), despite the name; kept because the movement invariants and every baseline are built on it |
+| `joined` / `remoteCount` | `__mogGame.joined` / `.remoteCount` |
+| `channels` | generic numeric snapshot of the local identity's rows in `__mogGame.store` (health, action phase, …) — never a hardcoded channel list |
+| `reconcile` | `__mogGame.reconcile` — `frame.ts`'s `FrameDiagnostics`, below |
+
+`reconcile` is per-frame client-side-prediction telemetry, and it is what lets a movement
+failure name its own mechanism instead of leaving a bisect:
+
+| field | meaning |
+|---|---|
+| `predictedPosition` | `runtime.local.position` — the reconciled+predicted physics position, BEFORE the visual offset |
+| `visualOffset` | the correction offset still being glided out; alternating signs are the oscillation signature |
+| `serverPosition` / `serverTick` | the authoritative `player_transform` row as of this frame |
+| `ackClientTick` | `player_input_ack.lastProcessedClientTick` — the server's echo of the client tick |
+| `predictTickCounter` / `pendingTicks` | the predictor's counter, and how many predicted ticks are unacked |
+| `corrections` | monotonic count of reconciles that actually ran |
+| `lastCorrection{Magnitude,Snapped,Dropped,Replayed}` | the most recent correction: how far it moved the render target, whether it exceeded `VISUAL_CORRECTION_SNAP_METERS` and skipped the glide, and how many predicted ticks it discarded vs replayed |
+
+`lastCorrectionReplayed` is the highest-signal number in the trace: it is the client's
+prediction lead in ticks, and at a known latency it has a known value (RTT / 50ms). Zero
+while input is held means prediction was thrown away; dozens means the render is running
+that far ahead of the server. See `input-churn.ts`.
 
 ## Known limitations
 

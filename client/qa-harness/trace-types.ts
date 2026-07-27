@@ -20,12 +20,46 @@ export type Vec3 = { x: number; y: number; z: number };
  * (health, action phase, resource amounts) — same "harness never hardcodes channel names"
  * contract as before, new source table.
  */
+/**
+ * One frame of RAW client-side-prediction reconcile state, mirrored from
+ * `window.__mogGame.reconcile` (`client/src/game/frame.ts`'s `FrameDiagnostics`).
+ *
+ * Sibling to, not a replacement for, the `netcode_*` channels described above. Those come
+ * from `perf/metrics.ts` and are a rolling window of rates and percentiles — built for a
+ * human reading the F3 overlay, and smoothed in exactly the way that makes them useless to
+ * an assertion. This is the unsmoothed per-frame state, and it is what lets
+ * `input-churn.ts` distinguish the two failure signatures the rendered position alone
+ * cannot tell apart: a correction that DISCARDED in-flight predicted ticks
+ * (`lastCorrectionDropped` spikes, `lastCorrectionReplayed` collapses to 0) versus a
+ * correction offset merely oscillating (alternating-sign `visualOffset` with steady replay
+ * counts).
+ *
+ * Absent (`null`) on any client build that predates the channel, so a trace from an
+ * older bundle still parses — the churn assertions then fall back to positions only.
+ */
+export type ReconcileRecord = {
+  predictedPosition: Vec3;
+  visualOffset: Vec3;
+  serverPosition: Vec3 | null;
+  serverTick: string | null;
+  ackClientTick: number;
+  predictTickCounter: number;
+  pendingTicks: number;
+  corrections: number;
+  lastCorrectionMagnitude: number;
+  lastCorrectionSnapped: boolean;
+  lastCorrectionDropped: number;
+  lastCorrectionReplayed: number;
+};
+
 export type TraceRecord = {
   t: number;
   phase: string;
   simPosition: Vec3 | null;
   joined: boolean;
   remoteCount: number;
+  /** See `ReconcileRecord`. Null before join, or on a client without the channel. */
+  reconcile?: ReconcileRecord | null;
   /**
    * Generic per-identity store snapshot, keyed by `<table>_<field>` (e.g. `health_current`,
    * `actionState_phase`, `resource_potion_charge`). Derived once per frame from

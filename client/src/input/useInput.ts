@@ -13,6 +13,12 @@
  *
  * `action_input` sends on every physical edge (never batched, never gated by
  * the client-side hold-threshold mirror — see intents.ts's module doc).
+ *
+ * Note what those two cadences mean for `InputState.clientTick`: sends are NOT
+ * evenly spaced in time — a burst of direction changes fires several in a single
+ * tick period. So a counter incremented per send cannot double as a tick number.
+ * `clientTick` therefore comes from the predictor (`clientTickRef`, see
+ * `UseInputOptions`), and only `sequence` counts messages.
  */
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
@@ -67,6 +73,24 @@ export interface UseInputOptions {
   connRef: MutableRefObject<DbConnection | null>;
   /** Gates every reducer call — false while not joined, or while dead. */
   active: boolean;
+  /**
+   * The predictor's client-tick counter, written once per predicted tick by
+   * `game/frame.ts`'s `predictPendingTicks`. `sendMovement` READS it to stamp
+   * `InputState.clientTick`; it never advances it.
+   *
+   * That asymmetry is the point. The server echoes this number back as
+   * `player_input_ack.lastProcessedClientTick`, and `frame.ts` slices its predicted-tick
+   * buffer against the echo — so the number has to come from the buffer's own numbering
+   * or the slice is comparing two unrelated counters. It briefly did: this hook used to
+   * own a private counter incremented per SEND (once per key edge, plus a 20/s heartbeat)
+   * while the predictor counted 20/s sim ticks including idle ones. See
+   * `frame.ts`'s `StepFrameContext.clientTickRef` for the measured consequences.
+   *
+   * `sequence` stays this hook's own strictly-increasing per-send counter — it is the
+   * server's replay/dedupe guard (`net.rs`: `if input.sequence <= last_input_seq { return }`),
+   * a different job that genuinely does need one increment per message.
+   */
+  clientTickRef: MutableRefObject<number>;
   /** Presentation-only: fires once per hold when a slot crosses the server's holdThresholdTicks. */
   onHoldThresholdCrossed?: (slot: string) => void;
   /**
@@ -92,6 +116,7 @@ export interface UseInputResult {
 export function useInput({
   connRef,
   active,
+  clientTickRef,
   onHoldThresholdCrossed,
   onInputSent,
 }: UseInputOptions): UseInputResult {
@@ -100,7 +125,6 @@ export function useInput({
   const rotationYRef = useRef(0);
   const pitchRef = useRef(0);
   const sequenceRef = useRef(0);
-  const clientTickRef = useRef(0);
   const localTickRef = useRef(0);
   const crossedThresholdRef = useRef<Set<string>>(new Set());
   const [locked, setLocked] = useState(false);
@@ -123,7 +147,6 @@ export function useInput({
     if (!connection || !activeRef.current) return;
     const movement = movementRef.current;
     sequenceRef.current += 1;
-    clientTickRef.current += 1;
     const input: InputState = {
       forward: movement.forward,
       backward: movement.backward,
@@ -136,7 +159,7 @@ export function useInput({
     };
     connection.reducers.updatePlayerInput({ input, rotationY: rotationYRef.current });
     onInputSentRef.current?.(input.sequence);
-  }, [connRef]);
+  }, [connRef, clientTickRef]);
 
   const applyIntentResult = useCallback((result: IntentResult) => {
     intentRef.current = result.state;

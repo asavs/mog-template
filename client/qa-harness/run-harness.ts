@@ -21,6 +21,13 @@ import type { BotLabel, RunData, TraceRecord } from './trace-types';
 import { summarizeByPhase, checkStructuralIntegrity, type TraceSummary } from './trace-stats';
 import { compareToBaseline, formatFailures, type ComparisonFailure } from './compare-baseline';
 import { checkInvariants, formatInvariantFailures, type InvariantFailure } from './invariants';
+import {
+  CHURN_CADENCES_MS,
+  checkChurn,
+  formatChurnFailures,
+  formatChurnStats,
+  type ChurnFailure,
+} from './input-churn';
 import { parseQaTier, selectPhases, type PhaseDef } from './scenarios';
 import { writeRunNdjson, writeFramesCsv } from './trace-io';
 import { writeReport } from './report';
@@ -93,7 +100,9 @@ const MODE =
       ? 'perf'
       : process.env.QA_MODE === 'grid'
         ? 'grid'
-        : 'phases';
+        : process.env.QA_MODE === 'churn'
+          ? 'churn'
+          : 'phases';
 
 // v2 has no character classes — every joined player has every capability
 // (docs/action-pipeline.md: "Row membership IS the capability gate"), so there is nothing
@@ -260,6 +269,8 @@ type CheckResult = {
   ok: boolean;
   structuralIssues: string[];
   invariantFailures: InvariantFailure[];
+  /** Rubberband detector (`input-churn.ts`) — hard-gating, never report-only. */
+  churnFailures: ChurnFailure[];
   /** undefined = comparison did not run (no baseline, or baseline update). */
   comparison?: ComparisonFailure[];
 };
@@ -290,11 +301,29 @@ function checkTrace(botLabel: string, trace: TraceRecord[], phases: PhaseDef[]):
     console.error(formatInvariantFailures(botLabel, invariantFailures));
   }
 
+  // The rubberband detector. Its bounds are absolute (derived from the sim's own
+  // PLAYER_SPEED — see input-churn.ts), so unlike the baseline comparison it means the
+  // same thing on any machine, and unlike the movement invariants it is NOT dropped by
+  // QA_CHECKS=structural... except where input can't be delivered at all: with no
+  // pointer lock the churn keys never reach the game, the player never moves, and every
+  // bound passes vacuously. Structural-only environments are exactly those, so skip
+  // there rather than bank a meaningless pass.
+  // `latencyMs` comes from QA_NET_PROFILE when a phases run is fronted by the shaping proxy;
+  // an un-proxied local run is sub-tick and skips the lead sub-check (see input-churn.ts).
+  const churn = STRUCTURAL_ONLY
+    ? { failures: [], stats: [] }
+    : checkChurn(trace, { latencyMs: Number(process.env.QA_NET_PROFILE?.split('/')[0] ?? 0) });
+  if (churn.stats.length > 0) console.log(formatChurnStats(churn.stats));
+  if (churn.failures.length > 0) console.error(formatChurnFailures(botLabel, churn.failures));
+
   const baselinePath = path.join(BASELINES_DIR, `${botLabel}.json`);
   // Generated matrix phases carry config-derived invariant expectations and
-  // deliberately never acquire environment-specific recorded baselines.
+  // deliberately never acquire environment-specific recorded baselines. Churn phases are
+  // excluded for a different reason: their whole point is behaviour under adversarial
+  // input, which is legitimately noisy run to run — checkChurn's absolute bounds are the
+  // gate, and a recorded baseline would only add flake on top.
   const baselineEligibleNames = new Set(
-    phases.filter((phase) => phase.group !== 'matrix').map((phase) => phase.name),
+    phases.filter((phase) => phase.group !== 'matrix' && phase.group !== 'churn').map((phase) => phase.name),
   );
   const baselineSummary = Object.fromEntries(
     Object.entries(summary).filter(([phase]) => baselineEligibleNames.has(phase)),
@@ -304,12 +333,12 @@ function checkTrace(botLabel: string, trace: TraceRecord[], phases: PhaseDef[]):
     fs.mkdirSync(BASELINES_DIR, { recursive: true });
     fs.writeFileSync(baselinePath, JSON.stringify(baselineSummary, null, 2));
     console.log(`[run-harness] updated baseline -> ${baselinePath}`);
-    return { ok: structuralIssues.length === 0 && invariantFailures.length === 0, structuralIssues, invariantFailures };
+    return { ok: baseOk(structuralIssues, invariantFailures, churn.failures), structuralIssues, invariantFailures, churnFailures: churn.failures };
   }
 
   if (!fs.existsSync(baselinePath)) {
     console.log(`[run-harness] ${botLabel}: no baseline yet at ${baselinePath} (run with --update-baseline to establish one)`);
-    return { ok: structuralIssues.length === 0 && invariantFailures.length === 0, structuralIssues, invariantFailures };
+    return { ok: baseOk(structuralIssues, invariantFailures, churn.failures), structuralIssues, invariantFailures, churnFailures: churn.failures };
   }
 
   const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
@@ -333,11 +362,21 @@ function checkTrace(botLabel: string, trace: TraceRecord[], phases: PhaseDef[]):
   }
 
   return {
-    ok: structuralIssues.length === 0 && invariantFailures.length === 0 && comparison.length === 0,
+    ok: baseOk(structuralIssues, invariantFailures, churn.failures) && comparison.length === 0,
     structuralIssues,
     invariantFailures,
+    churnFailures: churn.failures,
     comparison,
   };
+}
+
+/** Everything a run must satisfy regardless of whether a recorded baseline exists. */
+function baseOk(
+  structuralIssues: string[],
+  invariantFailures: InvariantFailure[],
+  churnFailures: ChurnFailure[],
+): boolean {
+  return structuralIssues.length === 0 && invariantFailures.length === 0 && churnFailures.length === 0;
 }
 
 async function mainPhases(browser: Browser, cfg: SessionConfig): Promise<{ ok: boolean; reports: string[] }> {
@@ -351,11 +390,78 @@ async function mainPhases(browser: Browser, cfg: SessionConfig): Promise<{ ok: b
   const reportPath = writeReport(`${base}.html`, run, {
     structuralIssues: result.structuralIssues,
     invariantFailures: result.invariantFailures,
+    churnFailures: result.churnFailures,
     comparison: result.comparison,
   });
   console.log(`[run-harness] report -> ${reportPath}`);
 
   return { ok: result.ok, reports: [reportPath] };
+}
+
+/**
+ * QA_MODE=churn: the rubberband detector across the latency sweep.
+ *
+ * The default run exercises the churn phases at loopback latency only. Real hands hit
+ * this on a real connection, and the failure is latency-sensitive by construction (more
+ * ticks in flight = more for a bad reconcile to discard), so the sweep is the honest
+ * gate: 0 / 100 / 200ms, injected by net-proxy.ts's real socket hop. CDP's
+ * `Network.emulateNetworkConditions` cannot do this — it does not delay an
+ * already-established WebSocket, which is why `lag_spike_walk_forward` never caught it.
+ *
+ * Override the ladder with QA_CHURN_LATENCIES=0,100,200.
+ */
+async function mainChurn(browser: Browser, baseCfg: SessionConfig): Promise<{ ok: boolean; reports: string[] }> {
+  const latencies = (process.env.QA_CHURN_LATENCIES ?? '0,100,200')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  const phases = selectPhases('churn', 'full');
+  const lane = await startNetProxyLane({
+    targetHost: STDB_TARGET_HOST,
+    targetPort: STDB_TARGET_PORT,
+    profile: { delayMs: 0, jitterMs: 0 },
+  });
+
+  const reports: string[] = [];
+  let ok = true;
+
+  try {
+    for (const latencyMs of latencies) {
+      lane.setProfile({ delayMs: latencyMs, jitterMs: 0 });
+      const cfg = makeSessionConfig({
+        clientUrl: baseCfg.clientUrl,
+        stdbUrl: stdbProxyUrl(lane),
+        runLabel: `churn-${latencyMs}ms`,
+      });
+      console.log(
+        `[churn] ${latencyMs}ms one-way (${CHURN_CADENCES_MS.join('/')}ms cadences): ${phases.map((p) => p.name).join(', ')}`,
+      );
+
+      const run = await runOneBot(browser, BOT_LABEL, cfg, phases);
+      const structuralIssues = checkStructuralIntegrity(run.frames);
+      const churn = checkChurn(run.frames, { latencyMs });
+      console.log(formatChurnStats(churn.stats));
+      if (churn.failures.length > 0) {
+        ok = false;
+        console.error(formatChurnFailures(`${BOT_LABEL}@${latencyMs}ms`, churn.failures));
+      } else {
+        console.log(`[churn] ${latencyMs}ms: clean`);
+      }
+      if (structuralIssues.length > 0) {
+        ok = false;
+        structuralIssues.forEach((issue) => console.error(`  ${issue}`));
+      }
+
+      const base = writeRun(run, new Set(churn.failures.map((f) => f.phase)));
+      reports.push(
+        writeReport(`${base}.html`, run, { structuralIssues, churnFailures: churn.failures }),
+      );
+    }
+  } finally {
+    await lane.close();
+  }
+
+  return { ok, reports };
 }
 
 // Duel runs don't compare against phase baselines (a different, named 2-session scenario, and
@@ -582,7 +688,7 @@ async function main() {
 
   if (remote) {
     console.log(`[run-harness] remote client URL (${clientUrl}) — skipping local SpacetimeDB/Vite bootstrap`);
-    if (MODE === 'grid' || process.env.QA_NET_PROFILE) {
+    if (MODE === 'grid' || MODE === 'churn' || process.env.QA_NET_PROFILE) {
       console.warn(
         '[run-harness] WARNING: net-proxy / grid latency shaping only fronts a local SpacetimeDB ' +
           '(127.0.0.1:3000); it will not shape traffic to the remote VM. Prefer local mode for latency grids.',
@@ -602,7 +708,9 @@ async function main() {
 
   // The net proxy only makes sense in front of a local SpacetimeDB. Against a
   // remote VM the page talks to the VM's own /v1, so leave stdbUrl unset.
-  const envProxy = remote || MODE === 'grid' ? null : await startEnvNetProxy();
+  // grid and churn each run their own lane across a latency ladder — a second,
+  // process-wide QA_NET_PROFILE lane in front of them would stack delays silently.
+  const envProxy = remote || MODE === 'grid' || MODE === 'churn' ? null : await startEnvNetProxy();
   const cfg = makeSessionConfig({ clientUrl, stdbUrl: envProxy?.stdbUrl });
   let browser: Browser | null = null;
   let result: { ok: boolean; reports: string[] };
@@ -616,7 +724,9 @@ async function main() {
           ? await mainPerf(browser, cfg)
           : MODE === 'grid'
             ? await mainGrid(browser, cfg)
-            : await mainPhases(browser, cfg);
+            : MODE === 'churn'
+              ? await mainChurn(browser, cfg)
+              : await mainPhases(browser, cfg);
   } finally {
     if (browser) await browser.close();
     await envProxy?.lane.close();

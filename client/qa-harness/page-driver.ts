@@ -8,7 +8,7 @@
 import type { Browser, BrowserContext, Page, Video } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BotLabel, InputEvent, RunData, TraceRecord, Vec3 } from './trace-types';
+import type { BotLabel, InputEvent, ReconcileRecord, RunData, TraceRecord, Vec3 } from './trace-types';
 import { collectPerf, installPerfCollectors } from './perf-collectors';
 
 export type SessionConfig = {
@@ -57,7 +57,10 @@ export function installCollectors() {
       joined: boolean;
       identityHex: string | null;
       store: Record<string, Map<string, Record<string, unknown>>>;
+      /** `perf/metrics.ts`'s rolling feel summary — the numbers the F3 HUD draws. */
       netcode?: Record<string, unknown>;
+      /** `frame.ts`'s raw per-frame reconcile state — what `input-churn.ts` asserts on. */
+      reconcile?: ReconcileRecord;
     };
   };
   w.__qaTrace = [];
@@ -116,6 +119,27 @@ export function installCollectors() {
       simPosition: game ? { x: game.localPosition.x, y: game.localPosition.y, z: game.localPosition.z } : null,
       joined: game?.joined ?? false,
       remoteCount: game?.remoteCount ?? 0,
+      // Structured-clone the reconcile channel, field by field. `__mogGame.reconcile` is
+      // rebuilt every useFrame and `__mogGame.netcode` above is explicitly the SAME object
+      // every frame — storing either by reference would leave every trace row aliasing the
+      // last frame's values. The churn detector reads per-frame deltas, so aliasing would
+      // make every delta zero and the gate vacuously green.
+      reconcile: game?.reconcile
+        ? {
+            predictedPosition: { ...game.reconcile.predictedPosition },
+            visualOffset: { ...game.reconcile.visualOffset },
+            serverPosition: game.reconcile.serverPosition ? { ...game.reconcile.serverPosition } : null,
+            serverTick: game.reconcile.serverTick,
+            ackClientTick: game.reconcile.ackClientTick,
+            predictTickCounter: game.reconcile.predictTickCounter,
+            pendingTicks: game.reconcile.pendingTicks,
+            corrections: game.reconcile.corrections,
+            lastCorrectionMagnitude: game.reconcile.lastCorrectionMagnitude,
+            lastCorrectionSnapped: game.reconcile.lastCorrectionSnapped,
+            lastCorrectionDropped: game.reconcile.lastCorrectionDropped,
+            lastCorrectionReplayed: game.reconcile.lastCorrectionReplayed,
+          }
+        : null,
       channels,
     });
 

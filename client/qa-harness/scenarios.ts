@@ -39,6 +39,7 @@ import {
   type PhaseGroup,
 } from './phase-helpers';
 import { generateActionMatrixPhases, generateMovementMatrix } from './generate-phases';
+import { churnPhases } from './input-churn';
 
 export type { PhaseContext, PhaseDef, PhaseGroup } from './phase-helpers';
 export const HANDWRITTEN_PHASES: PhaseDef[] = [
@@ -176,15 +177,26 @@ export const HANDWRITTEN_PHASES: PhaseDef[] = [
 
 export const GENERATED_MOVEMENT_PHASES = generateMovementMatrix();
 export const GENERATED_ACTION_MATRIX_PHASES = generateActionMatrixPhases();
+/**
+ * The rubberband detector (`input-churn.ts`). Registered in the default set — and in
+ * BOTH tiers, unlike the generated movement matrix — because it gates the one movement
+ * defect a human reproduces in seconds that nothing else here catches: rapid alternating
+ * direction input, then release. It costs ~39s of a run; that is the price of the gate.
+ *
+ * Ordered after the handwritten movement primitives (so a broken `walk_forward` fails
+ * first and a churn failure reads as downstream) and before the generated matrices.
+ */
+export const CHURN_PHASES = churnPhases();
 export const PHASES: PhaseDef[] = [
   ...HANDWRITTEN_PHASES,
+  ...CHURN_PHASES,
   ...GENERATED_MOVEMENT_PHASES,
   ...GENERATED_ACTION_MATRIX_PHASES,
 ];
 
 export type QaTier = 'smoke' | 'full';
 
-const PHASE_GROUPS: PhaseGroup[] = ['movement', 'network', 'combat', 'matrix'];
+const PHASE_GROUPS: PhaseGroup[] = ['movement', 'network', 'combat', 'matrix', 'churn'];
 const GENERATED_MOVEMENT_NAMES = new Set(GENERATED_MOVEMENT_PHASES.map((phase) => phase.name));
 const SMOKE_MOVEMENT_NAMES = new Set(['mv_n', 'mv_e_jump', 'mv_nw', 'mv_w_jump', 'mv_se_jump', 'mv_ne_turn', 'mv_sw_turn']);
 

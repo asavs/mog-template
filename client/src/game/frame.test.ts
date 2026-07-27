@@ -136,6 +136,7 @@ describe('stepFrame', () => {
       pitch: 0,
       movementFraction: 1,
       canRotate: true,
+      clientTickRef: { current: 0 },
       ...overrides,
     };
   }
@@ -283,6 +284,35 @@ describe('stepFrame', () => {
     expect(zSamples[zSamples.length - 1]).toBeCloseTo(-1, 2);
   });
 
+  it('never lets a correction glide outrun the character (rendered speed stays inside the sim ceiling)', () => {
+    // The offset unwinds ON TOP of whatever the sim is doing, so an unclamped exponential
+    // decay makes a big correction start at 12u/s against a 6u/s walk — 3x top speed, and it
+    // reads as a lurch. Measured live at 1.66m of rendered travel in a 100ms window before the
+    // clamp existed. Here: a 2m correction with the player standing still, so every metre of
+    // rendered movement is glide and nothing else.
+    const store = makeStore();
+    store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 5n));
+    const runtime = createFrameRuntimeState();
+    runtime.initializedFromServer = true;
+    runtime.lastServerTick = 5n; // matches the row, so reconcileFromStore no-ops
+    runtime.visualCorrectionOffset = { x: 0, y: 0, z: 2 };
+
+    const dtSeconds = 1 / 60;
+    let previous = stepFrame(runtime, ctx(store, { dtSeconds })).localPosition.clone();
+    let worstSpeed = 0;
+    for (let i = 0; i < 120; i += 1) {
+      const current = stepFrame(runtime, ctx(store, { dtSeconds })).localPosition;
+      worstSpeed = Math.max(worstSpeed, previous.distanceTo(current) / dtSeconds);
+      previous = current.clone();
+    }
+
+    // PLAYER_SPEED is 6; the glide alone may not exceed half of it.
+    expect(worstSpeed).toBeLessThanOrEqual(3 + 1e-6);
+    // Still fully resolved well inside the 2s this loop covers — capping the rate must not
+    // turn a correction into a permanent offset.
+    expect(previous.z).toBeCloseTo(0, 3);
+  });
+
   it('does not drift or teleport across a movement->idle boundary when the input ack lags several ticks behind (historical #176/#177 signature)', () => {
     const store = makeStore();
     store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 0n));
@@ -362,6 +392,112 @@ describe('stepFrame', () => {
     expect(resumed.localRotationY).toBeCloseTo(Math.PI / 2, 5);
   });
 
+  // The tests above all hand-build an ack in the SAME number line as the runtime's own
+  // predicted ticks, because that is the contract reconcileLocalPrediction is written
+  // against. Nothing checked that the number the client actually PUTS ON THE WIRE comes
+  // from that number line — and for one release it did not: `useInput` stamped
+  // `InputState.clientTick` from a private per-send counter. The three tests below cover
+  // the wiring itself, in both directions the two counters can drift.
+  describe('clientTickRef (the shared client-tick number line)', () => {
+    it('publishes the counter that stamps predicted ticks, so the wire tick and the buffer agree', () => {
+      const store = makeStore();
+      store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 0n));
+      const runtime = createFrameRuntimeState();
+      const clientTickRef = { current: 0 };
+
+      stepFrame(runtime, ctx(store, { clientTickRef })); // init frame
+      for (let i = 0; i < 5; i += 1) {
+        stepFrame(runtime, ctx(store, { movement: WALK_FORWARD, clientTickRef }));
+      }
+
+      // What useInput would stamp on the next send == the newest predicted tick's number.
+      expect(clientTickRef.current).toBe(runtime.clientTickCounter);
+      expect(runtime.predicted.at(-1)!.clientTick).toBe(clientTickRef.current);
+    });
+
+    it('replays only the ticks after the ack — not the whole buffer — when the ack is the wire tick (steady-play signature)', () => {
+      // Regression for the "render runs seconds ahead of truth" direction: when the ack came
+      // from a counter that had not counted the client's idle ticks, it sat below EVERY
+      // buffered tick, nothing was dropped, and each correction replayed the entire buffer on
+      // top of the authoritative position. Measured live as walk_forward covering 8.26m where
+      // 750ms at 6u/s is 4.50m, with 79-117 ticks permanently pending.
+      const store = makeStore();
+      store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 0n));
+      const runtime = createFrameRuntimeState();
+      const clientTickRef = { current: 0 };
+
+      stepFrame(runtime, ctx(store, { clientTickRef })); // init
+      // Idle for a good while: the predictor counts these ticks, a per-send counter would not.
+      for (let i = 0; i < 40; i += 1) stepFrame(runtime, ctx(store, { clientTickRef }));
+      // Then walk.
+      for (let i = 0; i < 10; i += 1) {
+        stepFrame(runtime, ctx(store, { movement: WALK_FORWARD, clientTickRef }));
+      }
+
+      // The server acks the tick the client last put on the wire, minus the two still in
+      // flight — the ordinary steady state at low latency.
+      const ackedTick = clientTickRef.current - 2;
+      let serverSim = { position: { x: 0, y: 0, z: 0 }, rotationY: 0, verticalVelocity: 0, wasJumpPressed: false, sprintActive: false };
+      for (const predicted of runtime.predicted) {
+        if (predicted.clientTick > ackedTick) break;
+        serverSim = predictTick(serverSim, predicted.input, predicted.rotationY, predicted.movementFraction);
+      }
+      store.playerInputAck.set('local', ackAt(ackedTick, 1n));
+      store.playerTransform.set('local', rowAt(serverSim.position, 1n));
+
+      const render = stepFrame(runtime, ctx(store, { clientTickRef }));
+
+      // Exactly the unacked ticks stay pending — the idle ticks the predictor counted before
+      // the walk are dropped, not replayed. (One more tick was predicted by this very frame.)
+      expect(render.diagnostics.pendingTicks).toBeLessThanOrEqual(3);
+      expect(render.diagnostics.lastCorrectionReplayed).toBe(2);
+      // And the correction is a nudge, not a relocation: replaying two ticks onto the
+      // authoritative position lands within a tick's travel (0.3m) of where we already were.
+      expect(render.diagnostics.lastCorrectionMagnitude).toBeLessThan(0.3);
+    });
+
+    it('never discards the whole buffer when input is sent faster than the tick rate (churn signature)', () => {
+      // Regression for the teleport direction: a counter incremented per SEND overtakes a
+      // 20Hz tick counter as soon as key edges outpace the heartbeat ("wadwadwad" is ~45
+      // sends/s against 20 ticks/s). The ack then sat ABOVE every buffered tick, so one
+      // reconcile dropped all of them and replayed none, snapping the render onto the raw
+      // authoritative position. Measured live as 63-64 ticks dropped in a single reconcile
+      // with pendingTicks collapsing to 0.
+      const store = makeStore();
+      store.playerTransform.set('local', rowAt({ x: 0, y: 0, z: 0 }, 0n));
+      const runtime = createFrameRuntimeState();
+      const clientTickRef = { current: 0 };
+      stepFrame(runtime, ctx(store, { clientTickRef }));
+
+      const directions: MovementState[] = [
+        { ...STILL, forward: true },
+        { ...STILL, left: true },
+        { ...STILL, right: true },
+        { ...STILL, backward: true },
+      ];
+      // 20 ticks of churn — one direction change per tick, i.e. every tick would also have
+      // produced at least one extra send in the broken wiring.
+      for (let i = 0; i < 20; i += 1) {
+        stepFrame(runtime, ctx(store, { movement: directions[i % directions.length], clientTickRef }));
+      }
+
+      // The wire tick can never exceed the newest predicted tick, however many sends happened.
+      expect(clientTickRef.current).toBe(runtime.clientTickCounter);
+
+      // An ack for the newest tick the client sent still leaves the in-flight ticks pending.
+      const ackedTick = clientTickRef.current - 3;
+      store.playerInputAck.set('local', ackAt(ackedTick, 1n));
+      store.playerTransform.set('local', rowAt(runtime.predicted.find((t) => t.clientTick === ackedTick)!.result.position, 1n));
+
+      const render = stepFrame(runtime, ctx(store, { clientTickRef }));
+      expect(render.diagnostics.lastCorrectionReplayed).toBe(3);
+      expect(render.diagnostics.pendingTicks).toBeGreaterThan(0);
+      // Server and client agree on the acked tick's position, so replaying the three unacked
+      // ticks reproduces what was already on screen: no correction worth seeing.
+      expect(render.diagnostics.lastCorrectionMagnitude).toBeLessThan(1e-3);
+    });
+  });
+
   it('never renders the local identity as a remote', () => {
     const store = makeStore();
     store.playerTransform.set('local', {
@@ -397,6 +533,8 @@ describe('stepFrame netcode instrumentation', () => {
       pitch: 0,
       movementFraction: 1,
       canRotate: true,
+      // Written by the predictor, read by `useInput` — see StepFrameContext.clientTickRef.
+      clientTickRef: { current: 0 },
       ...overrides,
     };
   }
