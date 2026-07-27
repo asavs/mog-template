@@ -27,6 +27,9 @@ function fadeFraction(remainingSeconds: number, totalSeconds: number): number {
   return Math.max(0, Math.min(1, remainingSeconds / totalSeconds));
 }
 
+/** Scratch for the projectile's per-frame `lookAt` target — this loop runs on every slot, every frame. */
+const AIM_TARGET = new THREE.Vector3();
+
 export function EffectsView({ effects, store }: EffectsViewProps) {
   const lightRefs = useRef<(THREE.PointLight | null)[]>([]);
   const flashRefs = useRef<(THREE.Mesh | null)[]>([]);
@@ -77,7 +80,7 @@ export function EffectsView({ effects, store }: EffectsViewProps) {
       mesh.visible = entry.key !== null;
       mesh.position.copy(entry.resource.position);
       if (entry.key !== null) {
-        mesh.lookAt(entry.resource.position.clone().add(entry.resource.direction));
+        mesh.lookAt(AIM_TARGET.copy(entry.resource.position).add(entry.resource.direction));
       }
     });
   });
