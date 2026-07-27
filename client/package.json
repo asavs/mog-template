@@ -23,6 +23,7 @@
     "qa:harness": "vite-node qa-harness/run-harness.ts",
     "qa:perf": "QA_MODE=perf vite-node qa-harness/run-harness.ts",
     "qa:baseline:update": "vite-node qa-harness/run-harness.ts -- --update-baseline",
+    "qa:reconnect": "vite-node qa-harness/reconnect-recovery.ts",
     "qa:report": "vite-node qa-harness/report-cli.ts --",
     "qa:typecheck": "tsc -p qa-harness/tsconfig.qa.json",
     "qa:test": "vitest run --config qa-harness/vitest.config.ts",

@@ -93,6 +93,50 @@ body {
   cursor: not-allowed;
 }
 
+/* Deliberately not a full-bleed overlay like `.connecting`: a reconnect keeps the
+   last-known world visible behind it, so the banner sits out of the way at the top
+   and never takes pointer events. */
+.reconnect-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(5, 7, 12, 0.82);
+  border: 1px solid #2c3245;
+  color: #e6ebf5;
+  font-size: 0.85rem;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.reconnect-banner__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ffb648;
+  animation: reconnect-pulse 1.1s ease-in-out infinite;
+}
+
+.reconnect-banner__attempt {
+  color: #9aa4bd;
+}
+
+@keyframes reconnect-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reconnect-banner__dot {
+    animation: none;
+  }
+}
+
 .lock-hint {
   position: absolute;
   inset: 0;

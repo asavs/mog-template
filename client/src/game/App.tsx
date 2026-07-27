@@ -21,7 +21,11 @@ import type { Identity } from 'spacetimedb';
 import { deriveGates } from '../actions/gates';
 import type { DbConnection } from '../generated';
 import { useInput } from '../input/useInput';
-import { useSpacetimeConnection } from '../network/useSpacetimeConnection';
+import {
+  useSpacetimeConnection,
+  type ConnectionStatus,
+  type SubscriptionAppliedInfo,
+} from '../network/useSpacetimeConnection';
 import { createEffects } from '../presentation/effects';
 import { shouldEnableQaGameDebug } from '../qaGate';
 import { Arena } from '../world/Arena';
@@ -70,14 +74,42 @@ interface SceneProps {
   movementRef: React.MutableRefObject<{ forward: boolean; backward: boolean; left: boolean; right: boolean; jump: boolean }>;
   rotationYRef: React.MutableRefObject<number>;
   pitchRef: React.MutableRefObject<number>;
+  /** Bumps on every (re)connect — see the reset effect below. */
+  connectionEpoch: number;
 }
 
-function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: SceneProps) {
+function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef, connectionEpoch }: SceneProps) {
   const runtimeRef = useRef(createFrameRuntimeState());
   const localGroupRef = useRef<THREE.Group>(null);
   const remoteGroupsRef = useRef(new Map<string, THREE.Group>());
   const [remoteIds, setRemoteIds] = useState<string[]>([]);
   const effectsRef = useRef(createEffects());
+
+  /**
+   * Client-side prediction reset on reconnect.
+   *
+   * `frame.ts` accumulates predicted ticks that are only retired when the
+   * server acks their `clientTick`. Those acks die with the socket, so a
+   * reconnect that kept the old runtime would replay a backlog of pre-drop
+   * inputs against a freshly-restored server position and teleport the player.
+   *
+   * The reset is a whole new `FrameRuntimeState` rather than a mutating
+   * `reset()` on the existing one: `createFrameRuntimeState` is frame.ts's own
+   * exported constructor and is by definition complete, so this cannot drift
+   * out of date as fields are added to the struct — and it needs no new API
+   * from frame.ts. `initializedFromServer` starts false again, so the first
+   * post-reconnect `reconcileFromStore` re-seeds position straight from the
+   * server's `player_transform` row.
+   *
+   * The effect deliberately skips its first run (epoch 1 is the initial
+   * connect, whose state was just constructed above).
+   */
+  const lastEpochRef = useRef(connectionEpoch);
+  useEffect(() => {
+    if (connectionEpoch === lastEpochRef.current) return;
+    lastEpochRef.current = connectionEpoch;
+    runtimeRef.current = createFrameRuntimeState();
+  }, [connectionEpoch]);
 
   useFrame((state, delta) => {
     const actionState = identityHex ? store.playerActionState.get(identityHex) : undefined;
@@ -214,22 +246,64 @@ export function App() {
     return attached.unsubscribe;
   }, []);
 
-  const handleSubscriptionApplied = useCallback((_connection: DbConnection, id: Identity) => {
-    markReadyRef.current();
-    setJoined(storeRef.current.player.has(id.toHexString()));
-  }, []);
+  /**
+   * True once this page has joined at least once. Both a ref and state on
+   * purpose: `handleSubscriptionApplied` reads it from a callback (where state
+   * would be stale), and render reads it to tell a *first* join apart from a
+   * session being restored. It must survive `joined` being reset to false by
+   * the very drop it exists to recover from, so it is never cleared.
+   */
+  const hadJoinedRef = useRef(false);
+  const [hadJoined, setHadJoined] = useState(false);
+
+  const handleSubscriptionApplied = useCallback(
+    (connection: DbConnection, id: Identity, { reconnected }: SubscriptionAppliedInfo) => {
+      markReadyRef.current();
+
+      const hasPlayerRow = storeRef.current.player.has(id.toHexString());
+      setJoined(hasPlayerRow);
+
+      // A dropped session is cleaned up server-side: `identity_disconnected`
+      // folds the live player rows into `logged_out_player` (server/spacetimedb/
+      // src/lib.rs, player.rs). The saved token brings the identity back, but
+      // only `join_game` brings the *character* back — it restores the archived
+      // row, keeping the original username, health and position, and is a
+      // documented no-op if a live row somehow survived. So re-issuing it is
+      // both necessary and safe, and it is what makes recovery invisible
+      // instead of dumping the player back on the join dialog.
+      if (reconnected && !hasPlayerRow && hadJoinedRef.current) {
+        connection.reducers.joinGame({ username: loadSavedName() || 'player' });
+      }
+    },
+    [],
+  );
 
   const handleDisconnected = useCallback(() => {
     setJoined(false);
   }, []);
 
-  const { connRef, connected, identity } = useSpacetimeConnection({
-    onDisconnected: handleDisconnected,
-    onSubscriptionApplied: handleSubscriptionApplied,
-    registerTableCallbacks,
-  });
+  const { connRef, connected, identity, status, reconnectAttempt, connectionEpoch } =
+    useSpacetimeConnection({
+      onDisconnected: handleDisconnected,
+      onSubscriptionApplied: handleSubscriptionApplied,
+      registerTableCallbacks,
+    });
 
   const identityHex = identity?.toHexString() ?? null;
+
+  useEffect(() => {
+    if (!joined) return;
+    hadJoinedRef.current = true;
+    setHadJoined(true);
+  }, [joined]);
+
+  /**
+   * The socket is back but the character is not yet: the server archived the
+   * player row on disconnect, so there is a gap between `connected` and the
+   * automatic `join_game` landing. Naming it matters — without it, render falls
+   * through to the branch that means "a new player needs to pick a name".
+   */
+  const restoringSession = hadJoined && !joined;
 
   // The `player` row (join confirmation) can arrive after subscription-applied already fired —
   // poll rather than thread a callback through every insert path for one boolean.
@@ -246,7 +320,12 @@ export function App() {
     connRef.current?.reducers.joinGame({ username: name });
   }, [connRef]);
 
-  const input = useInput({ connRef, active: joined });
+  // Input is frozen — dropped, not queued — while the socket is down. A
+  // movement intent from before the drop describes a world state the server has
+  // already moved past, so replaying it on reconnect would fight the
+  // authoritative position rather than help. Movement resumes fresh from
+  // whatever keys are actually held once we are back.
+  const input = useInput({ connRef, active: joined && connected });
 
   useEffect(() => {
     if (!joined) return;
@@ -266,9 +345,10 @@ export function App() {
         movementRef={input.movementRef}
         rotationYRef={input.rotationYRef}
         pitchRef={input.pitchRef}
+        connectionEpoch={connectionEpoch}
       />
     ),
-    [store, identityHex, input.movementRef, input.rotationYRef, input.pitchRef],
+    [store, identityHex, input.movementRef, input.rotationYRef, input.pitchRef, connectionEpoch],
   );
 
   return (
@@ -282,9 +362,61 @@ export function App() {
       </Canvas>
 
       {joined && <Hud store={store} identityHex={identityHex} />}
-      {joined && !input.locked && <div className="lock-hint">click to play</div>}
-      {!joined && connected && <JoinDialog onJoin={handleJoin} defaultName={defaultName} />}
-      {!connected && <div className="connecting">connecting…</div>}
+      {joined && !input.locked && connected && <div className="lock-hint">click to play</div>}
+      {/* `!hadJoined` is load-bearing, not defensive. Without it a reconnect
+          renders this dialog for the moment between the socket returning and the
+          automatic rejoin landing — and its `autoFocus` input pulls focus, which
+          exits pointer lock, which silently drops every subsequent key. The
+          player gets a session that looks recovered but cannot be moved. */}
+      {!joined && connected && !hadJoined && (
+        <JoinDialog onJoin={handleJoin} defaultName={defaultName} />
+      )}
+
+      {/* First connect of the page's life: the world is not there yet, so the
+          full-bleed message is right. A *re*connect keeps the last-known world
+          on screen behind an unobtrusive banner instead — the player can still
+          see where they were, and recovery is usually over in well under a
+          second. */}
+      {status === 'connecting' && <div className="connecting">connecting…</div>}
+      {(status === 'reconnecting' || status === 'offline-retrying' || restoringSession) && (
+        <ReconnectBanner
+          status={status}
+          attempt={reconnectAttempt}
+          restoring={connected && restoringSession}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReconnectBanner({
+  status,
+  attempt,
+  restoring,
+}: {
+  status: ConnectionStatus;
+  attempt: number;
+  /** Socket is back; we are waiting on the server to hand the character back. */
+  restoring: boolean;
+}) {
+  const label = restoring
+    ? 'restoring session…'
+    : status === 'offline-retrying'
+      ? 'connection lost — still trying'
+      : 'reconnecting…';
+  return (
+    <div
+      className="reconnect-banner"
+      role="status"
+      aria-live="polite"
+      data-qa-reconnect={restoring ? 'restoring' : status}
+    >
+      <span className="reconnect-banner__dot" />
+      <span>{label}</span>
+      {/* The attempt count is the honest signal that something is still happening
+          during the longer backoff waits, where nothing else on screen moves. It
+          is meaningless once the socket is back, so the restore phase omits it. */}
+      {!restoring && <span className="reconnect-banner__attempt">attempt {attempt}</span>}
     </div>
   );
 }
