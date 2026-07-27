@@ -104,6 +104,7 @@ separate, unchanged path. Sprint remains in the wire but no key binds it by defa
 | `action_event` (public, transient) | `id` PK auto, `actor`, `target: Option<Identity>`, `action_id`, `kind: String` (`hit`/`blocked`/`miss`/`heal`/`release`), `amount: i32`, `position: Option<Vector3>`, `server_tick` btree; reaped after N ticks |
 | `projectile` (public) | `id` PK auto, `owner`, `action_id`, `position`, `previous_position`, `direction`, `spawned_at_tick`, `distance_traveled`, `max_distance` |
 | `player_slot_binding` (public) | `id` PK auto, `identity` btree, `slot`, `tap_action`, `hold_action`, `hold_threshold_ticks`; seeded from `SLOT_BINDINGS` on join. Row membership IS the capability gate |
+| `tick_stats` (public, singleton) | `id = 0` PK, `server_tick`, `last_interval_us`, `interval_ewma_us` (alpha 1/10), `max_interval_us_window`, `late_ticks_window` (interval > 1.5x target), `window_started_tick` (window restarts every 100 ticks ≈ 5 s); rewritten once per `game_tick` from `ctx.timestamp` deltas — measures scheduler cadence between invocations, not tick-body duration |
 
 No stored `can_move`/`can_attack` flags: **both sides derive gates from
 `(action_id, phase)` plus the shared defs** (`client/src/actions/gates.ts`,

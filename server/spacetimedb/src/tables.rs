@@ -125,6 +125,26 @@ pub struct TickState {
     #[primary_key]
     pub version: u32,
     pub server_tick: u64,
+    /// Wall-clock microseconds of the previous game_tick invocation (ctx.timestamp),
+    /// 0 when no tick has run yet; private companion for tick_stats, kept on this row
+    /// because it is already written every tick so tick health costs no extra row write.
+    #[default(0i64)]
+    pub last_tick_at_us: i64,
+}
+
+/// Public singleton (id = 0) exposing measured game_tick health: invocation-to-invocation
+/// interval, EWMA, and a short sliding window of max/late so ops and clients can see
+/// server cadence without scraping logs.
+#[spacetimedb::table(accessor = tick_stats, public)]
+pub struct TickStats {
+    #[primary_key]
+    pub id: u32,
+    pub server_tick: u64,
+    pub last_interval_us: u64,
+    pub interval_ewma_us: u64,
+    pub max_interval_us_window: u64,
+    pub late_ticks_window: u32,
+    pub window_started_tick: u64,
 }
 
 #[spacetimedb::table(accessor = game_tick_schedule, public, scheduled(game_tick))]

@@ -76,10 +76,6 @@ export const LoggedOutPlayerData = __t.object("LoggedOutPlayerData", {
   maxHealth: __t.u32(),
   isDead: __t.bool(),
   respawnTick: __t.u64(),
-  lastSlashTick: __t.u64(),
-  blockUntilTick: __t.u64(),
-  lastLightningTick: __t.u64(),
-  lastFireballTick: __t.u64(),
 });
 export type LoggedOutPlayerData = __Infer<typeof LoggedOutPlayerData>;
 
@@ -211,8 +207,20 @@ export type Projectile = __Infer<typeof Projectile>;
 export const TickState = __t.object("TickState", {
   version: __t.u32(),
   serverTick: __t.u64(),
+  lastTickAtUs: __t.i64(),
 });
 export type TickState = __Infer<typeof TickState>;
+
+export const TickStats = __t.object("TickStats", {
+  id: __t.u32(),
+  serverTick: __t.u64(),
+  lastIntervalUs: __t.u64(),
+  intervalEwmaUs: __t.u64(),
+  maxIntervalUsWindow: __t.u64(),
+  lateTicksWindow: __t.u32(),
+  windowStartedTick: __t.u64(),
+});
+export type TickStats = __Infer<typeof TickStats>;
 
 export const Vector3 = __t.object("Vector3", {
   x: __t.f32(),

@@ -24,6 +24,7 @@ const GAME_SUBSCRIPTIONS = [
   'SELECT * FROM player_slot_binding',
   'SELECT * FROM player_transform',
   'SELECT * FROM projectile',
+  'SELECT * FROM tick_stats',
 ];
 
 type UseSpacetimeConnectionOptions = {
