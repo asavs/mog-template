@@ -238,6 +238,11 @@ server {
         proxy_set_header Connection "Upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        # Idle-silent protocol: a stationary player's websocket carries nothing
+        # for minutes, and nginx's default 60s proxy_read_timeout tore those
+        # live connections down (the reconnect reads as "teleporting/lag").
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 }
 ```

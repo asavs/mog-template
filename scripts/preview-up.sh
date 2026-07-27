@@ -17,6 +17,12 @@
 #   GitHub Variables (knobs — not secret; optional overrides):
 #     MACHINE_TYPE [e2-micro]   PREVIEW_MAX_CONCURRENT [3]   ZONE [us-central1-a]
 #     PREVIEW_DB_NAME [mog-game-v1]   IMAGE_FAMILY [mog-preview]
+#
+#     ZONE is not a free choice: RTT is part of what a feel-test measures, and
+#     us-central1-a is both the project's historical region and the one the
+#     human feel-tester is closest to (a us-east4-a override measured ~70ms).
+#     MACHINE_TYPE is the knob for the e2-micro vs e2-standard-2 A/B — override
+#     the repo Variable, do not edit the default here.
 #     PREVIEW_USE_IAP [false]   PREVIEW_DELETE_ON_FAIL [false]
 #     PREVIEW_VM_SA   [unset]  only if the VM must use a non-default attached SA
 #

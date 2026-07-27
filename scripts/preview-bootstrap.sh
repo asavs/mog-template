@@ -21,12 +21,81 @@
 # Idempotent: safe to re-run. Drops a sentinel at /var/lib/mog-preview/provisioned
 # so preview-up.sh can skip a re-provision on VM reuse.
 #
+# EXCEPTION to the sentinel skip: the nginx site config is re-converged on EVERY
+# run (see write_nginx_site below). The golden image `mog-preview` is baked with
+# the sentinel already present, so a VM created from it skips this script
+# wholesale — which means a config change here would otherwise only reach players
+# after a manual image rebake. Rewriting the site file unconditionally makes
+# nginx changes land through the ordinary deploy path (preview-up.sh scps and
+# runs this script on every deploy, image or not).
+#
 set -euo pipefail
 
 SENTINEL=/var/lib/mog-preview/provisioned
 
+# --- nginx: static / + ONLY the two SpacetimeDB routes the client needs ---
+# Called on both paths (fresh provision AND sentinel-skip) so the deployed conf
+# always matches this file. Assumes nginx is installed; on the fresh-provision
+# path it is called after apt-get, on the skip path the image already has it.
+write_nginx_site() {
+  sudo tee /etc/nginx/sites-available/mog >/dev/null <<'NGINX'
+server {
+    listen 80;
+    server_name _;
+
+    root /var/www/mog;
+    index index.html;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types application/javascript text/css application/json image/svg+xml model/gltf-binary application/octet-stream application/wasm;
+
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /v1/identity {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /v1/database/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # The game's input protocol is idle-silent by design: a stationary player
+        # sends 0 Hz outbound and receives near-0 inbound, so a live websocket can
+        # legitimately carry nothing for minutes. nginx's default 60s
+        # proxy_read_timeout was tearing those connections down mid-session (the
+        # reconnect reads as "teleporting/lag" to the player); an hour is longer
+        # than any plausible quiet stretch inside one session.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+NGINX
+  sudo rm -f /etc/nginx/sites-enabled/default
+  sudo ln -sfn /etc/nginx/sites-available/mog /etc/nginx/sites-enabled/mog
+  # Validate before applying, and prefer reload (a redeploy must not drop the
+  # live site). reload fails if nginx isn't running yet — on the fresh-provision
+  # path apt has already started it, but fall back to start/restart so this is
+  # correct either way rather than aborting the script under `set -e`.
+  sudo nginx -t
+  sudo systemctl reload nginx || sudo systemctl restart nginx
+}
+
 if [ "${FORCE_PROVISION:-false}" != "true" ] && [ -f "$SENTINEL" ]; then
   echo "preview-bootstrap: already provisioned ($SENTINEL present); skipping."
+  echo "preview-bootstrap: re-converging nginx site config anyway (see header)."
+  write_nginx_site
   exit 0
 fi
 
@@ -87,46 +156,9 @@ sudo systemctl enable --now spacetimedb
 sudo mkdir -p /var/www/mog
 sudo chown -R www-data:www-data /var/www/mog
 
-# --- nginx: static / + ONLY the two SpacetimeDB routes the client needs ---
-sudo tee /etc/nginx/sites-available/mog >/dev/null <<'NGINX'
-server {
-    listen 80;
-    server_name _;
-
-    root /var/www/mog;
-    index index.html;
-
-    gzip on;
-    gzip_vary on;
-    gzip_comp_level 5;
-    gzip_min_length 1024;
-    gzip_proxied any;
-    gzip_types application/javascript text/css application/json image/svg+xml model/gltf-binary application/octet-stream application/wasm;
-
-    location / {
-        add_header Cache-Control "no-cache";
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /v1/identity {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    location /v1/database/ {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-NGINX
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo ln -sfn /etc/nginx/sites-available/mog /etc/nginx/sites-enabled/mog
-sudo nginx -t && sudo systemctl restart nginx && sudo systemctl enable nginx >/dev/null 2>&1
+# --- nginx site (definition lives in write_nginx_site, near the top) ---
+write_nginx_site
+sudo systemctl enable nginx >/dev/null 2>&1
 
 # --- firewall LAST: SSH + HTTP only, SpacetimeDB never public (plan §10).
 # Enabled after everything else is up so the SSH-driven provision can't lose
