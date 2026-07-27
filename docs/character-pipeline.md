@@ -45,7 +45,7 @@ equipment, and nothing else. Nothing more may accrue to them.
 |---|---|---|
 | 1 | Animations in | Both libraries staged, 79 clips auditioned, 15 bound. Two routines run. Two mechanisms outstanding: the phased action and the chain. |
 | 2 | Props and sets | 7 held props, 23 scenery, one GLB, six sets. Placement and grip are editable in the room and export as source. A garden is the notable gap. |
-| 3 | Base male + female | Not started. `base-characters` is unpacked locally with `Base Characters` and `Hairstyles`. |
+| 3 | Base male + female | One body shipped: `outfits-fantasy`'s `Male_Ranger` (base skeleton + full outfit, one mesh set) carved to `dropin/body.humanoid.glb`, replacing the procedural mannequin as `body.humanoid`'s default source. `rig 20/20 bones (100%)` in the drill room — every existing motion, stance, and grip binds unchanged, because the pack already ships UE5-spelled bone names `rig.ts` already aliases. Female and the base (unclothed) `Superhero_*` bodies are not staged; `base-characters` is still unpacked locally for whoever picks that up. |
 | 4 | Modular clothing | Not started. `outfits-fantasy` unpacked, 52 parts. Assembly builds on the content seam's `resolveBody` / prop-attach path (`client/src/content/`), not a separate avatar package. |
 | 5 | Creation loop | Not started. Needs 3 and 4 for the real thing; see below for what does not. |
 

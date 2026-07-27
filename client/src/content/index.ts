@@ -33,6 +33,7 @@ export {
   type StanceKey,
   type StanceSlot,
 } from './stances';
+export { DEFAULT_LOADOUT, type Loadout } from './loadout';
 export {
   applyGrip,
   fistFrame,

@@ -20,12 +20,17 @@ import { ACTION_DEFS } from '../actions/defs.generated';
 import { AnimationController } from '../anim';
 import {
   ALL_MOTION_KEYS,
+  applyGrip,
   BODY_KEYS,
+  DEFAULT_LOADOUT,
   MOTION_ACTION,
   MOTION_REACTION,
   resolveBody,
   resolveMotion,
+  resolveProp,
+  STANCES,
   type ResolvedBody,
+  type SocketId,
 } from '../content';
 import { driveAnimationFromActionState, type ActionPhase } from '../presentation/animBridge';
 import type { Effects } from '../presentation/effects';
@@ -69,6 +74,7 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
   const controllerRef = useRef<AnimationController | null>(null);
   const clipsRef = useRef(new Map<string, THREE.AnimationClip>());
   const processedEventIdsRef = useRef(new Set<string>());
+  const heldPropsRef = useRef<THREE.Object3D[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -107,6 +113,24 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
           reactionMotions: { hit: MOTION_REACTION.hit, death: MOTION_REACTION.death },
         },
       );
+
+      // Loadout: what a player wears until an equipment system exists. The
+      // stance drives idle/walk/run's upper body, and its `slots` are the same
+      // prop+socket pairs the stance already names — see `content/loadout.ts`.
+      const stance = STANCES[DEFAULT_LOADOUT.stance];
+      controllerRef.current.setStance(stance.poses);
+      for (const slot of stance.slots) {
+        const bone = resolved.bones[slot.socket as SocketId];
+        if (!bone) continue;
+        void (async () => {
+          const object = await resolveProp(slot.prop);
+          if (disposed || !object) return;
+          applyGrip(object, slot.prop, slot.socket, bone);
+          bone.add(object);
+          heldPropsRef.current.push(object);
+        })();
+      }
+
       setReady(true);
     })();
 
@@ -115,6 +139,8 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
       controllerRef.current?.dispose();
       controllerRef.current = null;
       mounted?.root.removeFromParent();
+      for (const object of heldPropsRef.current) object.removeFromParent();
+      heldPropsRef.current = [];
       effects.clearPlayer(identityHex);
       setReady(false);
     };
