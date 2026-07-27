@@ -43,6 +43,7 @@ describe('driveReactionsFromEvent', () => {
       actionId: melee.id,
       kind: 'hit',
       position: { x: 0, y: 0, z: 0 },
+      actor: 'attacker',
       targetIsSelf: true,
     });
 
@@ -59,6 +60,7 @@ describe('driveReactionsFromEvent', () => {
       actionId: melee.id,
       kind: 'hit',
       position: { x: 0, y: 0, z: 0 },
+      actor: 'attacker',
       targetIsSelf: false,
     });
 
@@ -75,6 +77,7 @@ describe('driveReactionsFromEvent', () => {
       actionId: melee.id,
       kind: 'miss',
       position: { x: 0, y: 0, z: 0 },
+      actor: 'attacker',
       targetIsSelf: true,
     });
 
@@ -91,6 +94,7 @@ describe('driveReactionsFromEvent', () => {
       actionId: melee.id,
       kind: 'hit' as const,
       position: { x: 0, y: 0, z: 0 },
+      actor: 'attacker',
     };
 
     driveReactionsFromEvent(mockController(), effects, ACTION_DEFS, { ...eventRow, targetIsSelf: true });

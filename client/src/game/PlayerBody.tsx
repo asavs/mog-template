@@ -76,10 +76,18 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
   const processedEventIdsRef = useRef(new Set<string>());
   const heldPropsRef = useRef<THREE.Object3D[]>([]);
   const [ready, setReady] = useState(false);
+  /** Reused every frame so reading this player's live world position never allocates. */
+  const livePositionRef = useRef(new THREE.Vector3());
 
   useEffect(() => {
     let disposed = false;
     let mounted: ResolvedBody | null = null;
+
+    // Register immediately (not gated on the async body load below) — see
+    // `Effects.registerActor`'s doc. `groupRef.current` is already attached by
+    // the time this effect runs: the `<group>` below always renders, ready or
+    // not, this effect just fills it in once the rig resolves.
+    if (groupRef.current) effects.registerActor(identityHex, groupRef.current);
 
     void (async () => {
       const [resolved, motions] = await Promise.all([resolveBody(BODY_KEYS.humanoid), allMotionClips()]);
@@ -141,6 +149,7 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
       mounted?.root.removeFromParent();
       for (const object of heldPropsRef.current) object.removeFromParent();
       heldPropsRef.current = [];
+      effects.unregisterActor(identityHex);
       effects.clearPlayer(identityHex);
       setReady(false);
     };
@@ -169,12 +178,17 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
     // this identity's `player_action_state` row is only ever read by THIS
     // `PlayerBody` instance, so there is no witness-side double-spawn to
     // guard against the way there is for scene-wide `action_event` rows.
-    effects.onPlayerActionState(
-      identityHex,
-      resolvedActionState,
-      ACTION_DEFS,
-      store.playerTransform.get(identityHex)?.position ?? null,
-    );
+    //
+    // Position comes from THIS player's own group, not `store.playerTransform`
+    // — `groupRef`'s world position already reflects wherever the parent
+    // (`game/App.tsx`'s `localGroupRef`/remote group) rendered them this
+    // frame, which is the local CSP-predicted or remote-interpolated position,
+    // not the raw server row `player_transform` lags behind — see
+    // `Effects.registerActor`'s doc.
+    if (groupRef.current) {
+      groupRef.current.getWorldPosition(livePositionRef.current);
+      effects.onPlayerActionState(identityHex, resolvedActionState, ACTION_DEFS, livePositionRef.current);
+    }
 
     const health = store.playerHealth.get(identityHex);
     driveDeathReaction(controller, { isDead: health?.isDead ?? false });
@@ -209,6 +223,7 @@ export function PlayerBody({ identityHex, store, effects, ownsSceneEffects, loca
           actionId: row.actionId,
           kind: row.kind,
           position: row.position ?? null,
+          actor: row.actor.toHexString(),
           targetIsSelf,
         });
       } else if (targetIsSelf) {
