@@ -42,6 +42,15 @@
  * `displace_self`) skips the glide and snaps instantly instead — a
  * multi-unit dash should not visibly slide, only genuine prediction error
  * should.
+ *
+ * Instrumentation (`runtime.metrics`, see `../perf/metrics.ts`) is recorded
+ * here rather than anywhere downstream because this is the only place the
+ * numbers still exist un-smoothed. By the time a position reaches the
+ * renderer, `visualCorrectionOffset` has deliberately hidden the correction
+ * that this file just applied — the very quantity a feel-tester needs to see.
+ * Every recording call is observational: no branch, ordering, or value in the
+ * reconcile path depends on it, so instrumentation can never change what the
+ * simulation does.
  */
 
 import * as THREE from 'three';
@@ -62,6 +71,7 @@ import {
   type LocomotionPhase,
 } from '../sim/locomotion';
 import { simulateMovementTick, type PlayerSimState } from '../sim/movement';
+import { sharedNetcodeMetrics, type NetcodeMetrics } from '../perf/metrics';
 import type { GameStore } from './sync';
 
 const TICK_DT = 1 / 20; // matches ACTIONS_TICK_RATE / the server's fixed tick
@@ -207,9 +217,18 @@ export interface FrameRuntimeState {
    * jumps immediately, same as before this offset existed.
    */
   visualCorrectionOffset: Vec3Like;
+  /**
+   * Netcode-feel instrumentation. Purely observational: nothing on this object is ever read
+   * back by prediction, reconciliation, or rendering. It lives here because this is the only
+   * place the interesting numbers exist un-smoothed — see the "instrumentation" note in the
+   * module doc.
+   */
+  metrics: NetcodeMetrics;
 }
 
-export function createFrameRuntimeState(): FrameRuntimeState {
+export function createFrameRuntimeState(
+  metrics: NetcodeMetrics = sharedNetcodeMetrics,
+): FrameRuntimeState {
   return {
     local: { position: { x: 0, y: 0, z: 0 }, rotationY: 0, verticalVelocity: 0, wasJumpPressed: false, sprintActive: false },
     localLocomotionPhase: 'grounded_idle',
@@ -222,6 +241,7 @@ export function createFrameRuntimeState(): FrameRuntimeState {
     renderTickClock: new RenderTickClock(),
     snapshotBuffers: new Map(),
     visualCorrectionOffset: zeroVec3(),
+    metrics,
   };
 }
 
@@ -289,10 +309,19 @@ export interface FrameRenderState {
 
 /** Called once per r3f frame (useFrame). Mutates `runtime` in place; returns what to render. */
 export function stepFrame(runtime: FrameRuntimeState, ctx: StepFrameContext): FrameRenderState {
+  runtime.metrics.recordFrame(ctx.dtSeconds);
   reconcileFromStore(runtime, ctx);
   predictPendingTicks(runtime, ctx);
   // Once per FRAME (not per tick, however many ran above) — matches the pre-rewrite tuning.
   decayVisualCorrectionOffset(runtime, ctx.dtSeconds);
+  // How much correction is still being hidden from the player right now, after the decay above.
+  runtime.metrics.setVisualCorrectionOffsetLength(
+    Math.hypot(
+      runtime.visualCorrectionOffset.x,
+      runtime.visualCorrectionOffset.y,
+      runtime.visualCorrectionOffset.z,
+    ),
+  );
   const remotes = sampleRemotes(runtime, ctx);
 
   const localPosition = new THREE.Vector3(
@@ -331,6 +360,9 @@ function reconcileFromStore(runtime: FrameRuntimeState, ctx: StepFrameContext): 
     runtime.visualCorrectionOffset = zeroVec3();
     runtime.initializedFromServer = true;
     runtime.lastServerTick = transform.serverTick;
+    // The first authoritative row is the baseline the arrival-interval series measures from —
+    // without it the first real interval would be timed from page load instead of from a tick.
+    runtime.metrics.recordTransformArrival();
     return;
   }
 
@@ -343,14 +375,31 @@ function reconcileFromStore(runtime: FrameRuntimeState, ctx: StepFrameContext): 
   // "the row changed" is exactly "there is a correction worth reconciling," ack or not.
   if (transform.serverTick === runtime.lastServerTick) return;
   runtime.lastServerTick = transform.serverTick;
+  // A changed row IS an authoritative arrival (see the comment above) — so this is the honest
+  // place to measure the cadence the server actually delivers at, bursts included.
+  runtime.metrics.recordTransformArrival();
 
   const ack = ctx.store.playerInputAck.get(ctx.localIdentityHex);
   const lastProcessedClientTick = ack?.lastProcessedClientTick ?? runtime.lastProcessedClientTick;
+  // Closes the input round trip opened by `useInput`'s `onInputSent`. Repeat acks of a sequence
+  // already seen are dropped inside `recordAck`, so a republished row costs nothing.
+  if (ack) runtime.metrics.recordAck(ack.lastInputSeq);
 
   const { sim, remaining } = reconcileLocalPrediction(
     runtime.predicted,
     transform.position,
     lastProcessedClientTick,
+  );
+  // Pre-smoothing prediction error: how far the authoritative replay landed from where the
+  // client had predicted it was. Deliberately NOT the render-space delta that
+  // `applyVisualCorrection` derives — that one folds in the leftover, still-decaying offset
+  // from an earlier correction, which would double-count a burst of them.
+  runtime.metrics.recordReconcile(
+    Math.hypot(
+      sim.position.x - runtime.local.position.x,
+      sim.position.y - runtime.local.position.y,
+      sim.position.z - runtime.local.position.z,
+    ),
   );
   applyVisualCorrection(runtime, sim.position);
   runtime.local = sim;

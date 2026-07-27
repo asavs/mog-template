@@ -57,6 +57,7 @@ export function installCollectors() {
       joined: boolean;
       identityHex: string | null;
       store: Record<string, Map<string, Record<string, unknown>>>;
+      netcode?: Record<string, unknown>;
     };
   };
   w.__qaTrace = [];
@@ -93,6 +94,20 @@ export function installCollectors() {
       }
       const actionState = game.store.playerActionState?.get(game.identityHex);
       if (actionState && typeof actionState.phase === 'number') channels.actionState_phase = actionState.phase;
+
+      // Netcode-feel metrics (pre-smoothing correction magnitude, ack RTT, authoritative
+      // arrival cadence — see client/src/perf/metrics.ts) ride that same generic contract:
+      // every finite numeric field is copied under a `netcode_` prefix rather than an
+      // enumerated list, so a metric added there reaches traces and reports with no change
+      // here. This restores the reconciliation telemetry the v2 rewrite dropped — see the
+      // TraceRecord doc in trace-types.ts.
+      const netcode = game.netcode;
+      if (netcode) {
+        for (const key of Object.keys(netcode)) {
+          const value = netcode[key];
+          if (typeof value === 'number' && Number.isFinite(value)) channels[`netcode_${key}`] = value;
+        }
+      }
     }
 
     w.__qaTrace.push({

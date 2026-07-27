@@ -23,6 +23,8 @@ import type { DbConnection } from '../generated';
 import { useInput } from '../input/useInput';
 import { useSpacetimeConnection } from '../network/useSpacetimeConnection';
 import { createEffects } from '../presentation/effects';
+import { mountPerfHud } from '../perf/hud';
+import { sharedNetcodeMetrics, type NetcodeSnapshot } from '../perf/metrics';
 import { shouldEnableQaGameDebug } from '../qaGate';
 import { Arena } from '../world/Arena';
 import { EffectsView } from './EffectsView';
@@ -33,6 +35,13 @@ import { attachGameStore, createGameStore, type GameStore } from './sync';
 
 const PLAYER_NAME_KEY = 'mog.playerName';
 const HUD_POLL_INTERVAL_MS = 200;
+/**
+ * How often the netcode snapshot published on `window.__mogGame` is recomputed. Deriving
+ * percentiles every frame would be wasted work for a channel nothing samples faster than
+ * ~10Hz — the harness's rAF trace re-reads the same mutated object, and the perf overlay
+ * redraws at this same cadence — so the per-frame path stays a plain property assignment.
+ */
+const NETCODE_PUBLISH_INTERVAL_MS = 100;
 
 function loadSavedName(): string {
   try {
@@ -60,6 +69,11 @@ declare global {
       joined: boolean;
       identityHex: string | null;
       store: GameStore;
+      /**
+       * Live netcode-feel metrics (see `perf/metrics.ts`). The SAME object every frame —
+       * mutated in place, never reallocated — so a sampler may hold a reference to it.
+       */
+      netcode: NetcodeSnapshot;
     };
   }
 }
@@ -78,6 +92,7 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: Scen
   const remoteGroupsRef = useRef(new Map<string, THREE.Group>());
   const [remoteIds, setRemoteIds] = useState<string[]>([]);
   const effectsRef = useRef(createEffects());
+  const lastNetcodePublishRef = useRef(0);
 
   useFrame((state, delta) => {
     const actionState = identityHex ? store.playerActionState.get(identityHex) : undefined;
@@ -113,12 +128,19 @@ function Scene({ store, identityHex, movementRef, rotationYRef, pitchRef }: Scen
     if (idsChanged) setRemoteIds([...render.remotes.keys()]);
 
     if (shouldEnableQaGameDebug()) {
+      const metrics = runtimeRef.current.metrics;
+      const now = performance.now();
+      if (now - lastNetcodePublishRef.current >= NETCODE_PUBLISH_INTERVAL_MS) {
+        lastNetcodePublishRef.current = now;
+        metrics.refreshSnapshot(now);
+      }
       window.__mogGame = {
         localPosition: { x: render.localPosition.x, y: render.localPosition.y, z: render.localPosition.z },
         remoteCount: render.remotes.size,
         joined: identityHex !== null,
         identityHex,
         store,
+        netcode: metrics.snapshot,
       };
     }
   });
@@ -246,7 +268,26 @@ export function App() {
     connRef.current?.reducers.joinGame({ username: name });
   }, [connRef]);
 
-  const input = useInput({ connRef, active: joined });
+  // Opens the input round trip that `frame.ts` closes when the matching ack arrives — the send
+  // instant is knowable nowhere else. See `useInput`'s `onInputSent` doc.
+  const handleInputSent = useCallback((sequence: number) => {
+    sharedNetcodeMetrics.recordInputSent(sequence);
+  }, []);
+
+  const input = useInput({ connRef, active: joined, onInputSent: handleInputSent });
+
+  // The perf overlay is a debug surface, so it rides the same `?qa` / VITE_QA_MODE gate as
+  // `window.__mogGame` and stays absent from a normal production session. It mounts hidden;
+  // the keymap's debug row (F3) reveals it. `storeRef` is read through a getter because the
+  // store object is replaced when the connection attaches.
+  useEffect(() => {
+    if (!shouldEnableQaGameDebug()) return;
+    const hud = mountPerfHud({
+      metrics: sharedNetcodeMetrics,
+      store: () => storeRef.current,
+    });
+    return () => hud.dispose();
+  }, []);
 
   useEffect(() => {
     if (!joined) return;
